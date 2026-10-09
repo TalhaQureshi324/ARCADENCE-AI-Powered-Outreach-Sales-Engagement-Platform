@@ -96,3 +96,41 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
 - **Date:** 2026-10-09 · **Status:** Accepted as provisional
 - **Decision:** Delivery is organized into 14 phases broken into independently testable subphases (see `docs/PROJECT_STATUS.md`). The detailed Phase 0 plan is supplied by the product owner; later phases are refined just-in-time. Statuses live in `docs/PROJECT_STATUS.md`, not here.
 - **Consequences:** One prompt → one subphase → tests → push → report; no batching of subphases.
+
+## ADR-0015 — Monorepo layout
+
+- **Date:** 2026-10-09 · **Status:** Accepted
+- **Context:** Phase 0.1 requires a maintainable monorepo holding the Next.js frontend, the Scala API and worker, shared code, migrations, and infrastructure in one repository with one history.
+- **Decision:**
+  - `apps/web` — Next.js application (own package.json; scaffolded with create-next-app).
+  - `apps/api`, `apps/worker` — runnable Scala processes.
+  - `modules/core` — shared Scala library code (config, health contracts, later: platform kernel).
+  - `packages/` — reserved for shared frontend packages; **intentionally empty** until a second consumer exists (no speculative abstractions).
+  - `supabase/migrations/` — the single version-controlled migration location.
+  - `infrastructure/` — Docker/CI/deployment artifacts (from 0.4).
+  - `scripts/` — developer shell scripts.
+  - The **sbt build lives at the repository root** and spans `modules/*` and `apps/*` via explicit project paths; the frontend is independent under `apps/web`.
+- **Consequences:** One PR can span full-stack subphases; sbt module boundaries enforce backend layering; frontend dependency management stays isolated inside `apps/web` until a JS workspace is actually needed.
+
+## ADR-0016 — Pinned toolchain versions (Phase 0.1)
+
+- **Date:** 2026-10-09 · **Status:** Accepted
+- **Context:** `AGENTS.md` §2 requires supported, mutually compatible versions, documented. Versions were selected from Maven Central release metadata (latest stable lines), cross-checked against actual POMs.
+- **Decision (backend):**
+
+| Dependency | Pin | Rationale |
+| --- | --- | --- |
+| Scala | 3.3.8 | LTS line; supported |
+| sbt | 1.12.15 | Latest mature 1.x stable (1.13/2.x too fresh for plugin ecosystem) |
+| Cats Effect | 3.7.1 | Latest stable CE3 |
+| http4s | 0.23.38 | Latest **stable** line — the 1.0 series is still milestone-only (1.0.0-M49); Tapir 1.13.33's own POM targets http4s 0.23.38, proving compatibility |
+| Tapir | 1.13.33 | Latest stable; drives OpenAPI |
+| circe | 0.14.17 | Latest stable (0.15 is milestone) |
+| Doobie | 1.0.0-RC12 | Current supported line; RC-line is the published stable of doobie |
+| PostgreSQL driver | 42.7.14 | Latest |
+| log4cats / logback | 2.8.0 / 1.6.5 | Latest stable |
+| Test | MUnit 1.3.6 + munit-cats-effect 2.2.1 | Fast, CE-integrated |
+| Tooling | sbt-scalafmt 2.6.2 (scalafmt 3.11.5), sbt-buildinfo 0.13.2 | Formatting + build identity |
+
+- **Decision (frontend):** Next.js 16.4.0 (App Router), React 19.3, Tailwind CSS v4, ESLint 9 + eslint-config-next, TypeScript 5, Vitest 5 + Testing Library, Prettier + prettier-plugin-tailwindcss, `@types/node` ^24 (matches Node 24 runtime and Vitest 5 peer range).
+- **Consequences:** Version bumps are deliberate ADR-level changes; the http4s 1.0 migration is deferred until Tapir/http4s ship compatible stable releases.
