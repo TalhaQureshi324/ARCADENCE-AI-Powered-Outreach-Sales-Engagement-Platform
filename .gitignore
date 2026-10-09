@@ -1,0 +1,49 @@
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# --- Node / Next.js ---
+node_modules/
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+.eslintcache
+
+# --- Scala / sbt / Metals ---
+target/
+project/target/
+project/project/
+.bloop/
+.metals/
+.bsp/
+.scala-build/
+
+# --- Logs & local tooling ---
+*.log
+logs/
+
+# --- Testing & coverage ---
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+.blob-report/
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Misc local state ---
+*.local
+.cache/
+tmp/
