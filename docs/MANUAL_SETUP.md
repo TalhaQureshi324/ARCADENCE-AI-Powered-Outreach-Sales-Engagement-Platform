@@ -17,7 +17,7 @@
 | 1 | GitHub repository `TalhaQureshi324/ARCADENCE-AI-Powered-Outreach-Sales-Engagement-Platform` created | Phase 0 | **done** | Remote reachable and empty; foundation pushed 2026-10-09 |
 | 2 | Verify Git push credentials work from this machine (push succeeded = done; if a push ever fails with auth errors, run `gh auth login` or update Windows Credential Manager) | Phase 0 | **verify on next push** | First push used HTTPS remote |
 | 3 | Enable branch protection on GitHub: `main` requires PRs; protect `develop` likewise | Phase 0 | **action needed** | Settings → Branches → Add rule. Cannot be done by the agent without admin API access |
-| 4 | Install local toolchain: JDK 21 (Temurin), sbt, Node 22 LTS, Docker Desktop, Supabase CLI | Phase 0 | **action needed** | Or confirm they are already installed; exact checklist in `docs/SETUP.md` §1 |
+| 4 | Install local toolchain: JDK 21 (Temurin), sbt, Node 22 LTS, Docker Desktop, Supabase CLI | Phase 0 | **partially done** | JDK 21.0.12.1 + sbt installed via winget by the agent (2026-10-09); Node 24 already present. ⬜ Docker Desktop + Supabase CLI still needed before subphase 0.3. Open a new terminal after winget installs for updated PATH |
 | 5 | Create Supabase project (choose org + region close to your users) | Phase 0/1 | **action needed** | Share only the **public** URL + anon key for frontend config; the agent will tell you exactly which values go where. Never paste the service-role key into chat |
 | 6 | Google Cloud project + OAuth consent screen + Gmail API scopes (testing/publishing status) | Phase 2 | later | Google verification can take days — start early when Phase 2 nears |
 | 7 | Microsoft Entra ID app registration (mail scopes) | Phase 2 | later | Tenant + consent configuration |

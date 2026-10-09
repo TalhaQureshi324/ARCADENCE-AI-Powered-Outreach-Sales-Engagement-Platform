@@ -2,7 +2,7 @@
 
 **AI-powered outreach & sales engagement platform** — a production-oriented, multi-tenant SaaS for cold-email outreach, B2B lead management, campaign automation, unified inbox, CRM, deliverability intelligence, analytics, and AI-assisted sales workflows.
 
-> **Status:** Foundation phase. The repository, engineering conventions, and documentation set are established; implementation proceeds phase-by-phase (see [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)).
+> **Status:** Phase 0 foundation in progress — monorepo scaffolded, both applications build/run/test (see [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)).
 
 ---
 
@@ -64,21 +64,42 @@ flowchart LR
 
 ```
 ├── AGENTS.md            # Binding instructions for coding agents — read first
+├── build.sbt            # Scala build spanning modules/ and apps/ (Scala 3.3.8, sbt 1.12.15)
+├── apps/
+│   ├── web/             # Next.js 16 · TypeScript · Tailwind v4 · Vitest
+│   ├── api/             # Scala API process — http4s + Tapir (GET /health, /ready)
+│   └── worker/          # Scala worker process — heartbeat/job execution
+├── modules/
+│   └── core/            # Shared Scala library (config, health contracts)
+├── packages/            # Shared frontend packages (intentionally empty — ADR-0015)
+├── supabase/migrations/ # Version-controlled SQL migrations (from Phase 0.2/0.3)
+├── infrastructure/      # Docker / CI / deployment (from Phase 0.4)
+├── scripts/             # check-toolchain · dev-api · dev-worker · dev-web · test-all · fmt-all
 ├── docs/                # Permanent project documentation
 │   ├── PROJECT_STATUS.md    # Phase/subphase status (single source of truth)
 │   ├── ARCHITECTURE.md      # System design
-│   ├── DECISIONS.md         # Architecture decision records
+│   ├── DECISIONS.md         # Architecture decision records (ADR-0001…0016)
 │   ├── DATABASE.md          # Schema overview & migration conventions
 │   ├── API.md               # API conventions & endpoint docs
-│   ├── SETUP.md             # Local development setup
+│   ├── SETUP.md             # Local development setup (verified commands)
 │   ├── MANUAL_SETUP.md      # External account tasks for the product owner
 │   ├── HANDOFF.md           # Implementation/handoff log
 │   └── SECURITY.md          # Security posture & decisions
-├── backend/             # Scala 3 modular monolith (API + worker) — Phase 0
-├── frontend/            # Next.js App Router application — Phase 0
-├── supabase/            # SQL migrations & project config — Phase 0
-└── .github/             # PR/issue templates, CI (planned Phase 0)
+└── .github/             # PR/issue templates, CODEOWNERS
 ```
+
+## Development quickstart
+
+```bash
+scripts/check-toolchain.sh    # JDK 21 + sbt + Node 22+ present?
+sbt test                      # Scala unit tests
+sbt api/run                   # API on :8080 → GET /health, GET /ready
+sbt worker/run                # worker heartbeat loop
+cd apps/web && npm install
+npm run dev                   # http://localhost:3000 — live system-health page
+```
+
+Full commands and prerequisites: [docs/SETUP.md](docs/SETUP.md).
 
 ## Branch model
 

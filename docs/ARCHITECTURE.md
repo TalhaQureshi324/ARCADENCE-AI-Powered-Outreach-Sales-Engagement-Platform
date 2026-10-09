@@ -88,7 +88,7 @@ Internal modules (boundaries are package-level, one DB schema, no network hops i
 | `billing` | Stripe subscriptions, plans, usage limits |
 | `platform` | Shared kernel: config, logging, errors, auth middleware, job framework |
 
-**Stack:** Scala 3 (LTS line), Cats Effect 3, http4s 1.x, Tapir 1.x, Doobie 1.x, PostgreSQL JDBC. Exact pins are recorded at Phase 0 scaffold time (verified against currently supported releases).
+**Stack (pinned — ADR-0016):** Scala 3.3.8 (LTS), sbt 1.12.15, Cats Effect 3.7.1, http4s 0.23.38 (ember) — the stable line; Tapir 1.13.33's own POM targets it and the 1.0 series is still milestone-only — Tapir 1.13.33, Doobie 1.0.0-RC12, PostgreSQL JDBC 42.7.14, log4cats 2.8.0 + logback 1.6.5.
 
 ### 2.4 External providers
 
@@ -136,6 +136,11 @@ Google (Gmail API), Microsoft (Graph), arbitrary SMTP/IMAP, AI providers, Stripe
 
 ## 8. What is real today
 
-- ✅ Repository, documentation set, branch model, conventions (this commit).
-- ⬜ Build scaffolds, pinned versions, health endpoints, CI — Phase 0.
-- ⬜ Everything else — per `docs/PROJECT_STATUS.md`.
+- ✅ Repository, documentation set, branch model, conventions.
+- ✅ Monorepo scaffold (`apps/web`, `apps/api`, `apps/worker`, `modules/core`, `supabase/migrations/`, `infrastructure/`, `scripts/`) — ADR-0015.
+- ✅ Scala API process: `GET /health`, `GET /ready` (Tapir → http4s ember), validated env config, logging — 14/14 Scala tests pass.
+- ✅ Scala worker process: heartbeat event loop with validated env config.
+- ✅ Next.js app: system-health page probing the API with honest loading/up/degraded/unreachable states — 6/6 Vitest tests, clean lint, production build.
+- ⬜ Architecture & database design (ERD, state machines) — Phase 0.2.
+- ⬜ Supabase configuration, migrations, RLS, Doobie connectivity — Phase 0.3.
+- ⬜ CI/CD, structured request logging, Docker — Phase 0.4.

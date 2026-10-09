@@ -8,7 +8,7 @@
 
 ## Current phase
 
-**Phase 0 — Foundation** · status: `in-progress` (awaiting detailed implementation plan from the product owner; repository foundation complete)
+**Phase 0 — Foundation** · status: `in-progress` (subphase 0.1 complete; 0.2 next)
 
 ## Phase roadmap (provisional — ADR-0014)
 
@@ -35,14 +35,18 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 
 | # | Subphase | Status | Notes |
 | --- | --- | --- | --- |
-| 0.0 | Repository foundation — docs, conventions, branch model, GitHub push | **tested** | This deliverable. Docs complete; pushed to `main` + `develop`. See `docs/HANDOFF.md`. |
-| 0.1+ | Pending the product owner's detailed Phase 0 implementation plan | planned | Expected scope (per charter): build scaffolds, pinned toolchain, CI, skeleton API/worker/web, health checks, env conventions. |
+| 0.0 | Repository foundation — docs, conventions, branch model, GitHub push | **tested** | Docs complete; pushed to `main` + `develop`. |
+| 0.1 | Repository & initial structure — monorepo scaffold, Next.js app, Scala 3 multi-module build, health endpoints, tests, tooling | **tested** | 20/20 tests pass (Scala 14, web 6); live smoke verified (API `/health` `/ready`, worker heartbeat, web page). See `docs/HANDOFF.md`. |
+| 0.2 | Architecture & database design (ERD, module boundaries, state machines, migration workflow) | planned | Next up. |
+| 0.3 | Supabase configuration & local environment | planned | |
+| 0.4 | CI/CD & developer experience | planned | |
 
 ## Completed milestones
 
 | Date | Milestone | Evidence |
 | --- | --- | --- |
-| 2026-10-09 | Repository foundation established and pushed | Initial commits on `main` and `develop`; see `docs/HANDOFF.md` |
+| 2026-10-09 | Repository foundation established and pushed | Commits `7561767`, `a1cc95b` on `main`/`develop` |
+| 2026-10-09 | Subphase 0.1 — both applications build, run and pass tests | sbt `test` 14/14; Vitest 6/6; live endpoint smoke tests (see `docs/HANDOFF.md`) |
 
 ## Known blockers
 
@@ -50,4 +54,4 @@ None.
 
 ## Manual setup queue
 
-See [`docs/MANUAL_SETUP.md`](MANUAL_SETUP.md) — no items currently block Phase 0.
+See [`docs/MANUAL_SETUP.md`](MANUAL_SETUP.md) — no items currently block Phase 0. Branch protection (#3) remains recommended before PR-based subphases.

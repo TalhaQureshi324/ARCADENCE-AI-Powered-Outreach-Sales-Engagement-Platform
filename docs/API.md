@@ -46,7 +46,10 @@
 
 Populated per phase as endpoints ship. Format per endpoint: method, path, auth/roles, request/response schemas, idempotency, error codes.
 
-- ⬜ Phase 0 — health/readiness: `GET /health`, `GET /ready` (unauthenticated, for infrastructure)
+- ✅ **Phase 0 — infrastructure probes (implemented & tested, no auth by design):**
+  - `GET /health` → `200 {"service": "arcadence-api", "version": "<build>", "status": "up"}`
+  - `GET /ready` → `200 {"service": "arcadence-api", "version": "<build>", "status": "ready", "checks": {"process": "ok"}}` — dependency checks (database, …) are appended from Phase 0.3 onward; a not-ready dependency will flip `status` to `"not_ready"` and add failed check entries.
+  - Unknown paths → `404`. Endpoints are described in Tapir (OpenAPI generation lands with the first authenticated endpoints); CORS currently allow-all-without-credentials for local development, replaced by environment-scoped origins in Phase 0.4.
 - ⬜ Phase 1 — workspaces, members, invitations
 - ⬜ Phase 2 — email connections (OAuth start/callback, SMTP/IMAP accounts)
 - ⬜ Phases 3–12 — per roadmap
