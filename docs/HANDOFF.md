@@ -4,6 +4,45 @@
 
 ---
 
+## 2026-10-10 — Phase 0 / Subphase 0.2: Architecture & database design
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **`docs/DATABASE.md`** — complete schema design: tenancy model (organization → workspace → member, ADR-0017); ERDs per domain (mermaid) + a 32-table catalog with key columns, unique constraints, and indexes spanning identity/tenancy, email connections, contacts/lists/suppression, campaigns/enrollments/scheduled actions, messaging/events, analytics rollups, CRM, AI audit, billing, and platform jobs/webhooks; full Postgres enum catalog; state-machine→column mapping; RLS helper-function design; indexing strategy.
+- **`docs/ARCHITECTURE.md`** — module ownership matrix (module → owned tables → API vs worker responsibilities, with cross-module write prohibition); authorization model with role matrix and 403/404 semantics; four core state machines (campaign, enrollment, scheduled-action/job, message — unknown outcomes recorded as unknown); inbound and outbound webhook flow designs with idempotency and signature rules.
+- **`docs/API.md`** — full public route catalog for phases 1–11 + internal webhook routes, all marked designed vs implemented; role requirements per route group.
+- **ADR-0017** (tenancy model), **ADR-0018** (single migration workflow: Supabase CLI + PR review + CI push; dashboard GitHub App explicitly rejected; direct/session connections for services, transaction-pooling caveats), **ADR-0005 refinement** (concrete job tables).
+- **Credential staging (local only):** Supabase project `arcadence-staging` URL, publishable key, and direct DATABASE_URL placed into git-ignored `apps/{web,api,worker}/.env.local` — activated in subphase 0.3. Nothing credential-bearing is committed.
+
+### Tested (evidence)
+
+- Design-only subphase (no runtime code changed). Verification: internal-consistency pass — every tenant entity carries `workspace_id` (billing intentionally org-scoped; `job_queue` global by design); enum names in `docs/DATABASE.md` match those referenced in `docs/ARCHITECTURE.md`; migration workflow single and unambiguous (ADR-0018); Scala/frontend test suites unaffected and still green from 0.1 (no code touched).
+
+### Database migrations
+
+- None yet (this subphase designs them; SQL starts in 0.3).
+
+### Git
+
+| Item | Value |
+| --- | --- |
+| Branch | `feature/phase-00-db-design` → `develop` (no-ff merge) |
+| Remote | pushed (see chat report for hashes) |
+
+### Manual setup actions (for 0.3)
+
+1. **Install Supabase CLI** (not installed on this machine) and **Docker Desktop** — needed for the local Supabase stack and migration authoring (MANUAL_SETUP #4).
+2. Run `supabase login` once in any terminal (interactive browser login) so CLI commands can act on project `kryxwfjaafcedtqruges`.
+3. Optional but recommended: rotate the staging DB password in the dashboard since it was shared via chat.
+
+### Next
+
+- **Subphase 0.3 — Supabase configuration and local environment** (CLI init/link, foundational migrations from the 0.2 design, RLS policies, storage buckets, Doobie connectivity tests against local + staging).
+
+---
+
 ## 2026-10-09 — Phase 0 / Subphase 0.1: Repository & initial structure
 
 **Status:** ✅ Completed and pushed
