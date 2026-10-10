@@ -38,6 +38,7 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
 - **Context:** Email sending and syncing must survive crashes and deploys, with retries and unknown-outcome safety. Delivery is **at-least-once**, never assumed exactly-once.
 - **Decision:** Durable job/outbox tables in PostgreSQL with `FOR UPDATE SKIP LOCKED` claiming, idempotency keys, and backoff retries; Supabase Queues (pgmq) adopted where queue semantics fit better than job tables.
 - **Consequences:** Transactional consistency between state changes and queued work; operational simplicity; explicit handling of unknown outcomes (recorded as unknown, never silently assumed delivered/failed).
+- **Refinement (2026-10-10, Phase 0.2):** concrete realization is the `scheduled_action` table (campaign sends; idempotency keys; partial index on pending `run_after`), the generic `job_queue` table (platform jobs), and `webhook_delivery` (outbound, retries) — state machine shared (`action_status`), claimed via `FOR UPDATE SKIP LOCKED`. See `docs/DATABASE.md` §6.4/§6.10 and `docs/ARCHITECTURE.md` §7.3.
 
 ## ADR-0006 — Supabase Storage with private buckets
 
@@ -134,3 +135,26 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
 
 - **Decision (frontend):** Next.js 16.4.0 (App Router), React 19.3, Tailwind CSS v4, ESLint 9 + eslint-config-next, TypeScript 5, Vitest 5 + Testing Library, Prettier + prettier-plugin-tailwindcss, `@types/node` ^24 (matches Node 24 runtime and Vitest 5 peer range).
 - **Consequences:** Version bumps are deliberate ADR-level changes; the http4s 1.0 migration is deferred until Tapir/http4s ship compatible stable releases.
+
+## ADR-0017 — Tenancy model: organization → workspace → member
+
+- **Date:** 2026-10-10 · **Status:** Accepted (Phase 0.2)
+- **Context:** The product serves both single operators and agencies running many client accounts (Instantly's "workspace" concept). We need one unit for billing/legal ownership and a different unit for day-to-day tenant isolation.
+- **Decision:**
+  - **organization** — billing/legal owner; owns Stripe subscriptions and plan limits (billing tables are org-scoped, no `workspace_id`).
+  - **workspace** — the tenant isolation unit; **every** business table carries `workspace_id`; always belongs to exactly one organization.
+  - **workspace_member** — user↔workspace with role `owner | admin | member | viewer`; authorization matrix in `docs/ARCHITECTURE.md` §3.
+  - `profile` mirrors `auth.users` 1:1 (same UUID PK); Supabase Auth remains the only identity source.
+- **Consequences:** Agencies get clean per-client data isolation with one billing relationship; RLS keys on workspace membership; plan limits can be enforced at either org or workspace level (`usage_counter` supports both).
+
+## ADR-0018 — Single migration workflow: Supabase CLI, PR-reviewed, CI-pushed; direct/session connections for services
+
+- **Date:** 2026-10-10 · **Status:** Accepted (Phase 0.2)
+- **Context:** Multiple workflows exist in the Supabase ecosystem (dashboard SQL editor, GitHub App auto-deploy, CLI migrations). We need exactly one unambiguous, auditable path from schema change to production.
+- **Decision:**
+  - Source of truth: `supabase/migrations/<UTC-timestamp>_<name>.sql`, forward-only, PR-reviewed like all code.
+  - **Local:** Supabase CLI stack (`supabase start` / `supabase db reset` / `supabase db diff -f <name>` to author migrations).
+  - **Staging/production:** `supabase link --project-ref <ref>` + `supabase db push` from CI using a stored access token (staging project `arcadence-staging` first; a separate production project later).
+  - The **Supabase dashboard GitHub App integration is not used** — it bypasses PR review flow and duplicates CI responsibility.
+  - **Connections:** Scala services use direct (5432) or session-pooled connections appropriate to persistent workers; transaction pooling (6543) only for short-lived request paths with prepared statements disabled (`prepareThreshold=0`) and no cross-transaction session assumptions.
+- **Consequences:** Deterministic, reviewable schema evolution; one migration set applies identically from laptop to CI; no dashboard drift.

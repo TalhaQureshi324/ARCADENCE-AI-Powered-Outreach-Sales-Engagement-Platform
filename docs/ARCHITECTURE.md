@@ -1,6 +1,6 @@
 # Arcadence — System Architecture
 
-> Status: **Foundation.** The architecture below is the agreed target design. Concrete module scaffolding, pinned dependency versions, and deployment wiring land with Phase 0 and are marked ✅ as they become real.
+> Status: **Foundation + design (Phase 0.1–0.2).** Sections 1–6 are implemented as marked; sections 7–8 (state machines, webhook flows) and the module ownership model are the Phase 0.2 design that Phases 1+ implement.
 
 ---
 
@@ -44,87 +44,197 @@ flowchart LR
 
 ### 2.1 Frontend — Next.js App Router
 
-- **React 18+/19 + TypeScript**, server components by default, client components where interactivity demands.
+- **React 19 + TypeScript**, server components by default, client components where interactivity demands.
 - **Tailwind CSS + shadcn/ui (Radix primitives)** for accessible, themeable components. Design language per `AGENTS.md` §6: sophisticated minimalism, subtle spatial depth, restrained neumorphism, indigo/navy palette, light+dark themes.
 - **React Flow** for campaign/automation workflow canvases.
-- **Supabase Auth SSR** for session management; only public (`NEXT_PUBLIC_*` / anon) configuration reaches the browser.
-- **Supabase Realtime** subscribes the browser directly to customer-facing live updates (e.g. inbox events) where suitable.
+- **Supabase Auth SSR** for session management; only public (`NEXT_PUBLIC_*` / publishable) configuration reaches the browser.
+- **Supabase Realtime** subscribes the browser directly to customer-facing live updates (inbox, campaign progress) where suitable.
 - Every feature ships loading, success, empty, validation, error, and permission-denied states.
 
 ### 2.2 Supabase (platform of record)
 
 | Capability | Usage |
 | --- | --- |
-| PostgreSQL | System of record; all schema via version-controlled SQL migrations; RLS on every tenant table |
+| PostgreSQL | System of record; all schema via version-controlled SQL migrations; RLS on every tenant table (`docs/DATABASE.md`) |
 | Auth | User identity, SSR sessions; Scala verifies JWTs via Supabase JWKS |
 | Storage | Private buckets for imports, attachments, exports; access only through signed URLs generated server-side |
 | Realtime | Customer-facing live updates where appropriate (inbox, campaign progress) |
-| Queues (pgmq) | Durable queues when a queue semantic beats a plain table/outbox; else PostgreSQL-backed job tables |
+| Queues (pgmq) | Durable queues where queue semantics beat job tables; else `job_queue`/outbox tables (ADR-0005) |
 
-**Connection policy:** the Scala backend uses direct or session-pooled connections appropriate to a small number of long-lived JVM services (transaction pooling is evaluated per deployment; PgBouncer/Supavisor mode is recorded in `docs/DECISIONS.md` once chosen in Phase 0).
+**Connection policy (ADR-0018):** Scala services are long-lived JVM processes → direct connections (5432) or session pooling. Transaction pooling (6543) only for short-lived request paths, with prepared statements disabled (`prepareThreshold=0`) and no cross-transaction session assumptions.
 
 ### 2.3 Backend — Scala 3 modular monolith
 
 One deployable codebase, **two runnable processes**:
 
-- **API process** — http4s HTTP server, Tapir-derived endpoints + OpenAPI docs, request validation, authorization, orchestration.
-- **Worker process** — durable job execution: email scheduling/sending, mailbox sync, bounce/feedback processing, webhook ingestion, AI pipelines, CRM sync, maintenance.
-
-Internal modules (boundaries are package-level, one DB schema, no network hops inside the monolith):
-
-| Module | Responsibility (target) |
-| --- | --- |
-| `identity` | Users, sessions verification, profiles |
-| `workspaces` | Tenants, members, roles/invitations, RBAC |
-| `emailconnections` | Gmail/Microsoft OAuth, SMTP/IMAP accounts, credential lifecycle |
-| `leads` | Leads, lists, custom fields, import/export, suppression |
-| `campaigns` | Campaigns, sequences, steps, personalization, scheduling |
-| `sending` | Send queue, provider submission, tracking, bounce/complaint handling |
-| `inbox` | Conversation aggregation, two-way sync, reply threading |
-| `crm` | Accounts/contacts/deals/pipelines, activity timeline |
-| `deliverability` | Reputation signals, monitoring, guidance (no abuse-evasion features) |
-| `analytics` | Event rollups, campaign/analytics reporting |
-| `ai` | LLM-assisted copy, replies, scoring; provider-agnostic adapter |
-| `billing` | Stripe subscriptions, plans, usage limits |
-| `platform` | Shared kernel: config, logging, errors, auth middleware, job framework |
+- **API process** — http4s HTTP server, Tapir-derived endpoints + OpenAPI, request validation, authorization, orchestration. Owns all *interactive, latency-sensitive* paths.
+- **Worker process** — durable job execution. Owns everything *background or provider-facing*: scheduling, sending, syncing, rollups, AI pipelines, webhook deliveries.
 
 **Stack (pinned — ADR-0016):** Scala 3.3.8 (LTS), sbt 1.12.15, Cats Effect 3.7.1, http4s 0.23.38 (ember) — the stable line; Tapir 1.13.33's own POM targets it and the 1.0 series is still milestone-only — Tapir 1.13.33, Doobie 1.0.0-RC12, PostgreSQL JDBC 42.7.14, log4cats 2.8.0 + logback 1.6.5.
 
-### 2.4 External providers
+### 2.4 Module boundaries & ownership (Phase 0.2 design)
 
-Google (Gmail API), Microsoft (Graph), arbitrary SMTP/IMAP, AI providers, Stripe, CRMs, and B2B data providers. All integrations sit behind module-level adapters so providers are replaceable; provider credentials are stored encrypted (see `docs/SECURITY.md`).
+Modules are package-level boundaries inside one build; each module **owns its tables** (no other module writes them directly) and exposes services to the rest of the monolith.
 
-## 3. Multi-tenancy & authorization model
+| Module | Owns (tables) | API-process responsibilities | Worker-process responsibilities |
+| --- | --- | --- | --- |
+| `identity` | `profile` | Session resolution, current-user context | — |
+| `workspaces` | `organization`, `workspace`, `workspace_member`, `invitation` | Workspace CRUD, member/invite flows, RBAC resolution | Invite emails (later), membership audit |
+| `emailconnections` | `email_connection`, `email_credential` | Connect flows (OAuth start/callback, SMTP forms), status display, test-send | OAuth token refresh, connection health checks |
+| `leads` | `company`, `contact`, `custom_field`, `contact_list`, `contact_list_member`, `suppression` | CRUD, import/export (CSV via signed URLs), search, verification hooks | Verification batching, import processing, list math |
+| `campaigns` | `campaign`, `campaign_email_connection`, `sequence_step`, `sequence_step_variant`, `enrollment`, `scheduled_action` | Campaign/sequence CRUD, enrollment management, start/pause | **Send scheduler** (materialize `scheduled_action` from enrollments), enrollment state machine |
+| `sending` | `message` (outbound subset), `email_event` | Send status display, per-message detail | **Sender** (claims due actions, provider adapters, idempotent submission), bounce/complaint processing, open/click tracking ingress |
+| `inbox` | `conversation`, `message` (inbound subset), reply composition | Unified inbox reads, reply send, read/star states | **Inbound sync** (Gmail API/Graph/IMAP), threading, reply matching to enrollments |
+| `crm` | `pipeline`, `pipeline_stage`, `crm_deal`, `crm_activity` | Pipeline/deal/activity CRUD | Reply→deal activity linking, stage automation (later) |
+| `deliverability` | (reads `email_event`, owns guidance config later) | Reputation dashboards, guidance | Deliverability signal computation |
+| `analytics` | `campaign_stats_daily` | Rollup reads, report endpoints | **Daily/hourly rollups** from `email_event` |
+| `ai` | `ai_generation` | Assisted-copy/reply/summary endpoints (audit every generation) | Async generation jobs, provider calls, usage metering |
+| `billing` | `plan`, `subscription`, `usage_counter` | Plan/limit reads, checkout/session routing (Stripe) | Stripe webhook ingestion (idempotent), usage counters |
+| `platform` | `job_queue`, `audit_log`, `webhook_endpoint`, `webhook_delivery` | Health/readiness, outbound-webhook registration | Job runner core, audit writers, **outbound webhook dispatcher**, retention |
 
-- Every tenant is a **workspace** (`workspace.id`). All domain rows carry `workspace_id`.
+Cross-module rules: modules communicate through in-process service calls (no network hops); a module reaching into another's tables is a review-blocking defect; shared kernel types (errors, tenancy context, clock) live in `platform`/`core`.
+
+### 2.5 External providers
+
+Google (Gmail API), Microsoft (Graph), arbitrary SMTP/IMAP, AI providers, Stripe, CRMs, and B2B data providers. All integrations sit behind module-level adapters so providers are replaceable; provider credentials are stored encrypted (see `docs/SECURITY.md` §4).
+
+## 3. Multi-tenancy & authorization model (ADR-0017)
+
+- Every tenant is a **workspace** (`workspace.id`); workspaces belong to an **organization** (billing owner). All domain rows carry `workspace_id` (`docs/DATABASE.md` §2).
 - **Defense in depth:**
-  1. **RLS policies** in PostgreSQL scope every table to the caller's workspace (via Supabase JWT claims).
-  2. **Scala-side authorization** independently resolves the caller → user → membership → role for the workspace addressed by the request. The service-role key (which bypasses RLS) is used only in tightly scoped server jobs and never replaces tenant checks.
-- **RBAC:** workspace roles (owner / admin / member — refined per phase) checked in Scala middleware and re-checked at the query layer.
-- **Cross-tenant isolation tests** are mandatory for every new resource.
+  1. **RLS policies** in PostgreSQL scope every table to the caller's workspace via helper functions (`is_workspace_member`, `workspace_role` — `docs/DATABASE.md` §9).
+  2. **Scala-side authorization** independently resolves caller → user → membership → role for the workspace addressed by the request. Service-role usage is enumerated and never substitutes for tenant checks.
+- **Role matrix (initial):**
+
+  | Capability | owner | admin | member | viewer |
+  | --- | --- | --- | --- | --- |
+  | Manage workspace, members, invitations, billing | ✅ | — | — | — |
+  | Manage email connections, suppression, exports | ✅ | ✅ | — | — |
+  | Campaigns/leads/inbox/CRM read-write | ✅ | ✅ | ✅ | — |
+  | Read-only access | ✅ | ✅ | ✅ | ✅ |
+
+- **404 vs 403:** resources in other workspaces are `404` (never confirm existence); insufficient role inside the workspace is `403`.
+- **Cross-tenant isolation tests** are mandatory for every new resource (ADR-0011).
 
 ## 4. Data flow patterns
 
 - **Request path:** Browser → Next.js (SSR auth session) → Scala API (JWT verified via JWKS, tenant check) → PostgreSQL (RLS as backstop).
-- **Command/side-effect path (email, sync, AI):** API writes an intent row + enqueues a durable job (outbox/job table or pgmq) → worker claims with `FOR UPDATE SKIP LOCKED`, executes with idempotency keys → outcomes recorded; retries with backoff; unknown outcomes (e.g. SMTP timeout) are recorded as unknown, never assumed delivered or failed.
+- **Command/side-effect path:** API writes an intent row (`scheduled_action`, `job_queue`, `webhook_delivery`) → worker claims with `FOR UPDATE SKIP LOCKED`, executes with idempotency keys → outcomes recorded as append-only events; retries with backoff; unknown outcomes recorded as unknown — never assumed delivered or failed (ADR-0005).
 - **Live path:** worker/API writes → Supabase Realtime → browser subscription.
 - **Files:** browser ↔ Supabase Storage via short-lived signed URLs minted by the API after authorization.
 
 ## 5. Deployment topology (target)
 
-- **Scala API + Worker:** separate Docker images from one build; deployed to a VPS or container host; horizontal scaling of workers first.
+- **Scala API + Worker:** separate Docker images from one build; deployed to a VPS or container host; worker-first horizontal scaling.
 - **Frontend:** Vercel or another Next.js-compatible host.
-- **Database:** Supabase (hosted), with staged migrations applied via CI or Supabase CLI.
-- **Secrets:** environment-injected per environment; never in the repository (see `docs/SECURITY.md`).
+- **Database:** Supabase (hosted); staging project `arcadence-staging` now, a separate production project later; migrations applied via CLI/CI (ADR-0018).
+- **Secrets:** environment-injected per environment; never in the repository (`docs/SECURITY.md`).
 
 ## 6. Observability & operations
 
 - Structured JSON logging with request/job IDs and workspace correlation IDs (no PII or credentials in logs).
-- Health/readiness endpoints on both processes (Phase 0).
-- Metrics hooks (JVM + domain counters) and alerting hooks planned with the deployment phase.
-- Audit trail tables for security-relevant actions (membership changes, credential changes, exports).
+- Health/readiness endpoints on both processes (implemented in 0.1); readiness gains dependency checks from 0.3.
+- Metrics hooks (JVM + domain counters) and alerting hooks land with the deployment phase.
+- Audit trail (`audit_log`) for security-relevant actions (membership changes, credential changes, exports).
 
-## 7. Testing strategy
+## 7. Core state machines (Phase 0.2 design)
+
+Event rows (`email_event`) are append-only and are the source of truth; `status` columns are query caches kept consistent by the worker.
+
+### 7.1 Campaign
+
+```mermaid
+stateDiagram-v2
+    [*] --> draft
+    draft --> active : start (validates connections + enrollments)
+    active --> paused : pause (drains in-flight claims)
+    paused --> active : resume
+    active --> completed : all enrollments terminal
+    completed --> archived
+    draft --> archived
+    paused --> archived
+```
+
+Rules: `draft` campaigns cannot enqueue actions; pausing cancels nothing already `done` but prevents new claims; completing requires zero non-terminal enrollments.
+
+### 7.2 Enrollment
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> active : campaign active & schedule window
+    active --> paused : manual / campaign paused
+    paused --> active : resume
+    active --> completed : sequence exhausted
+    active --> replied : reply detected (terminal)
+    active --> unsubscribed : opt-out (terminal)
+    active --> bounced : hard bounce (terminal)
+    active --> failed : unrecoverable error (terminal)
+    active --> skipped : duplicate/suppressed at start
+```
+
+Terminal states set `finished_at`; only `active` enrollments materialize `scheduled_action` rows.
+
+### 7.3 Scheduled action / job / webhook delivery (shared `action_status`)
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending : run_after set
+    pending --> claimed : worker FOR UPDATE SKIP LOCKED
+    claimed --> done : success (idempotency key recorded)
+    claimed --> pending : retryable failure (attempts+1, backoff, run_after)
+    claimed --> failed : attempts exhausted / unrecoverable
+    pending --> cancelled : user cancel / upstream terminal
+```
+
+### 7.4 Message (outbound)
+
+```mermaid
+stateDiagram-v2
+    [*] --> queued
+    queued --> sending : claimed
+    sending --> sent : provider accepted
+    sending --> failed : rejection (permanent)
+    sending --> queued : transient error (retry via action)
+    sent --> delivered : provider delivery event
+    sent --> deferred : temp failure event (provider may retry)
+    deferred --> delivered
+    deferred --> bounced : permanent after deferrals
+    sent --> bounced : hard bounce event
+    delivered --> unknown : status unresolvable (kept honest)
+    sent --> unknown : no conclusive event
+```
+
+Unknown outcomes are **recorded as unknown** and surfaced honestly in analytics — never presented as delivered (ADR-0005/ADR-0013). Inbound messages are created directly as `received` by the sync workers.
+
+## 8. Webhook flows (Phase 0.2 design)
+
+### 8.1 Inbound provider webhooks → our worker
+
+```mermaid
+flowchart LR
+    P["Provider<br/>(Gmail push / Graph subscription)"] -->|"POST /internal/webhooks/{provider}<br/>(signature verified)"| API["API process"]
+    API -->|"enqueue idempotent sync job<br/>(job_queue, dedupe key = provider notification id)"| JQ[("job_queue")]
+    WRK["Worker"] -->|"claim"| JQ
+    WRK -->|"pull deltas via provider API"| P
+    WRK -->|"upsert conversations/messages/<br/>email_event (dedupe on provider ids)"| PG[("PostgreSQL")]
+```
+
+Rules: webhook endpoints authenticate via provider-specific signature/verification tokens; ingestion is **idempotent** (provider retries must be safe); the webhook itself never does provider I/O beyond minimal verification — it enqueues.
+
+### 8.2 Outbound customer webhooks (later phase, tables designed)
+
+```mermaid
+flowchart LR
+    EV["email_event / domain event"] --> DW["Worker dispatcher<br/>(matches workspace webhook_endpoint)"]
+    DW --> WD[("webhook_delivery<br/>pending rows")]
+    WD -->|"HMAC-SHA256 signature +<br/>timestamp header, POST"| C["Customer endpoint"]
+    WD -->|"2xx → done;<br/>non-2xx → retry w/ backoff"| WD
+```
+
+Rules: at-least-once delivery; customers dedupe by delivery id; signatures include a timestamp to limit replay; delivery attempts are fully logged.
+
+## 9. Testing strategy
 
 | Layer | Tooling |
 | --- | --- |
@@ -134,13 +244,13 @@ Google (Gmail API), Microsoft (Graph), arbitrary SMTP/IMAP, AI providers, Stripe
 | E2E / UX | Playwright (run whenever UI behavior changes) |
 | Cross-tenant security | Dedicated isolation suites per resource |
 
-## 8. What is real today
+## 10. What is real today
 
 - ✅ Repository, documentation set, branch model, conventions.
 - ✅ Monorepo scaffold (`apps/web`, `apps/api`, `apps/worker`, `modules/core`, `supabase/migrations/`, `infrastructure/`, `scripts/`) — ADR-0015.
 - ✅ Scala API process: `GET /health`, `GET /ready` (Tapir → http4s ember), validated env config, logging — 14/14 Scala tests pass.
 - ✅ Scala worker process: heartbeat event loop with validated env config.
 - ✅ Next.js app: system-health page probing the API with honest loading/up/degraded/unreachable states — 6/6 Vitest tests, clean lint, production build.
-- ⬜ Architecture & database design (ERD, state machines) — Phase 0.2.
-- ⬜ Supabase configuration, migrations, RLS, Doobie connectivity — Phase 0.3.
+- ✅ Complete architecture & database design (module ownership, ERD, state machines, webhook flows, tenancy model) — Phase 0.2 (this design; SQL lands 0.3+).
+- ⬜ Supabase configuration, first migrations, RLS, Doobie connectivity — Phase 0.3.
 - ⬜ CI/CD, structured request logging, Docker — Phase 0.4.
