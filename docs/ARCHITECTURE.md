@@ -248,9 +248,12 @@ Rules: at-least-once delivery; customers dedupe by delivery id; signatures inclu
 
 - ✅ Repository, documentation set, branch model, conventions.
 - ✅ Monorepo scaffold (`apps/web`, `apps/api`, `apps/worker`, `modules/core`, `supabase/migrations/`, `infrastructure/`, `scripts/`) — ADR-0015.
-- ✅ Scala API process: `GET /health`, `GET /ready` (Tapir → http4s ember), validated env config, logging — 14/14 Scala tests pass.
+- ✅ Scala API process: `GET /health`, `GET /ready` (Tapir → http4s ember), validated env config, request-ID middleware, JSON error envelope, access logging — 21 Scala tests pass across modules.
 - ✅ Scala worker process: heartbeat event loop with validated env config.
 - ✅ Next.js app: system-health page probing the API with honest loading/up/degraded/unreachable states — 6/6 Vitest tests, clean lint, production build.
-- ✅ Complete architecture & database design (module ownership, ERD, state machines, webhook flows, tenancy model) — Phase 0.2 (this design; SQL lands 0.3+).
-- ⬜ Supabase configuration, first migrations, RLS, Doobie connectivity — Phase 0.3.
-- ⬜ CI/CD, structured request logging, Docker — Phase 0.4.
+- ✅ Complete architecture & database design (module ownership, ERD, state machines, webhook flows, tenancy model) — Phase 0.2.
+- ✅ Supabase: 4 foundational migrations (enums, tenancy + RLS, platform jobs/audit/webhooks, private buckets) applied to the local stack; RLS + helpers verified via Doobie integration spec; staging connectivity verified via session pooler; JWT signing confirmed asymmetric (ES256) so JWKS verification is viable.
+- ✅ CI: GitHub Actions running scala (fmt+test), web (lint+test+build), and migrations (clean-PostgreSQL apply + RLS assertion) on every push/PR.
+- ✅ Docker: api/worker images via sbt-native-packager; compose wiring for local services.
+- ⬜ First business endpoints (workspaces, members, invitations) — Phase 1.
+- ⬜ Staging `db push` (awaits product-owner Supabase CLI login) and production project later.
