@@ -38,6 +38,7 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
 - **Context:** Email sending and syncing must survive crashes and deploys, with retries and unknown-outcome safety. Delivery is **at-least-once**, never assumed exactly-once.
 - **Decision:** Durable job/outbox tables in PostgreSQL with `FOR UPDATE SKIP LOCKED` claiming, idempotency keys, and backoff retries; Supabase Queues (pgmq) adopted where queue semantics fit better than job tables.
 - **Consequences:** Transactional consistency between state changes and queued work; operational simplicity; explicit handling of unknown outcomes (recorded as unknown, never silently assumed delivered/failed).
+- **Refinement (2026-10-10, Phase 0.2):** concrete realization is the `scheduled_action` table (campaign sends; idempotency keys; partial index on pending `run_after`), the generic `job_queue` table (platform jobs), and `webhook_delivery` (outbound, retries) — state machine shared (`action_status`), claimed via `FOR UPDATE SKIP LOCKED`. See `docs/DATABASE.md` §6.4/§6.10 and `docs/ARCHITECTURE.md` §7.3.
 
 ## ADR-0006 — Supabase Storage with private buckets
 
@@ -96,3 +97,65 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
 - **Date:** 2026-10-09 · **Status:** Accepted as provisional
 - **Decision:** Delivery is organized into 14 phases broken into independently testable subphases (see `docs/PROJECT_STATUS.md`). The detailed Phase 0 plan is supplied by the product owner; later phases are refined just-in-time. Statuses live in `docs/PROJECT_STATUS.md`, not here.
 - **Consequences:** One prompt → one subphase → tests → push → report; no batching of subphases.
+
+## ADR-0015 — Monorepo layout
+
+- **Date:** 2026-10-09 · **Status:** Accepted
+- **Context:** Phase 0.1 requires a maintainable monorepo holding the Next.js frontend, the Scala API and worker, shared code, migrations, and infrastructure in one repository with one history.
+- **Decision:**
+  - `apps/web` — Next.js application (own package.json; scaffolded with create-next-app).
+  - `apps/api`, `apps/worker` — runnable Scala processes.
+  - `modules/core` — shared Scala library code (config, health contracts, later: platform kernel).
+  - `packages/` — reserved for shared frontend packages; **intentionally empty** until a second consumer exists (no speculative abstractions).
+  - `supabase/migrations/` — the single version-controlled migration location.
+  - `infrastructure/` — Docker/CI/deployment artifacts (from 0.4).
+  - `scripts/` — developer shell scripts.
+  - The **sbt build lives at the repository root** and spans `modules/*` and `apps/*` via explicit project paths; the frontend is independent under `apps/web`.
+- **Consequences:** One PR can span full-stack subphases; sbt module boundaries enforce backend layering; frontend dependency management stays isolated inside `apps/web` until a JS workspace is actually needed.
+
+## ADR-0016 — Pinned toolchain versions (Phase 0.1)
+
+- **Date:** 2026-10-09 · **Status:** Accepted
+- **Context:** `AGENTS.md` §2 requires supported, mutually compatible versions, documented. Versions were selected from Maven Central release metadata (latest stable lines), cross-checked against actual POMs.
+- **Decision (backend):**
+
+| Dependency | Pin | Rationale |
+| --- | --- | --- |
+| Scala | 3.3.8 | LTS line; supported |
+| sbt | 1.12.15 | Latest mature 1.x stable (1.13/2.x too fresh for plugin ecosystem) |
+| Cats Effect | 3.7.1 | Latest stable CE3 |
+| http4s | 0.23.38 | Latest **stable** line — the 1.0 series is still milestone-only (1.0.0-M49); Tapir 1.13.33's own POM targets http4s 0.23.38, proving compatibility |
+| Tapir | 1.13.33 | Latest stable; drives OpenAPI |
+| circe | 0.14.17 | Latest stable (0.15 is milestone) |
+| Doobie | 1.0.0-RC12 | Current supported line; RC-line is the published stable of doobie |
+| PostgreSQL driver | 42.7.14 | Latest |
+| log4cats / logback | 2.8.0 / 1.6.5 | Latest stable |
+| Test | MUnit 1.3.6 + munit-cats-effect 2.2.1 | Fast, CE-integrated |
+| Tooling | sbt-scalafmt 2.6.2 (scalafmt 3.11.5), sbt-buildinfo 0.13.2 | Formatting + build identity |
+
+- **Decision (frontend):** Next.js 16.4.0 (App Router), React 19.3, Tailwind CSS v4, ESLint 9 + eslint-config-next, TypeScript 5, Vitest 5 + Testing Library, Prettier + prettier-plugin-tailwindcss, `@types/node` ^24 (matches Node 24 runtime and Vitest 5 peer range).
+- **Consequences:** Version bumps are deliberate ADR-level changes; the http4s 1.0 migration is deferred until Tapir/http4s ship compatible stable releases.
+
+## ADR-0017 — Tenancy model: organization → workspace → member
+
+- **Date:** 2026-10-10 · **Status:** Accepted (Phase 0.2)
+- **Context:** The product serves both single operators and agencies running many client accounts (Instantly's "workspace" concept). We need one unit for billing/legal ownership and a different unit for day-to-day tenant isolation.
+- **Decision:**
+  - **organization** — billing/legal owner; owns Stripe subscriptions and plan limits (billing tables are org-scoped, no `workspace_id`).
+  - **workspace** — the tenant isolation unit; **every** business table carries `workspace_id`; always belongs to exactly one organization.
+  - **workspace_member** — user↔workspace with role `owner | admin | member | viewer`; authorization matrix in `docs/ARCHITECTURE.md` §3.
+  - `profile` mirrors `auth.users` 1:1 (same UUID PK); Supabase Auth remains the only identity source.
+- **Consequences:** Agencies get clean per-client data isolation with one billing relationship; RLS keys on workspace membership; plan limits can be enforced at either org or workspace level (`usage_counter` supports both).
+
+## ADR-0018 — Single migration workflow: Supabase CLI, PR-reviewed, CI-pushed; direct/session connections for services
+
+- **Date:** 2026-10-10 · **Status:** Accepted (Phase 0.2)
+- **Context:** Multiple workflows exist in the Supabase ecosystem (dashboard SQL editor, GitHub App auto-deploy, CLI migrations). We need exactly one unambiguous, auditable path from schema change to production.
+- **Decision:**
+  - Source of truth: `supabase/migrations/<UTC-timestamp>_<name>.sql`, forward-only, PR-reviewed like all code.
+  - **Local:** Supabase CLI stack (`supabase start` / `supabase db reset` / `supabase db diff -f <name>` to author migrations).
+  - **Staging/production:** `supabase link --project-ref <ref>` + `supabase db push` from CI using a stored access token (staging project `arcadence-staging` first; a separate production project later).
+  - The **Supabase dashboard GitHub App integration is not used** — it bypasses PR review flow and duplicates CI responsibility.
+  - **Connections:** Scala services use direct (5432) or session-pooled connections appropriate to persistent workers; transaction pooling (6543) only for short-lived request paths with prepared statements disabled (`prepareThreshold=0`) and no cross-transaction session assumptions.
+- **Consequences:** Deterministic, reviewable schema evolution; one migration set applies identically from laptop to CI; no dashboard drift.
+- **Refinement (2026-10-11, Phase 0.3):** current Supabase projects expose the **direct connection IPv6-only**; on IPv4-only networks/services use the **session pooler** (`aws-<n>-<region>.pooler.supabase.com:5432`, user `postgres.<project-ref>`) — session mode preserves JDBC prepared statements, so the transaction-pooling caveats don't apply. Verified live against staging (`aws-0-ap-northeast-1`). Production host selection (direct vs pooler) re-evaluated at deployment with this constraint.
