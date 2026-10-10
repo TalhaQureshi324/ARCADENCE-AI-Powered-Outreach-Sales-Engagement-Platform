@@ -25,6 +25,11 @@ ThisBuild / scalaVersion  := "3.3.8"
 ThisBuild / version       := "0.1.0-SNAPSHOT"
 ThisBuild / versionScheme := Some("early-semver")
 
+// Docker images built with `sbt api/docker:publishLocal` (sbt-native-packager).
+// Image names resolve to arcadence/api:<version> and arcadence/worker:<version>.
+ThisBuild / dockerBaseImage := "eclipse-temurin:21-jre-noble"
+ThisBuild / dockerUsername  := Some("arcadence")
+
 lazy val commonSettings = Seq(
   scalacOptions ++= Seq(
     "-encoding",
@@ -57,6 +62,7 @@ lazy val core = (project in file("modules/core"))
   )
 
 lazy val api = (project in file("apps/api"))
+  .enablePlugins(JavaAppPackaging, DockerPlugin)
   .dependsOn(core)
   .settings(
     commonSettings,
@@ -76,6 +82,7 @@ lazy val api = (project in file("apps/api"))
   )
 
 lazy val worker = (project in file("apps/worker"))
+  .enablePlugins(JavaAppPackaging, DockerPlugin)
   .dependsOn(core)
   .settings(
     commonSettings,

@@ -1,80 +1,106 @@
 # Arcadence — Local Setup
 
-> Status: **Scaffolding pending.** No application code exists yet, so there is nothing to run locally until Phase 0 scaffolding lands. This file documents the target toolchain and conventions now, and gains exact commands as they become real. Anything below marked ⬜ is not yet installed/created.
+> Status: **Phase 0 complete.** Everything below is verified on the reference machine (Windows 11, Git Bash). Commands are reproducible via `scripts/`.
 
-**Last updated:** 2026-10-09
+**Last updated:** 2026-10-10
 
 ---
 
 ## 1. Prerequisites
 
-| Tool | Version target | Status on the reference machine |
+| Tool | Version target | Purpose |
 | --- | --- | --- |
-| JDK | 21 LTS (Temurin) | ✅ 21.0.12.1 installed via winget |
-| sbt | 1.x (project pins 1.12.15) | ✅ installed via winget (launcher; project build.properties drives the exact version) |
-| Node.js | 22+ (runtime is 24.x) | ✅ v24.14.0 |
-| npm | 11.x | ✅ 11.9.0 |
-| Docker Desktop | current | ⬜ needed from Phase 0.3 (local Supabase) |
-| Supabase CLI | current | ⬜ needed from Phase 0.3 |
-| Playwright browsers | via `npx playwright install` | ⬜ needed when E2E lands |
+| JDK | 21 LTS (Temurin) | Scala backend builds & runtime |
+| sbt | 1.x (project pins 1.12.15) | Scala build tool |
+| Node.js | 22+ (24 works) | Next.js frontend & tooling |
+| npm | 11.x | Frontend package management |
+| Docker Desktop | current (engine running) | Local Supabase stack, service images |
+| Supabase CLI | 2.x | Local Supabase stack + migrations |
+| Playwright browsers | via `npx playwright install` | E2E tests (once UI exists) |
 
-Run `scripts/check-toolchain.sh` any time to verify. **Note:** winget installs update the PATH in the registry — open a new terminal (or rely on the scripts) after first install.
+Verify any machine with `scripts/check-toolchain.sh`. Windows notes: winget installs update the PATH in the registry — open a new terminal afterwards; the `scripts/*.sh` helpers resolve `docker`/`supabase` from known fallback locations, so they work even before that.
 
 ## 2. Environment variables
 
-Templates will be provided as `.env.example` files per component at scaffold time. **Never commit real values** (`.env*` is git-ignored).
-
-Planned shape:
+Copy each app's `.env.example` to `.env.local` in the same directory — dev scripts source these automatically. **Never commit real values** (`.env*` except `.env.example` is git-ignored).
 
 | Variable | Scope | Secret? | Notes |
 | --- | --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | frontend | no | Public project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | frontend | no | Anon key only — safe for browser |
-| `DATABASE_URL` / DB pool config | backend | **yes** | Postgres connection for Doobie |
-| `SUPABASE_JWKS_URL` | backend | no | JWT verification (ADR-0003) |
-| `SUPABASE_JWT_ISSUER` / `SUPABASE_JWT_AUDIENCE` | backend | no | Claim validation |
-| `SUPABASE_SERVICE_ROLE_KEY` | backend (worker/admin jobs only) | **yes** | Bypasses RLS — tightly scoped; see `docs/SECURITY.md` §1 |
-| `STORAGE_SIGNED_URL_*`, provider credentials, `STRIPE_*`, AI keys | backend, per phase | **yes** | Introduced with their phases |
+| `API_PORT`, `LOG_LEVEL`, `WORKER_TICK_INTERVAL_MS` | backend | no | Live today |
+| `DATABASE_URL` | backend | **yes** | Postgres for Doobie. Local stack default: `postgresql://postgres:postgres@127.0.0.1:54322/postgres` |
+| `TEST_DATABASE_URL` | backend tests | **yes** | Activates `DbConnectivitySpec` (skipped when unset) |
+| `TEST_DB_EXPECT_SCHEMA=false` | backend tests | no | Connectivity-only runs against a DB without migrations yet |
+| `NEXT_PUBLIC_API_URL` | frontend | no | Scala API base URL |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | frontend | no (public by design) | Publishable key only |
+| `SUPABASE_JWT_ISSUER` / `SUPABASE_JWKS_URL` / `SUPABASE_PROJECT_REF` | backend | no | Activate in Phase 1 (JWT verification) |
 
-## 3. Local development (verified commands)
+## 3. Local development flow (verified)
 
 ```bash
-scripts/check-toolchain.sh     # verify JDK/sbt/node are present
+scripts/check-toolchain.sh     # everything present? docker engine running?
 
-# Scala (root of repo)
-sbt test                       # all Scala unit tests (14 as of 0.1)
-sbt api/run                    # API process on :8080 (GET /health, GET /ready)
-sbt worker/run                 # worker process (heartbeat log loop)
-sbt scalafmtAll                # format Scala code
+supabase start                 # local Supabase stack (first run pulls ~10 images)
+scripts/db-reset.sh            # drop + recreate local DB, apply all migrations
+supabase status                # local URLs & keys (db on :54322, api :54321, studio :54323)
 
-# Frontend (apps/web)
-cd apps/web
-npm install                    # after fresh checkout
-npm run dev                    # dev server on :3000 (health page probes the API)
-npm test                       # Vitest units (6 as of 0.1)
-npm run lint                   # ESLint 9 incl. React 19 rules
-npm run build && npm start     # production build + serve on :3000
+scripts/dev-api.sh             # API on :8080 (env from apps/api/.env.local)
+scripts/dev-worker.sh          # worker heartbeat loop
+scripts/dev-web.sh             # web on :3000
 
-# Orchestration
-scripts/dev-api.sh             # sbt api/run
-scripts/dev-worker.sh          # sbt worker/run
-scripts/dev-web.sh             # npm run dev
+# Tests
 scripts/test-all.sh            # sbt test + npm test
+TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres sbt core/test
+                               # DB connectivity + RLS verification (needs local stack)
+
+# Formatting
 scripts/fmt-all.sh             # scalafmtAll + prettier
+
+# Docker services (images built locally)
+sbt api/docker:publishLocal worker/docker:publishLocal
+cd infrastructure && docker compose up -d
+curl http://localhost:8080/health
+docker compose down
 ```
 
-Frontend behavior: with the API down, the health page shows an explicit "API unreachable" state — this is intentional proof of honest error states, not a bug.
+Frontend behavior: with the API down, the health page shows an explicit "API unreachable" state — intentional honest error states, not a bug.
 
-Environment: copy the per-app `.env.example` to `.env.local` in the same directory. `API_PORT`, `LOG_LEVEL`, `WORKER_TICK_INTERVAL_MS` are live today; Supabase variables activate in Phase 0.3.
+## 4. CI (GitHub Actions)
 
-## 4. Verification before pushing (per `AGENTS.md`)
+`.github/workflows/ci.yml` runs on every push/PR:
+- **scala** — `sbt scalafmtCheckAll test` (DB specs self-skip without `TEST_DATABASE_URL`)
+- **web** — `npm ci` → lint → prettier check → Vitest → production build
+- **migrations** — applies all migrations to a clean `postgres:17` service container and asserts RLS + helper functions exist (proves migrations are portable, not Supabase-console-dependent)
 
-- ⬜ `sbt scalafmtCheck test` (Scala) — from Phase 0
-- ⬜ type-check + unit tests (frontend) — from Phase 0
-- ⬜ integration tests — from Phase 1
-- ⬜ Playwright — whenever UI behavior changes
-- clean `git status`; conventional commit; push to the feature branch
+No repository secrets are required yet. When CI later pushes migrations to staging (Phase 1+), add `SUPABASE_ACCESS_TOKEN` as a GitHub secret — never in the repo.
 
-## 5. Troubleshooting
+## 5. Smoke test guide (fresh checkout → running system)
 
-Added as real issues are encountered and solved. Nothing yet.
+1. `scripts/check-toolchain.sh` — all OK.
+2. `cd apps/web && npm install` (once) — then back to root.
+3. `supabase start` → wait for "Started supabase local development setup."
+4. `scripts/db-reset.sh` — expect migration file names to print, ending "Local database reset complete."
+5. `TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres sbt core/test` — all green including RLS checks.
+6. `scripts/dev-api.sh` → `curl localhost:8080/health` → `{"service":"arcadence-api",...,"status":"up"}`.
+7. `scripts/dev-web.sh` → http://localhost:3000 shows "API up".
+8. Optional: `docker compose -f infrastructure/docker-compose.yml up -d` after building images; repeat step 6 (compose serves the same port — stop the sbt API first).
+
+## 6. Troubleshooting
+
+| Symptom | Cause & fix |
+| --- | --- |
+| `sbt` first command hangs for minutes | First run downloads sbt + the dependency graph; subsequent runs are fast. Don't kill mid-resolution. |
+| `supabase start` fails: "docker: command not found" | Docker CLI not on the shell's PATH — restart the terminal after installing Docker Desktop, or run `export PATH="/c/Program Files/Docker/Docker/resources/bin:$PATH"` first. |
+| `supabase start` fails: cannot connect to Docker | Docker Desktop engine not running — start it and wait ~30s (`docker info` succeeds when ready). |
+| First `supabase start` very slow | It pulls ~10 container images once; subsequent starts are seconds. |
+| `db reset` shows migration error | The migration set is forward-only; check the failing statement against `docs/DATABASE.md`, fix in a NEW migration, never edit applied ones. |
+| Health page shows "API unreachable" | API process not running (or CORS blocked). Start `scripts/dev-api.sh`; CORS is open-without-credentials for local dev. |
+| `Cannot use automatic login flow inside non-TTY environments` | `supabase login` needs an interactive shell — run it in your own terminal once; the token is stored locally. |
+| Port 8080/3000/54322 already in use | Another process (often a previous sbt run) holds it — stop it or change `API_PORT`/dev port. |
+| Git warns "LF will be replaced by CRLF" | Normal on Windows (`core.autocrlf`); files are stored with LF in the repository. |
+
+## 7. Version-control rules (from `AGENTS.md` §4 — short form)
+
+- `main` = protected release branch; `develop` = integration branch; work lands via `feature/phase-NN-slug` branches and PRs.
+- Conventional commits; no force-push, no history rewrites, no secrets ever.
+- Every subphase: tests pass → push → implementation report → stop.
+- At phase completion, `develop` is merged to `main` and tagged (e.g. `phase-0`).

@@ -1,13 +1,13 @@
 package com.arcadence.api
 
+import cats.data.Kleisli
 import cats.effect.{ExitCode, IO, IOApp}
 import com.arcadence.core.build.BuildInfo
 import com.arcadence.core.config.ApiConfig
 import com.arcadence.core.health.ServiceIdentity
 import com.comcast.ip4s.*
 import org.http4s.ember.server.EmberServerBuilder
-import org.http4s.implicits.*
-import org.http4s.server.Router
+import org.http4s.HttpApp
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.slf4j.Slf4jFactory
 
@@ -34,7 +34,18 @@ object Main extends IOApp:
           root.setLevel(ch.qos.logback.classic.Level.valueOf(config.logLevel))
         }
 
-        val app = Router("/" -> HealthRoutes(identity).http).orNotFound
+        val routes =
+          new RequestContext(logger)(
+            new ErrorEnvelope(logger)(HealthRoutes(identity).http)
+          )
+        // JSON error envelope for unmatched paths too (plain Router.orNotFound would return text).
+        // Unmatched paths bypass RequestContext, so a request id is generated here when absent.
+        val app: HttpApp[IO] = Kleisli { req =>
+          val requestId = Option(ApiResponses.requestIdOf(req))
+            .filter(_.nonEmpty)
+            .getOrElse(java.util.UUID.randomUUID().toString)
+          routes(req).getOrElseF(IO.pure(ApiResponses.notFound(requestId)))
+        }
 
         applyLogLevel *>
           EmberServerBuilder
