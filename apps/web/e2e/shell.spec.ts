@@ -9,6 +9,14 @@ test.describe("application shell", () => {
   test("dashboard shell: sidebar, workspace create, theme toggle, command palette", async ({
     page,
   }) => {
+    page.on("response", (res) => {
+      if (res.url().includes(":8080")) {
+        console.log("API", res.status(), res.url());
+      }
+    });
+    page.on("console", (msg) => {
+      if (msg.type() === "error") console.log("BROWSER ERROR:", msg.text());
+    });
     const email = testEmail("shell");
 
     // Sign up and confirm.

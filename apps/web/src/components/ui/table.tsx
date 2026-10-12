@@ -12,7 +12,7 @@ export function THead({ children }: { children: ReactNode }) {
   return <thead className="bg-surface-sunken text-left">{children}</thead>;
 }
 
-export function TH({ children, className = "" }: { children: ReactNode; className?: string }) {
+export function TH({ children, className = "" }: { children?: ReactNode; className?: string }) {
   return (
     <th
       className={`text-muted-foreground px-4 py-2.5 text-xs font-medium tracking-wider uppercase ${className}`}

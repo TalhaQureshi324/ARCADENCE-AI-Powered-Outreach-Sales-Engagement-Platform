@@ -4,6 +4,44 @@
 
 ---
 
+---
+
+## 2026-10-12 — Phase 1 / Subphase 1.4: Workspace administration & hardening
+
+**Status:** ✅ Completed and pushed — **Phase 1 milestone**
+
+### Implemented
+
+- **Settings UI (`/app/settings`)**: permission-aware tabs on live API data — Members (avatar/email/role table, inline role changes, removal), Invitations (invite form with role, open-invite table with links + revoke, duplicate → 409 surfaced), Profile (name/timezone/daily-cap form). Non-managers see read-only views with explanatory gates.
+- **Invitation accept page (`/app/invitations/[token]`)**: shows workspace/role from `GET /api/v1/invitations/{token}`, accepts via POST; handles invalid/expired links.
+- **Hardening (Scala)**: per-caller sliding-window rate limiting (`RATE_LIMIT_PER_MINUTE`, default 120/min, keyed by Authorization header; 429 with error envelope) and security headers (nosniff, DENY framing, same-origin referrer, no-store, Permissions-Policy) on all `/api/v1` responses. `GET /api/v1/invitations/{token}` details endpoint added. Next.js serves the same header baseline.
+- **Session-expiry handling**: WorkspaceProvider redirects to `/login?expired=1` on 401s; settings/profile surfaces degrade gracefully.
+
+### Fixed during 1.4 (root causes worth remembering)
+
+1. **Route-group path bug**: `(app)/settings/page.tsx` serves `/settings`, NOT `/app/settings` — route groups don't add URL segments. Settings/invitations pages moved under `(app)/app/…`. The intermittent 404s in e2e were this, not Next quirks.
+2. **cacheComponents removed**: its prerender probing is incompatible with supabase-js session checks (internal `Date.now()`) in authed layouts — authed routes intermittently 404'd in dev. `partialPrefetching` removed with it (requires cacheComponents). Suspense boundaries retained.
+3. API env alignment documented (local stack vs staging swap) in apps/api/.env.local.
+
+### Tested (evidence)
+
+- Scala `scalafmtAll scalafmtCheckAll test` → **[success] 34/34** (worker 2 · core 16 · api 32 incl. HardeningSpec 6: rate-limit window/slide/independence/429-envelope + security-header assertions).
+- Web: Vitest **25/25** · lint 0 errors · build green · **Playwright 8/8** — including the new two-organization spec: independent signups, isolated workspace lists, UI invite → accept → member-gating assertions → removal → immediate access revocation.
+- Security headers verified live on `/api/v1/*` responses; rate limiter live (config default 120/min).
+
+### Git
+
+| Item | Value |
+| --- | --- |
+| Branch | `feature/phase-01-admin-hardening` → `develop` (no-ff merge) |
+| Milestone | `develop` promoted to `main`, tag `phase-1` |
+
+### Next
+
+- **Phase 2 — Email account connections** (Gmail/Microsoft OAuth, SMTP/IMAP, credential encryption), pending product-owner go.
+
+---
+
 ## 2026-10-12 — Phase 1 / Subphase 1.3: Application shell & design system
 
 **Status:** ✅ Completed and pushed
