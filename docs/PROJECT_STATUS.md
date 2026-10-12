@@ -2,7 +2,7 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-10-12
+**Last updated:** 2026-10-12 (1.2)
 
 ---
 
@@ -48,7 +48,7 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | # | Subphase | Status | Notes |
 | --- | --- | --- | --- |
 | 1.1 | Supabase authentication — signup, email verification, login, logout, recovery, sessions, protected routes | **tested** | 18/18 unit + **6/6 Playwright e2e** (signup→verify→onboarding→dashboard, invalid creds, protected redirect, session refresh + logout, full password recovery incl. old-password rejection, expired-link state). Google button gated behind `NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED`. Caught + fixed a real RLS bug (PostgREST 13 GUC change) via e2e. |
-| 1.2 | Organizations, workspaces & authorization (JWT middleware, RBAC, cross-tenant tests) | planned | Next up. |
+| 1.2 | Organizations, workspaces & authorization (JWT middleware, RBAC, cross-tenant tests) | **tested** | Supabase JWTs verified via JWKS (ES256, iss/aud/exp); explicit permission model (owner/admin/campaign_manager/member/viewer); workspaces + members + invitations API with audit trail; 7/7 cross-tenant isolation tests. Staging migrations + RLS verified 15/15. |
 | 1.3 | Application shell & design system | planned | |
 | 1.4 | Workspace administration & hardening | planned | |
 

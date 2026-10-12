@@ -14,6 +14,8 @@ lazy val V = new {
   val circe           = "0.14.17"
   val doobie          = "1.0.0-RC12"
   val postgres        = "42.7.14"
+  val javaJwt         = "4.6.1"
+  val jwksRsa         = "0.24.1"
   val log4cats        = "2.8.0"
   val logback         = "1.6.5"
   val munit           = "1.3.6"
@@ -70,11 +72,16 @@ lazy val api = (project in file("apps/api"))
     libraryDependencies ++= Seq(
       "org.typelevel"               %% "cats-effect"         % V.catsEffect,
       "org.http4s"                  %% "http4s-ember-server" % V.http4s,
+      "org.http4s"                  %% "http4s-ember-client" % V.http4s,
       "org.http4s"                  %% "http4s-dsl"          % V.http4s,
       "com.softwaremill.sttp.tapir" %% "tapir-core"          % V.tapir,
       "com.softwaremill.sttp.tapir" %% "tapir-http4s-server" % V.tapir,
       "com.softwaremill.sttp.tapir" %% "tapir-json-circe"    % V.tapir,
       "io.circe"                    %% "circe-generic"       % V.circe,
+      "org.tpolecat"                %% "doobie-core"         % V.doobie,
+      "org.tpolecat"                %% "doobie-postgres"     % V.doobie,
+      "com.auth0"                   % "java-jwt"             % V.javaJwt,
+      "com.auth0"                   % "jwks-rsa"             % V.jwksRsa,
       "org.typelevel"               %% "log4cats-core"       % V.log4cats,
       "org.typelevel"               %% "log4cats-slf4j"      % V.log4cats,
       "ch.qos.logback"              % "logback-classic"      % V.logback

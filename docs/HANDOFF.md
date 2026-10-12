@@ -4,6 +4,47 @@
 
 ---
 
+## 2026-10-12 — Phase 1 / Subphase 1.2: Organizations, workspaces & authorization
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **JWT authentication middleware (Scala):** `SupabaseJwtAuthenticator` verifies access tokens against the project's live JWKS — signature (ES256; RS256 legacy supported), issuer, audience and expiry — with a cached, rate-limited key provider and `IO.blocking` offload. java-jwt 4.6.1 + jwks-rsa 0.24.1. `Authenticator` is an interface: tests substitute a token-map implementation.
+- **Explicit RBAC:** `WorkspaceRole` (owner, admin, campaign_manager, member, viewer — campaign_manager added via migration `20261012100000`) and `Permissions` (role → permission-set mapping as the single source of truth; endpoints name permissions, never roles). `Authorizer` resolves membership **from the database** per request: non-members → 404 `workspace_not_found` (no existence leak), members lacking permission → 403 `insufficient_role`.
+- **Business API (`/api/v1`)**: workspaces CRUD (auto-creates the owning organization + owner membership), member list/role-change/remove (owner membership immutable, self-role-change/self-removal blocked), invitations (create with duplicate-open-invite 409, list, revoke, token-based accept), `/me`. Membership/role/invitation actions write `audit_log` entries. Doobie with explicit tenant-scoped SQL everywhere; `/ready` now includes a real database check.
+- **Staging cloud project:** linked via CLI (product owner completed `supabase login`); **all 5+1 migrations pushed** through the session pooler; full `DbConnectivitySpec` run against staging: **15/15** (schema, RLS, helpers, enums, private buckets).
+
+### Tested (evidence)
+
+- `sbt scalafmtAll test` (with TEST_DATABASE_URL) → **[success], 44/44**: worker 2 · core 16 (incl. DB integration) · api 26:
+  - `PermissionsSpec` 6 — role→permission matrix, label round-trip.
+  - `JwtAuthenticatorSpec` 6 — **real ES256**: embedded JWKS server + generated P-256 keys; valid / expired / wrong-audience / wrong-issuer / wrong-key-signature / garbage all behave correctly.
+  - `WorkspaceAuthIntegrationSpec` 7 — **cross-tenant matrix against the real DB**: non-member 404 on every verb; no workspace-list leakage; invite→accept→member; duplicate invite 409; member 403 on member-management and settings; owner membership immutable; removal revokes instantly; missing token 401.
+  - `ConfigSpec` updated for the now-required DB/JWT settings.
+- Compile warnings remain (unused-import notices); no errors. CI will run the hermetic subset (DB-gated specs skip).
+
+### Database migrations
+
+- `20261012100000_add_campaign_manager_role.sql` (applied locally via reset and pushed to staging).
+
+### Git
+
+| Item | Value |
+| --- | --- |
+| Branch | `feature/phase-01-workspaces-authz` → `develop` (no-ff merge) |
+| Remote | pushed (hashes in chat report) |
+
+### Manual setup actions
+
+- Unchanged queue: C: drive cleanup; DB password rotation; branch protection. Google OAuth optional (#5c).
+
+### Next
+
+- **Subphase 1.3 — Complete application shell and design system.**
+
+---
+
 ## 2026-10-12 — Phase 1 / Subphase 1.1: Supabase authentication
 
 **Status:** ✅ Completed and pushed
