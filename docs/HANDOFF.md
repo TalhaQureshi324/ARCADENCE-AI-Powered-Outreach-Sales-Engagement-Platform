@@ -4,6 +4,47 @@
 
 ---
 
+## 2026-10-12 — Phase 1 / Subphase 1.3: Application shell & design system
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **Design tokens & theme system:** CSS custom properties (surfaces, brand indigo, semantic colors, borders, two-level soft shadows, radii) mapped into Tailwind v4 via `@theme inline`; class-based dark mode with a no-flash bootstrap script, `useSyncExternalStore`-based `useTheme` hook (React 19 lint-compliant), and `prefers-reduced-motion` respected globally.
+- **Component library (Radix-backed):** Dialog, Dropdown Menu, Tabs, Table (+Head/Body/Row/Cell), Pagination (with pure helpers), Skeleton, Badge (status tones), EmptyState, Toast provider, Avatar (initials), Breadcrumbs; existing Button/Input/Field/Card/Alert migrated to tokens.
+- **App shell:** responsive layout — desktop sidebar (brand, workspace selector, nav with honest "soon" badges, phase footer) + mobile topbar nav; workspace selector with live API data and create dialog; profile menu (profile, theme switch, SDK sign-out); notifications menu (honest empty); ⌘K command palette (keyboard-navigable); breadcrumbs.
+- **Typed API client:** `apiFetch` attaches the Supabase access token, parses the API error envelope into a typed `ApiError`; `workspacesApi.list/create`.
+- **Dashboard rewrite:** real workspace list from the Scala API (loading skeletons / error+retry / empty state), workspace creation end-to-end, real system status (Auth + Scala API health badges), roadmap placeholders, onboarding nudge.
+
+### Tested (evidence)
+
+- **Vitest 25/25** (new: api client token/error mapping ×3, badge/breadcrumbs/empty-state/pagination ×4).
+- **Playwright 7/7**: the 6 auth lifecycle tests re-validated against the new shell, plus `shell.spec` — signup→dashboard, empty state, workspace creation through the dialog (visible in selector and dashboard), ⌘K palette, theme toggle.
+- Lint 0 errors · `tsc --noEmit` clean · production build green.
+
+### Bugs found & fixed during 1.3
+
+1. **CORS gap:** only health routes had the CORS policy — browser calls to `/api/v1/*` were blocked. Whole API surface now wrapped, with explicit allowed methods/headers (Authorization, Content-Type, Idempotency-Key).
+2. **Environment alignment rule:** web signs tokens against the auth project it uses; the API must verify against the SAME project's JWKS. Local dev now runs the entire stack (web + API + DB + auth) against the local Supabase project; apps/api/.env.local documents the staging swap.
+3. Sign-out moved to the SDK inside the profile menu (form-in-dropdown was unreachable); workspace creation dispatches a reload event so dashboard and selector stay in sync.
+
+### Database migrations
+
+- None (1.2's remain current).
+
+### Git
+
+| Item | Value |
+| --- | --- |
+| Branch | `feature/phase-01-app-shell` → `develop` (no-ff merge) |
+| Remote | pushed (hashes in chat report) |
+
+### Next
+
+- **Subphase 1.4 — Workspace administration and hardening** (invitation UI flows, security headers, rate limits, Playwright cross-tenant coverage, milestone docs).
+
+---
+
 ## 2026-10-12 — Phase 1 / Subphase 1.2: Organizations, workspaces & authorization
 
 **Status:** ✅ Completed and pushed

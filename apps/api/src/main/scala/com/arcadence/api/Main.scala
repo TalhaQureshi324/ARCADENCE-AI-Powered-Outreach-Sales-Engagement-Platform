@@ -76,8 +76,21 @@ object Main extends IOApp:
 
           val health = new HealthRoutes(identity, dbCheck = Some(dbReady))
 
-          val allRoutes: HttpRoutes[IO] =
-            health.http <+> workspaceRoutes.http
+          // Browser calls (localhost:3000) hit WorkspaceRoutes directly —
+          // CORS must cover the whole API surface, not just health.
+          import org.http4s.Method._
+          val corsPolicy = org.http4s.server.middleware.CORS.policy
+            .withAllowOriginAll
+            .withAllowCredentials(false)
+            .withAllowMethodsIn(Set(GET, POST, PATCH, PUT, DELETE, OPTIONS))
+            .withAllowHeadersIn(
+              Set(
+                org.typelevel.ci.CIString("Authorization"),
+                org.typelevel.ci.CIString("Content-Type"),
+                org.typelevel.ci.CIString("Idempotency-Key")
+              )
+            )
+          val allRoutes: HttpRoutes[IO] = corsPolicy(health.http <+> workspaceRoutes.http)
 
           val routes =
             new RequestContext(logger)(new ErrorEnvelope(logger)(allRoutes))
