@@ -222,7 +222,7 @@ erDiagram
 
 | Enum | Values |
 | --- | --- |
-| `workspace_role` | owner, admin, member, viewer |
+| `workspace_role` | owner, admin, campaign_manager, member, viewer (campaign_manager added in `20261012100000`) |
 | `email_provider` | gmail, microsoft, smtp_imap |
 | `connection_status` | connected, auth_error, syncing, paused, disconnected |
 | `contact_verification` | unknown, valid, risky, invalid |

@@ -54,6 +54,16 @@ Legend: ✅ implemented · ⬜ designed. Roles: O=owner, A=admin, M=member, V=vi
 
 ### 3.2 Identity & workspaces — Phase 1
 
+- ✅ `GET /api/v1/me` — profile + workspace memberships
+- ✅ `POST /api/v1/workspaces` — creates organization + workspace + owner membership
+- ✅ `GET|PATCH /api/v1/workspaces/{workspaceId}` — member+ read; admin+ update (audited)
+- ✅ `GET /api/v1/workspaces/{workspaceId}/members` — member+
+- ✅ `PATCH|DELETE /api/v1/workspaces/{workspaceId}/members/{userId}` — admin+; owner membership immutable (audited)
+- ✅ `GET|POST /api/v1/workspaces/{workspaceId}/invitations` — admin+; duplicate open invite → 409 (audited)
+- ✅ `DELETE /api/v1/workspaces/{workspaceId}/invitations/{invitationId}` — admin+ revoke (audited)
+- ✅ `POST /api/v1/invitations/{token}/accept` — authenticated; creates membership (audited)
+- Roles: owner, admin, campaign_manager, member, viewer (ADR-0017 matrix; campaign_manager added in migration `20261012100000`)
+
 - ⬜ `GET /api/v1/me` — profile + workspace memberships
 - ⬜ `GET|POST /api/v1/organizations/{orgId}/workspaces` — O/A (org-level)
 - ⬜ `GET|PATCH|DELETE /api/v1/workspaces/{workspaceId}` — O/A

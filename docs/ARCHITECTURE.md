@@ -106,12 +106,16 @@ Google (Gmail API), Microsoft (Graph), arbitrary SMTP/IMAP, AI providers, Stripe
   2. **Scala-side authorization** independently resolves caller → user → membership → role for the workspace addressed by the request. Service-role usage is enumerated and never substitutes for tenant checks.
 - **Role matrix (initial):**
 
-  | Capability | owner | admin | member | viewer |
-  | --- | --- | --- | --- | --- |
-  | Manage workspace, members, invitations, billing | ✅ | — | — | — |
-  | Manage email connections, suppression, exports | ✅ | ✅ | — | — |
-  | Campaigns/leads/inbox/CRM read-write | ✅ | ✅ | ✅ | — |
-  | Read-only access | ✅ | ✅ | ✅ | ✅ |
+  | Capability | owner | admin | campaign_manager | member | viewer |
+  | --- | --- | --- | --- | --- | --- |
+  | Manage workspace, billing | ✅ | — | — | — | — |
+  | Manage members & invitations | ✅ | ✅ | — | — | — |
+  | Manage campaigns | ✅ | ✅ | ✅ | — | — |
+  | Manage email connections, suppression, exports | ✅ | ✅ | — | — | — |
+  | Leads/inbox/CRM read-write | ✅ | ✅ | ✅ | ✅ | — |
+  | Read-only access | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+  Enforcement lives in `Permissions.scala` (role → permission set, single source of truth); endpoints name permissions, never roles.
 
 - **404 vs 403:** resources in other workspaces are `404` (never confirm existence); insufficient role inside the workspace is `403`.
 - **Cross-tenant isolation tests** are mandatory for every new resource (ADR-0011).
