@@ -10,6 +10,7 @@ import com.auth0.jwt.algorithms.Algorithm
 import com.auth0.jwt.interfaces.{ECDSAKeyProvider, RSAKeyProvider}
 import com.auth0.jwk.JwkProvider
 import org.http4s.Uri
+import org.typelevel.log4cats.LoggerFactory
 
 /** Result of verifying a Supabase access token. */
 final case class AuthenticatedUser(id: UUID, email: String)
@@ -82,22 +83,27 @@ final class SupabaseJwtAuthenticator(
       val email = Option(jwt.getClaim("email").asString()).getOrElse("")
       Right(AuthenticatedUser(UUID.fromString(jwt.getSubject), email))
     }.attempt
-      .map {
-        case Right(result)                                           => result
-        case Left(_: com.auth0.jwt.exceptions.TokenExpiredException) =>
-          Left(AuthError.Expired)
-        case Left(_: com.auth0.jwt.exceptions.JWTVerificationException) =>
-          Left(AuthError.Invalid)
-        case Left(_: IllegalArgumentException) => Left(AuthError.Invalid)
-        case Left(_: com.auth0.jwk.SigningKeyNotFoundException) =>
-          Left(AuthError.Invalid)
-        case Left(_) =>
-          Left(
-            AuthError(
-              "verification_unavailable",
-              "Token verification is temporarily unavailable."
+      .map { outcome =>
+        outcome.left.foreach { e =>
+          System.err.println(s"jwt verify failed: ${e.getClass.getName}: ${e.getMessage}")
+        }
+        outcome match {
+          case Right(result) => result
+          case Left(_: com.auth0.jwt.exceptions.TokenExpiredException) =>
+            Left(AuthError.Expired)
+          case Left(_: com.auth0.jwt.exceptions.JWTVerificationException) =>
+            Left(AuthError.Invalid)
+          case Left(_: IllegalArgumentException) => Left(AuthError.Invalid)
+          case Left(_: com.auth0.jwk.SigningKeyNotFoundException) =>
+            Left(AuthError.Invalid)
+          case Left(_) =>
+            Left(
+              AuthError(
+                "verification_unavailable",
+                "Token verification is temporarily unavailable."
+              )
             )
-          )
+        }
       }
 
 object SupabaseJwtAuthenticator:

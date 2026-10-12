@@ -1,26 +1,122 @@
 @import "tailwindcss";
 
+/* Class-based dark mode: toggled via .dark on <html> (ThemeToggle + inline
+   bootstrap script in the root layout). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------
+ * Arcadence design tokens — "sophisticated minimalism with subtle spatial
+ * depth and restrained neumorphism" (AGENTS.md §6). Light theme is default;
+ * dark values live under .dark.
+ * ------------------------------------------------------------------------- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Surfaces */
+  --background: #f7f7f9;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f1f2f6;
+
+  /* Text */
+  --foreground: #101223;
+  --muted-foreground: #5f6473;
+
+  /* Brand — restrained indigo */
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --primary-foreground: #ffffff;
+  --primary-soft: #eef2ff;
+
+  /* Accents */
+  --success: #047857;
+  --success-soft: #ecfdf5;
+  --warning: #b45309;
+  --warning-soft: #fffbeb;
+  --danger: #b91c1c;
+  --danger-soft: #fef2f2;
+
+  /* Lines & depth */
+  --border: #e4e5ea;
+  --border-strong: #d2d4dd;
+  --shadow-soft: 0 1px 2px rgb(16 18 35 / 0.05), 0 2px 8px rgb(16 18 35 / 0.05);
+  --shadow-raised: 0 1px 2px rgb(16 18 35 / 0.06), 0 8px 24px rgb(16 18 35 / 0.08);
+
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+.dark {
+  --background: #0b0c14;
+  --surface: #13141f;
+  --surface-raised: #171927;
+  --surface-sunken: #0e0f19;
+
+  --foreground: #ededf2;
+  --muted-foreground: #9ba0b3;
+
+  --primary: #818cf8;
+  --primary-hover: #a5b4fc;
+  --primary-foreground: #101223;
+  --primary-soft: #1e1b4b;
+
+  --success: #34d399;
+  --success-soft: #06281e;
+  --warning: #fbbf24;
+  --warning-soft: #2a1f05;
+  --danger: #f87171;
+  --danger-soft: #2c0d0d;
+
+  --border: #23253a;
+  --border-strong: #33364f;
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.35);
+  --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px rgb(0 0 0 / 0.45);
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
   --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --shadow-soft: var(--shadow-soft);
+  --shadow-raised: var(--shadow-raised);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Restrained global focus ring; components may override the color. */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Respect reduced-motion globally for CSS animations/transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

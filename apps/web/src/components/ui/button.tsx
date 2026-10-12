@@ -4,13 +4,12 @@ export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "bg-indigo-600 text-white hover:bg-indigo-500 focus-visible:outline-indigo-600 disabled:bg-indigo-600/50",
+    "bg-primary text-primary-foreground hover:bg-primary-hover focus-visible:outline-primary disabled:bg-primary/50",
   secondary:
-    "bg-white text-neutral-900 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:bg-neutral-900 dark:text-neutral-100 dark:ring-neutral-700 dark:hover:bg-neutral-800",
-  ghost:
-    "bg-transparent text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
+    "bg-surface text-foreground ring-1 ring-inset ring-border-strong hover:bg-surface-sunken dark:bg-surface-raised",
+  ghost: "bg-transparent text-foreground hover:bg-surface-sunken",
   danger:
-    "bg-red-600 text-white hover:bg-red-500 focus-visible:outline-red-600 disabled:bg-red-600/50",
+    "bg-danger text-white hover:bg-danger/90 focus-visible:outline-danger disabled:bg-danger/50",
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

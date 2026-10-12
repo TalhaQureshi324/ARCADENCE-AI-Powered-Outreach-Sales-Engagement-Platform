@@ -14,6 +14,11 @@ async function signUp(page: Page, name: string, email: string) {
   await expectVisibleText(page, "Confirm your email");
 }
 
+async function signOut(page: Page) {
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+}
+
 async function signIn(page: Page, email: string, password: string) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
@@ -33,7 +38,7 @@ test.describe("authentication lifecycle", () => {
     await page.getByLabel("Display name").fill("E2E User");
     await page.getByRole("button", { name: "Continue" }).click();
 
-    await expect(page.getByRole("heading", { name: "Hello, E2E User" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Welcome, E2E User" })).toBeVisible();
     await expect(page.getByText(`Signed in as ${email}`)).toBeVisible();
   });
 
@@ -57,7 +62,7 @@ test.describe("authentication lifecycle", () => {
     await page.goto(link);
     await page.getByLabel("Display name").fill("Session User");
     await page.getByRole("button", { name: "Continue" }).click();
-    await expect(page.getByRole("heading", { name: "Hello, Session User" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Welcome, Session User" })).toBeVisible();
 
     // Session refresh: middleware revalidates + rotates cookies on every request.
     await page.goto("/app");
@@ -67,7 +72,7 @@ test.describe("authentication lifecycle", () => {
     await expect(page.getByText(`Signed in as ${email}`)).toBeVisible();
 
     // Logout via POST form → login page with confirmation notice.
-    await page.getByRole("button", { name: "Sign out" }).click();
+    await signOut(page);
     await expect(page).toHaveURL(/\/login\?signedOut=1/);
     await expectVisibleText(page, "You have been signed out.");
 
@@ -89,8 +94,8 @@ test.describe("authentication lifecycle", () => {
     // Complete onboarding to reach a clean signed-in state, then sign out.
     await page.getByLabel("Display name").fill("Recovery User");
     await page.getByRole("button", { name: "Continue" }).click();
-    await expect(page.getByRole("heading", { name: "Hello, Recovery User" })).toBeVisible();
-    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page.getByRole("heading", { name: "Welcome, Recovery User" })).toBeVisible();
+    await signOut(page);
     await expect(page).toHaveURL(/\/login/);
 
     // Request a reset link.
@@ -110,7 +115,7 @@ test.describe("authentication lifecycle", () => {
     await expect(page.getByText(`Signed in as ${email}`)).toBeVisible();
 
     // Sign out; old password must fail, new password must succeed.
-    await page.getByRole("button", { name: "Sign out" }).click();
+    await signOut(page);
     await expect(page).toHaveURL(/\/login/);
 
     await signIn(page, email, oldPassword);

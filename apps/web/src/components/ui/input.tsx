@@ -9,10 +9,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   ref,
 ) {
   const base =
-    "block w-full rounded-lg border-0 px-3 py-2 text-sm text-neutral-900 shadow-sm ring-1 ring-inset placeholder:text-neutral-400 focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:bg-neutral-50 dark:text-neutral-100 dark:disabled:bg-neutral-800";
-  const ring = invalid
-    ? "bg-white ring-red-300 focus:ring-red-500 dark:bg-neutral-900"
-    : "bg-white ring-neutral-300 focus:ring-indigo-600 dark:bg-neutral-900 dark:ring-neutral-700 dark:focus:ring-indigo-400";
+    "block w-full rounded-lg border-0 bg-surface px-3 py-2 text-sm text-foreground shadow-sm ring-1 ring-inset ring-border placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:bg-surface-sunken";
+  const ring = invalid ? "ring-danger focus:ring-danger" : "focus:ring-primary";
   return (
     <input
       ref={ref}
