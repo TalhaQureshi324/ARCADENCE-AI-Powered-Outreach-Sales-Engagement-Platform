@@ -30,7 +30,15 @@ jobs:
         run: sbt scalafmtCheckAll
 
       - name: Unit tests
-        run: sbt test
+        run: |
+          sbt test > scala-test.log 2>&1 || { echo "::group::scala-test.log"; tail -150 scala-test.log; echo "::endgroup::"; exit 1; }
+          grep -aE "Passed:|Failed:" scala-test.log || true
+      - name: Upload Scala test log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scala-test-log
+          path: scala-test.log
 
   web:
     name: Web — lint + tests + build
