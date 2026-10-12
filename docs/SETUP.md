@@ -51,6 +51,9 @@ scripts/dev-web.sh             # web on :3000
 scripts/test-all.sh            # sbt test + npm test
 TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres sbt core/test
                                # DB connectivity + RLS verification (needs local stack)
+cd apps/web && npm run test:e2e
+                               # Playwright auth lifecycle (needs local stack; starts the dev
+                               # server itself; confirmation emails are read via Mailpit :54324)
 
 # Formatting
 scripts/fmt-all.sh             # scalafmtAll + prettier
@@ -81,8 +84,9 @@ No repository secrets are required yet. When CI later pushes migrations to stagi
 4. `scripts/db-reset.sh` — expect migration file names to print, ending "Local database reset complete."
 5. `TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres sbt core/test` — all green including RLS checks.
 6. `scripts/dev-api.sh` → `curl localhost:8080/health` → `{"service":"arcadence-api",...,"status":"up"}`.
-7. `scripts/dev-web.sh` → http://localhost:3000 shows "API up".
-8. Optional: `docker compose -f infrastructure/docker-compose.yml up -d` after building images; repeat step 6 (compose serves the same port — stop the sbt API first).
+7. `scripts/dev-web.sh` → http://localhost:3000 shows "API unreachable" state until step 6, then the health page goes green.
+8. **Auth lifecycle:** http://localhost:3000/signup → register → open **Mailpit** (http://localhost:54324, the local mail catcher — Supabase replaced Inbucket with Mailpit) → click the confirmation link → onboarding → dashboard. Or run `cd apps/web && npm run test:e2e` for the automated suite.
+9. Optional: `docker compose -f infrastructure/docker-compose.yml up -d` after building images; repeat step 6 on port **18080** (compose mapping; 8080 is taken by a Windows service on some machines).
 
 ## 6. Troubleshooting
 
@@ -95,7 +99,9 @@ No repository secrets are required yet. When CI later pushes migrations to stagi
 | `db reset` shows migration error | The migration set is forward-only; check the failing statement against `docs/DATABASE.md`, fix in a NEW migration, never edit applied ones. |
 | Health page shows "API unreachable" | API process not running (or CORS blocked). Start `scripts/dev-api.sh`; CORS is open-without-credentials for local dev. |
 | `Cannot use automatic login flow inside non-TTY environments` | `supabase login` needs an interactive shell — run it in your own terminal once; the token is stored locally. |
-| Port 8080/3000/54322 already in use | Another process (often a previous sbt run) holds it — stop it or change `API_PORT`/dev port. |
+| Auth e2e tests fail: "No email addressed to … arrived in Mailpit" | The local stack is running with stale auth config — run `supabase stop && supabase start` so GoTrue recreates with `enable_confirmations` from `config.toml` (Docker Desktop restarts can silently revive old containers). |
+| RLS policies match zero rows despite correct data | PostgREST 13 removed `request.jwt.claim.*` GUCs; the helpers coalesce the new sources (migration `20261012090000`). Ensure it is applied. |
+| Port 8080/3000/54322 already in use | Another process (often a previous sbt run, or `AgentService` on 8080) holds it — stop it or change `API_PORT`/dev port. Compose maps the API to 18080 for this reason. |
 | Git warns "LF will be replaced by CRLF" | Normal on Windows (`core.autocrlf`); files are stored with LF in the repository. |
 
 ## 7. Version-control rules (from `AGENTS.md` §4 — short form)
