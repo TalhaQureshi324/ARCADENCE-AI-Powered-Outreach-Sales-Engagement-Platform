@@ -53,14 +53,14 @@ final class ConfigSpec extends FunSuite:
       result,
       Right(
         ApiConfig(
-port = 9000,
-logLevel = "DEBUG",
-databaseUrl = validEnv("DATABASE_URL"),
-jwtIssuer = validEnv("SUPABASE_JWT_ISSUER"),
-jwtAudience = validEnv("SUPABASE_JWT_AUDIENCE"),
-jwksUrl = validEnv("SUPABASE_JWKS_URL"),
-rateLimitPerMinute = 120
-)
+          port = 9000,
+          logLevel = "DEBUG",
+          databaseUrl = validEnv("DATABASE_URL"),
+          jwtIssuer = validEnv("SUPABASE_JWT_ISSUER"),
+          jwtAudience = validEnv("SUPABASE_JWT_AUDIENCE"),
+          jwksUrl = validEnv("SUPABASE_JWKS_URL"),
+          rateLimitPerMinute = 120
+        )
       )
     )
   }
