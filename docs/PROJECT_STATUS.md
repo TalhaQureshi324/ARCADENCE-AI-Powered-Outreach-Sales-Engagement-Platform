@@ -2,13 +2,14 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-10-11
+**Last updated:** 2026-10-12 (1.4 — Phase 1 complete)
 
 ---
 
 ## Current phase
 
-**Phase 0 — Foundation** · status: **complete** (0.0–0.4 done; promoted to `main` with tag `phase-0`)
+**Phase 0 — Foundation** · status: **complete** (promoted to `main`, tag `phase-0`)
+**Phase 1 — Auth, tenancy & UI foundation** · status: **complete** (promoted to `main`, tag `phase-1`)
 
 ## Phase roadmap (provisional — ADR-0014)
 
@@ -41,6 +42,15 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 0.3 | Supabase configuration & local environment | **tested** | Local stack healthy; 4 foundational migrations applied; RLS + helpers verified via Doobie spec (15/15 local; staging connectivity 10 pass via session pooler — direct host is IPv6-only). Staging `db push` pending product-owner CLI login. |
 | 0.4 | CI/CD & developer experience | **tested** | GitHub Actions (scala / web / migrations jobs), request-ID + error-envelope middleware with tests, Docker images + compose verified, db-reset + env-loading scripts, SETUP smoke/troubleshooting/VC rules. |
 | — | **Phase 0 complete** — `develop` promoted to `main`, tag `phase-0` | done | See milestones below. |
+
+### Subphase detail — Phase 1
+
+| # | Subphase | Status | Notes |
+| --- | --- | --- | --- |
+| 1.1 | Supabase authentication — signup, email verification, login, logout, recovery, sessions, protected routes | **tested** | 18/18 unit + **6/6 Playwright e2e** (signup→verify→onboarding→dashboard, invalid creds, protected redirect, session refresh + logout, full password recovery incl. old-password rejection, expired-link state). Google button gated behind `NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED`. Caught + fixed a real RLS bug (PostgREST 13 GUC change) via e2e. |
+| 1.2 | Organizations, workspaces & authorization (JWT middleware, RBAC, cross-tenant tests) | **tested** | Supabase JWTs verified via JWKS (ES256, iss/aud/exp); explicit permission model (owner/admin/campaign_manager/member/viewer); workspaces + members + invitations API with audit trail; 7/7 cross-tenant isolation tests. Staging migrations + RLS verified 15/15. |
+| 1.3 | Application shell & design system | **tested** | Token-based light/dark theme, 12 UI primitives (Radix dialog/dropdown/tabs, table, pagination, skeletons, badges, toasts, empty states, avatar, breadcrumbs), responsive sidebar shell with workspace selector (live API data), ⌘K command palette, profile/notifications menus; dashboard with real API data + honest empty/roadmap states; 7/7 Playwright e2e incl. workspace creation. |
+| 1.4 | Workspace administration & hardening | **tested** | Settings UI (members/invitations/profile tabs, permission-aware, live API data); invitation accept page; per-caller rate limiting; security headers (API + Next.js); session-expiry handling. 8/8 Playwright incl. two-organization cross-tenant lifecycle. |
 
 ## Completed milestones
 

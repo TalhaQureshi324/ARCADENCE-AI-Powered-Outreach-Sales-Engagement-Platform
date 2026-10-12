@@ -4,6 +4,175 @@
 
 ---
 
+---
+
+## 2026-10-12 — Phase 1 / Subphase 1.4: Workspace administration & hardening
+
+**Status:** ✅ Completed and pushed — **Phase 1 milestone**
+
+### Implemented
+
+- **Settings UI (`/app/settings`)**: permission-aware tabs on live API data — Members (avatar/email/role table, inline role changes, removal), Invitations (invite form with role, open-invite table with links + revoke, duplicate → 409 surfaced), Profile (name/timezone/daily-cap form). Non-managers see read-only views with explanatory gates.
+- **Invitation accept page (`/app/invitations/[token]`)**: shows workspace/role from `GET /api/v1/invitations/{token}`, accepts via POST; handles invalid/expired links.
+- **Hardening (Scala)**: per-caller sliding-window rate limiting (`RATE_LIMIT_PER_MINUTE`, default 120/min, keyed by Authorization header; 429 with error envelope) and security headers (nosniff, DENY framing, same-origin referrer, no-store, Permissions-Policy) on all `/api/v1` responses. `GET /api/v1/invitations/{token}` details endpoint added. Next.js serves the same header baseline.
+- **Session-expiry handling**: WorkspaceProvider redirects to `/login?expired=1` on 401s; settings/profile surfaces degrade gracefully.
+
+### Fixed during 1.4 (root causes worth remembering)
+
+1. **Route-group path bug**: `(app)/settings/page.tsx` serves `/settings`, NOT `/app/settings` — route groups don't add URL segments. Settings/invitations pages moved under `(app)/app/…`. The intermittent 404s in e2e were this, not Next quirks.
+2. **cacheComponents removed**: its prerender probing is incompatible with supabase-js session checks (internal `Date.now()`) in authed layouts — authed routes intermittently 404'd in dev. `partialPrefetching` removed with it (requires cacheComponents). Suspense boundaries retained.
+3. API env alignment documented (local stack vs staging swap) in apps/api/.env.local.
+
+### Tested (evidence)
+
+- Scala `scalafmtAll scalafmtCheckAll test` → **[success] 34/34** (worker 2 · core 16 · api 32 incl. HardeningSpec 6: rate-limit window/slide/independence/429-envelope + security-header assertions).
+- Web: Vitest **25/25** · lint 0 errors · build green · **Playwright 8/8** — including the new two-organization spec: independent signups, isolated workspace lists, UI invite → accept → member-gating assertions → removal → immediate access revocation.
+- Security headers verified live on `/api/v1/*` responses; rate limiter live (config default 120/min).
+
+### Git
+
+| Item | Value |
+| --- | --- |
+| Branch | `feature/phase-01-admin-hardening` → `develop` (no-ff merge) |
+| Milestone | `develop` promoted to `main`, tag `phase-1` |
+
+### Next
+
+- **Phase 2 — Email account connections** (Gmail/Microsoft OAuth, SMTP/IMAP, credential encryption), pending product-owner go.
+
+---
+
+## 2026-10-12 — Phase 1 / Subphase 1.3: Application shell & design system
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **Design tokens & theme system:** CSS custom properties (surfaces, brand indigo, semantic colors, borders, two-level soft shadows, radii) mapped into Tailwind v4 via `@theme inline`; class-based dark mode with a no-flash bootstrap script, `useSyncExternalStore`-based `useTheme` hook (React 19 lint-compliant), and `prefers-reduced-motion` respected globally.
+- **Component library (Radix-backed):** Dialog, Dropdown Menu, Tabs, Table (+Head/Body/Row/Cell), Pagination (with pure helpers), Skeleton, Badge (status tones), EmptyState, Toast provider, Avatar (initials), Breadcrumbs; existing Button/Input/Field/Card/Alert migrated to tokens.
+- **App shell:** responsive layout — desktop sidebar (brand, workspace selector, nav with honest "soon" badges, phase footer) + mobile topbar nav; workspace selector with live API data and create dialog; profile menu (profile, theme switch, SDK sign-out); notifications menu (honest empty); ⌘K command palette (keyboard-navigable); breadcrumbs.
+- **Typed API client:** `apiFetch` attaches the Supabase access token, parses the API error envelope into a typed `ApiError`; `workspacesApi.list/create`.
+- **Dashboard rewrite:** real workspace list from the Scala API (loading skeletons / error+retry / empty state), workspace creation end-to-end, real system status (Auth + Scala API health badges), roadmap placeholders, onboarding nudge.
+
+### Tested (evidence)
+
+- **Vitest 25/25** (new: api client token/error mapping ×3, badge/breadcrumbs/empty-state/pagination ×4).
+- **Playwright 7/7**: the 6 auth lifecycle tests re-validated against the new shell, plus `shell.spec` — signup→dashboard, empty state, workspace creation through the dialog (visible in selector and dashboard), ⌘K palette, theme toggle.
+- Lint 0 errors · `tsc --noEmit` clean · production build green.
+
+### Bugs found & fixed during 1.3
+
+1. **CORS gap:** only health routes had the CORS policy — browser calls to `/api/v1/*` were blocked. Whole API surface now wrapped, with explicit allowed methods/headers (Authorization, Content-Type, Idempotency-Key).
+2. **Environment alignment rule:** web signs tokens against the auth project it uses; the API must verify against the SAME project's JWKS. Local dev now runs the entire stack (web + API + DB + auth) against the local Supabase project; apps/api/.env.local documents the staging swap.
+3. Sign-out moved to the SDK inside the profile menu (form-in-dropdown was unreachable); workspace creation dispatches a reload event so dashboard and selector stay in sync.
+
+### Database migrations
+
+- None (1.2's remain current).
+
+### Git
+
+| Item | Value |
+| --- | --- |
+| Branch | `feature/phase-01-app-shell` → `develop` (no-ff merge) |
+| Remote | pushed (hashes in chat report) |
+
+### Next
+
+- **Subphase 1.4 — Workspace administration and hardening** (invitation UI flows, security headers, rate limits, Playwright cross-tenant coverage, milestone docs).
+
+---
+
+## 2026-10-12 — Phase 1 / Subphase 1.2: Organizations, workspaces & authorization
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **JWT authentication middleware (Scala):** `SupabaseJwtAuthenticator` verifies access tokens against the project's live JWKS — signature (ES256; RS256 legacy supported), issuer, audience and expiry — with a cached, rate-limited key provider and `IO.blocking` offload. java-jwt 4.6.1 + jwks-rsa 0.24.1. `Authenticator` is an interface: tests substitute a token-map implementation.
+- **Explicit RBAC:** `WorkspaceRole` (owner, admin, campaign_manager, member, viewer — campaign_manager added via migration `20261012100000`) and `Permissions` (role → permission-set mapping as the single source of truth; endpoints name permissions, never roles). `Authorizer` resolves membership **from the database** per request: non-members → 404 `workspace_not_found` (no existence leak), members lacking permission → 403 `insufficient_role`.
+- **Business API (`/api/v1`)**: workspaces CRUD (auto-creates the owning organization + owner membership), member list/role-change/remove (owner membership immutable, self-role-change/self-removal blocked), invitations (create with duplicate-open-invite 409, list, revoke, token-based accept), `/me`. Membership/role/invitation actions write `audit_log` entries. Doobie with explicit tenant-scoped SQL everywhere; `/ready` now includes a real database check.
+- **Staging cloud project:** linked via CLI (product owner completed `supabase login`); **all 5+1 migrations pushed** through the session pooler; full `DbConnectivitySpec` run against staging: **15/15** (schema, RLS, helpers, enums, private buckets).
+
+### Tested (evidence)
+
+- `sbt scalafmtAll test` (with TEST_DATABASE_URL) → **[success], 44/44**: worker 2 · core 16 (incl. DB integration) · api 26:
+  - `PermissionsSpec` 6 — role→permission matrix, label round-trip.
+  - `JwtAuthenticatorSpec` 6 — **real ES256**: embedded JWKS server + generated P-256 keys; valid / expired / wrong-audience / wrong-issuer / wrong-key-signature / garbage all behave correctly.
+  - `WorkspaceAuthIntegrationSpec` 7 — **cross-tenant matrix against the real DB**: non-member 404 on every verb; no workspace-list leakage; invite→accept→member; duplicate invite 409; member 403 on member-management and settings; owner membership immutable; removal revokes instantly; missing token 401.
+  - `ConfigSpec` updated for the now-required DB/JWT settings.
+- Compile warnings remain (unused-import notices); no errors. CI will run the hermetic subset (DB-gated specs skip).
+
+### Database migrations
+
+- `20261012100000_add_campaign_manager_role.sql` (applied locally via reset and pushed to staging).
+
+### Git
+
+| Item | Value |
+| --- | --- |
+| Branch | `feature/phase-01-workspaces-authz` → `develop` (no-ff merge) |
+| Remote | pushed (hashes in chat report) |
+
+### Manual setup actions
+
+- Unchanged queue: C: drive cleanup; DB password rotation; branch protection. Google OAuth optional (#5c).
+
+### Next
+
+- **Subphase 1.3 — Complete application shell and design system.**
+
+---
+
+## 2026-10-12 — Phase 1 / Subphase 1.1: Supabase authentication
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **Full auth lifecycle** on Next.js 16 + `@supabase/ssr` (cookie sessions, PKCE):
+  - Registration with display name (goes to profile via the `on_auth_user_created` trigger), **real email confirmation** (local `enable_confirmations = true`, minimum password 8 in `config.toml`).
+  - Login (invalid-credentials / unconfirmed-email / rate-limit states), logout (POST route — prefetch-safe), forgot-password, reset-password with recovery-session handling, expired/invalid-link error page.
+  - Onboarding (updates `profile.display_name` through the RLS `profile_update_own` policy — real persistence) and a protected `/app` dashboard with genuine session data and honest "arrives in Phase X" placeholders.
+- **Route protection:** root `middleware.ts` (matcher excludes static assets) refreshes sessions via `getUser()` (never trusts cookie payload) and guards `/app/*`, `/onboarding/*`; signed-in users are steered away from auth pages. Defense in depth: server pages re-check.
+- **Safe redirects:** `sanitizeRedirect` (blocks absolute/protocol-relative/backslash/CRLF targets) with unit tests; `next` params sanitized everywhere.
+- **Google sign-in:** OAuth button rendered only when `NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED=true`; application identity explicitly separated from Gmail scopes (see MANUAL_SETUP #5c).
+- **Local auth config:** email confirmations ON, min password 8; auth emails captured by **Mailpit** (:54324 — Supabase replaced Inbucket with Mailpit).
+- **UI primitives** (Button/Input/Field/Card/Alert) with loading/validation/error states — foundation for the 1.3 design system.
+
+### Bugs found & fixed (caught by the e2e suite)
+
+1. **RLS helpers broken on PostgREST 13** (critical): PostgREST 13 removed `request.jwt.claim.*` GUCs, so `current_user_id()` resolved NULL and member-scoped policies silently matched zero rows (masked by the signup trigger writing profile names). Fixed in forward-only migration `20261012090000_fix_jwt_claim_gucs_for_postgrest13.sql` (coalesces claim.sub / jwt.sub / claims JSON). Would have broken all of Phase 1's tenancy.
+2. Recovery links bounced to `/app`: middleware redirected signed-in users away from `/reset-password` — recovery sessions must reach the new-password form; page manages its own states.
+3. Migration runner rejects nested dollar-quotes; `language sql` bodies are validated at creation (PG14+) — both worked around in migration structure.
+
+### Tested (evidence)
+
+- **Unit (Vitest): 18/18** — includes 14 new (sanitizeRedirect open-redirect matrix, email/password/name validation, OTP-type narrowing).
+- **Playwright E2E: 6/6** against the real local stack (dev server + GoTrue + Mailpit): signup→confirmation-email→onboarding→dashboard, invalid credentials, protected-route redirect with `next`, login + session refresh + logout + re-lock, full password recovery (link → new password → old rejected → new accepted), expired/invalid link state.
+- Lint clean; `tsc --noEmit` clean; production build green.
+
+### Database migrations
+
+- `20261012090000_fix_jwt_claim_gucs_for_postgrest13.sql` (applied locally via `db reset`; must be pushed to staging with the rest).
+
+### Git
+
+| Item | Value |
+| --- | --- |
+| Branch | `feature/phase-01-supabase-auth` → `develop` (no-ff merge) |
+| Remote | pushed (hashes in chat report) |
+
+### Manual setup actions
+
+- Unchanged: staging `db push` (needs `supabase login`), optional Google OAuth provider (#5c), C: drive cleanup, password rotation.
+
+### Next
+
+- **Subphase 1.2 — Organizations, workspaces and authorization** (Scala JWT middleware via JWKS, RBAC, invitations, cross-tenant isolation tests). The RLS GUC fix is the foundation it depends on.
+
+---
+
 ## 2026-10-11 — Phase 0 / Subphase 0.3: Supabase configuration & local environment
 
 **Status:** ✅ Completed and pushed (cloud `db push` to staging pending one user action — see Manual setup)

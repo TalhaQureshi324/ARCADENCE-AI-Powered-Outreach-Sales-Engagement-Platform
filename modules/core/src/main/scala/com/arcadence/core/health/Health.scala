@@ -24,14 +24,13 @@ final case class ReadyResponse(
 
 object ReadyResponse:
   val Ready = "ready"
+  val NotReady = "not_ready"
 
-  /** Process-level readiness only; database and dependency checks are added in
-    * later phases.
+  /** Process-level readiness only; callers with dependencies pass explicit
+    * checks.
     */
-  def ready(identity: ServiceIdentity): ReadyResponse =
-    ReadyResponse(
-      identity.service,
-      identity.version,
-      Ready,
-      Map("process" -> "ok")
-    )
+  def ready(
+      identity: ServiceIdentity,
+      checks: Map[String, String] = Map("process" -> "ok")
+  ): ReadyResponse =
+    ReadyResponse(identity.service, identity.version, Ready, checks)
