@@ -72,3 +72,66 @@ export const workspacesApi = {
       body: JSON.stringify({ name }),
     }),
 };
+
+export interface MemberDto {
+  userId: string;
+  role: string;
+  displayName: string | null;
+  email: string | null;
+  joinedAt: string;
+}
+
+export interface InvitationDto {
+  id: string;
+  email: string;
+  role: string;
+  expiresAt: string;
+  accepted: boolean;
+  inviteUrl: string;
+}
+
+export const membersApi = {
+  list: (workspaceId: string) => apiFetch<MemberDto[]>(`/api/v1/workspaces/${workspaceId}/members`),
+  updateRole: (workspaceId: string, userId: string, role: string) =>
+    apiFetch<MemberDto>(`/api/v1/workspaces/${workspaceId}/members/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
+    }),
+  remove: (workspaceId: string, userId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/members/${userId}`, {
+      method: "DELETE",
+    }),
+};
+
+export const invitationsApi = {
+  list: (workspaceId: string) =>
+    apiFetch<InvitationDto[]>(`/api/v1/workspaces/${workspaceId}/invitations`),
+  create: (workspaceId: string, email: string, role: string) =>
+    apiFetch<InvitationDto>(`/api/v1/workspaces/${workspaceId}/invitations`, {
+      method: "POST",
+      body: JSON.stringify({ email, role }),
+    }),
+  revoke: (workspaceId: string, invitationId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/invitations/${invitationId}`, {
+      method: "DELETE",
+    }),
+  detailsByToken: (token: string) =>
+    apiFetch<{ email: string; workspaceName: string; role: string }>(
+      `/api/v1/invitations/${token}`,
+    ),
+  accept: (token: string) =>
+    apiFetch<WorkspaceDto>(`/api/v1/invitations/${token}/accept`, {
+      method: "POST",
+    }),
+};
+
+export const workspaceSettingsApi = {
+  update: (
+    workspaceId: string,
+    patch: { name?: string; timezone?: string; dailySendCap?: number },
+  ) =>
+    apiFetch<WorkspaceDto>(`/api/v1/workspaces/${workspaceId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+};

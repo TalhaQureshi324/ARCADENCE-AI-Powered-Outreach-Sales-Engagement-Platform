@@ -32,7 +32,8 @@ import {
 import { useTheme } from "@/components/theme";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { CreateWorkspaceDialog } from "@/components/shell/create-workspace-dialog";
-import { workspacesApi, type WorkspaceDto } from "@/lib/api/client";
+import { useWorkspaces } from "@/components/shell/workspace-context";
+import type { WorkspaceDto } from "@/lib/api/client";
 
 interface ShellUser {
   email: string;
@@ -44,32 +45,16 @@ const NAV_ITEMS = [
   { href: "/soon/inbox", label: "Inbox", icon: Inbox, soon: true },
   { href: "/soon/campaigns", label: "Campaigns", icon: BarChart3, soon: true },
   { href: "/soon/leads", label: "Leads", icon: Users, soon: true },
-  { href: "/soon/settings", label: "Settings", icon: Settings, soon: true },
+  { href: "/app/settings", label: "Settings", icon: Settings },
 ];
 
 export function AppShell({ user, children }: { user: ShellUser; children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { theme, toggle } = useTheme();
-  const [workspaces, setWorkspaces] = useState<WorkspaceDto[] | null>(null);
-  const [selected, setSelected] = useState<WorkspaceDto | null>(null);
+  const { workspaces, selected, select, onCreated } = useWorkspaces();
   const [createOpen, setCreateOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    workspacesApi
-      .list()
-      .then((list) => {
-        if (!cancelled) setWorkspaces(list);
-      })
-      .catch(() => {
-        if (!cancelled) setWorkspaces([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -88,15 +73,14 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
   }, []);
 
   function onWorkspaceCreated(workspace: WorkspaceDto) {
-    setWorkspaces((current) => [...(current ?? []), workspace]);
-    setSelected(workspace);
+    onCreated(workspace);
     setCreateOpen(false);
-    window.dispatchEvent(new CustomEvent("arcadence:workspace-changed"));
     router.refresh();
   }
 
   const nav = (
     <nav aria-label="Primary" className="flex flex-1 flex-col gap-1 px-3">
+      {/* Settings lives under /app/settings; active-state matching below covers it */}
       {NAV_ITEMS.map((item) =>
         item.soon ? (
           <span
@@ -113,9 +97,13 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
           <Link
             key={item.href}
             href={item.href}
-            aria-current={pathname === item.href ? "page" : undefined}
+            aria-current={
+              pathname === item.href || (item.href !== "/app" && pathname.startsWith(item.href))
+                ? "page"
+                : undefined
+            }
             className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-              pathname === item.href
+              pathname === item.href || (item.href !== "/app" && pathname.startsWith(item.href))
                 ? "bg-primary-soft text-primary"
                 : "text-muted-foreground hover:bg-surface-sunken hover:text-foreground"
             }`}
@@ -146,7 +134,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
           <WorkspaceSelector
             workspaces={workspaces}
             selected={selected}
-            onSelect={setSelected}
+            onSelect={select}
             onCreate={() => setCreateOpen(true)}
           />
         </div>
@@ -287,6 +275,7 @@ function WorkspaceSelector({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
+          aria-label="Workspace selector"
           className="border-border bg-surface-sunken text-foreground hover:border-border-strong flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm"
         >
           <Building2 size={14} className="text-muted-foreground" />

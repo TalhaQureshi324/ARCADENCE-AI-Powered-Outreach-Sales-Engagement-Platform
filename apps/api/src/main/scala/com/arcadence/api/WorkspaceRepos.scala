@@ -212,6 +212,26 @@ final class WorkspaceRepos(transactor: Transactor[IO]):
       where token = $token and accepted_at is null and expires_at > now()
     """.query[InvitationRow].option.map(_.map(_.toDomain)).transact(transactor)
 
+  final case class InvitationWithWorkspace(
+      invitation: Invitation,
+      workspaceName: String
+  )
+
+  def findInvitationByToken(token: UUID): IO[Option[InvitationWithWorkspace]] =
+    sql"""
+      select i.id, i.workspace_id, i.email, i.role, i.token, i.invited_by, i.expires_at, i.accepted_at,
+             w.name
+      from public.invitation i
+      join public.workspace w on w.id = i.workspace_id
+      where i.token = $token and i.accepted_at is null and i.expires_at > now()
+    """
+      .query[(InvitationRow, String)]
+      .to[List]
+      .transact(transactor)
+      .map(_.headOption.map { case (row, name) =>
+        InvitationWithWorkspace(row.toDomain, name)
+      })
+
   def findOpenInvitationByEmail(
       workspaceId: UUID,
       email: String

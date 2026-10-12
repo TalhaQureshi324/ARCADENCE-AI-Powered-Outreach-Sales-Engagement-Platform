@@ -90,8 +90,14 @@ object Main extends IOApp:
                   org.typelevel.ci.CIString("Idempotency-Key")
                 )
               )
+          // Hardening: per-caller rate limiting + security headers (Phase 1.4).
+          val hardenedRoutes: HttpRoutes[IO] =
+            RateLimit(config.rateLimitPerMinute)(
+              SecurityHeaders(workspaceRoutes.http)
+            )
+
           val allRoutes: HttpRoutes[IO] =
-            corsPolicy(health.http <+> workspaceRoutes.http)
+            corsPolicy(health.http <+> hardenedRoutes)
 
           val routes =
             new RequestContext(logger)(new ErrorEnvelope(logger)(allRoutes))

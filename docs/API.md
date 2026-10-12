@@ -25,7 +25,7 @@
 | Pagination | Cursor-based: `?limit=&cursor=` → `{ "data": [...], "nextCursor": "..." }`; no offset pagination on large tables |
 | Filtering/sorting | Explicit, whitelisted parameters only |
 | Time & IDs | UTC ISO-8601 timestamps; UUID string identifiers |
-| Rate limiting | Applied at the edge/API per workspace; limits documented per endpoint group when introduced |
+| Rate limiting | ✅ Implemented (1.4): per-caller sliding window, `RATE_LIMIT_PER_MINUTE` (default 120/min), 429 + error envelope. In-memory per instance; distributed limiter at deployment |
 | Deprecation | `Deprecation`/`Sunset` headers + changelog notice before removal |
 
 **Error envelope:**

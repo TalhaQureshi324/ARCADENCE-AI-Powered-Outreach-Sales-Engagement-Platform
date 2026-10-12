@@ -90,6 +90,18 @@ object Dtos:
     given Decoder[InvitationDto] = deriveDecoder
     given Schema[InvitationDto] = Schema.derived
 
+  final case class InvitationDetailsDto(
+      email: String,
+      workspaceName: String,
+      role: String
+  )
+  object InvitationDetailsDto:
+    given Encoder[InvitationDetailsDto] = deriveEncoder
+    given Decoder[InvitationDetailsDto] = deriveDecoder
+    given Schema[InvitationDetailsDto] = Schema.derived
+    given Decoder[InvitationDto] = deriveDecoder
+    given Schema[InvitationDto] = Schema.derived
+
 /** Business API for workspaces, membership and invitations (Phase 1.2). Every
   * workspace-scoped endpoint resolves the caller's membership from the database
   * (Authorizer) and enforces the permission model — non-members receive 404 so
@@ -166,7 +178,7 @@ final class WorkspaceRoutes(
       i.role,
       i.expiresAt,
       accepted = i.acceptedAt.isDefined,
-      inviteUrl = s"$appOrigin/invitations/${i.token}"
+      inviteUrl = s"$appOrigin/app/invitations/${i.token}"
     )
 
   private def validRole(label: String): Either[ApiError, WorkspaceRole.Role] =
@@ -264,6 +276,12 @@ final class WorkspaceRoutes(
     )
     .in(header[Option[String]]("Authorization"))
     .out(statusCode(SttpStatus.NoContent))
+    .errorOut(errorOut)
+
+  private val getInvitationByToken = endpoint.get
+    .in("api" / "v1" / "invitations" / path[UUID]("token"))
+    .in(header[Option[String]]("Authorization"))
+    .out(jsonBody[InvitationDetailsDto])
     .errorOut(errorOut)
 
   private val acceptInvitation = endpoint.post
@@ -565,6 +583,26 @@ final class WorkspaceRoutes(
           }
       }
 
+  private def getInvitationLogic(
+      authorization: Option[String],
+      token: UUID
+  ): IO[Either[(SttpStatus, Envelope), InvitationDetailsDto]] =
+    verifyBearer(authorization).flatMap {
+      case Left(failed) => IO.pure(Left(failed))
+      case Right(_)     =>
+        repos.findInvitationByToken(token).map {
+          case None        => Left(failed(ApiError.NotFound("invitation")))
+          case Some(found) =>
+            Right(
+              InvitationDetailsDto(
+                found.invitation.email,
+                found.workspaceName,
+                found.invitation.role
+              )
+            )
+        }
+    }
+
   private def acceptInvitationLogic(
       authorization: Option[String],
       token: UUID
@@ -617,6 +655,9 @@ final class WorkspaceRoutes(
       ),
       revokeInvitation.serverLogic((workspaceId, invitationId, auth) =>
         revokeInvitationLogic(auth, workspaceId, invitationId)
+      ),
+      getInvitationByToken.serverLogic((token, auth) =>
+        getInvitationLogic(auth, token)
       ),
       acceptInvitation.serverLogic((token, auth) =>
         acceptInvitationLogic(auth, token)

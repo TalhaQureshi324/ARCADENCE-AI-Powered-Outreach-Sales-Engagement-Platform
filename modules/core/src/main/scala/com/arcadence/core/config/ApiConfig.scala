@@ -8,7 +8,8 @@ final case class ApiConfig(
     databaseUrl: String,
     jwtIssuer: String,
     jwtAudience: String,
-    jwksUrl: String
+    jwksUrl: String,
+    rateLimitPerMinute: Int
 )
 
 object ApiConfig:
@@ -18,7 +19,8 @@ object ApiConfig:
     databaseUrl = "",
     jwtIssuer = "",
     jwtAudience = "",
-    jwksUrl = ""
+    jwksUrl = "",
+    rateLimitPerMinute = 120
   )
 
   /** Reads the API process configuration from the process environment. The
@@ -33,7 +35,8 @@ object ApiConfig:
       required(env, "DATABASE_URL"),
       required(env, "SUPABASE_JWT_ISSUER"),
       required(env, "SUPABASE_JWT_AUDIENCE"),
-      required(env, "SUPABASE_JWKS_URL")
+      required(env, "SUPABASE_JWKS_URL"),
+      Parsers.port(env, "RATE_LIMIT_PER_MINUTE", 120)
     )
       .mapN(ApiConfig.apply)
       .toEither
