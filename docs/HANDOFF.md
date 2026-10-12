@@ -4,6 +4,55 @@
 
 ---
 
+## 2026-10-12 — Phase 1 / Subphase 1.1: Supabase authentication
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **Full auth lifecycle** on Next.js 16 + `@supabase/ssr` (cookie sessions, PKCE):
+  - Registration with display name (goes to profile via the `on_auth_user_created` trigger), **real email confirmation** (local `enable_confirmations = true`, minimum password 8 in `config.toml`).
+  - Login (invalid-credentials / unconfirmed-email / rate-limit states), logout (POST route — prefetch-safe), forgot-password, reset-password with recovery-session handling, expired/invalid-link error page.
+  - Onboarding (updates `profile.display_name` through the RLS `profile_update_own` policy — real persistence) and a protected `/app` dashboard with genuine session data and honest "arrives in Phase X" placeholders.
+- **Route protection:** root `middleware.ts` (matcher excludes static assets) refreshes sessions via `getUser()` (never trusts cookie payload) and guards `/app/*`, `/onboarding/*`; signed-in users are steered away from auth pages. Defense in depth: server pages re-check.
+- **Safe redirects:** `sanitizeRedirect` (blocks absolute/protocol-relative/backslash/CRLF targets) with unit tests; `next` params sanitized everywhere.
+- **Google sign-in:** OAuth button rendered only when `NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED=true`; application identity explicitly separated from Gmail scopes (see MANUAL_SETUP #5c).
+- **Local auth config:** email confirmations ON, min password 8; auth emails captured by **Mailpit** (:54324 — Supabase replaced Inbucket with Mailpit).
+- **UI primitives** (Button/Input/Field/Card/Alert) with loading/validation/error states — foundation for the 1.3 design system.
+
+### Bugs found & fixed (caught by the e2e suite)
+
+1. **RLS helpers broken on PostgREST 13** (critical): PostgREST 13 removed `request.jwt.claim.*` GUCs, so `current_user_id()` resolved NULL and member-scoped policies silently matched zero rows (masked by the signup trigger writing profile names). Fixed in forward-only migration `20261012090000_fix_jwt_claim_gucs_for_postgrest13.sql` (coalesces claim.sub / jwt.sub / claims JSON). Would have broken all of Phase 1's tenancy.
+2. Recovery links bounced to `/app`: middleware redirected signed-in users away from `/reset-password` — recovery sessions must reach the new-password form; page manages its own states.
+3. Migration runner rejects nested dollar-quotes; `language sql` bodies are validated at creation (PG14+) — both worked around in migration structure.
+
+### Tested (evidence)
+
+- **Unit (Vitest): 18/18** — includes 14 new (sanitizeRedirect open-redirect matrix, email/password/name validation, OTP-type narrowing).
+- **Playwright E2E: 6/6** against the real local stack (dev server + GoTrue + Mailpit): signup→confirmation-email→onboarding→dashboard, invalid credentials, protected-route redirect with `next`, login + session refresh + logout + re-lock, full password recovery (link → new password → old rejected → new accepted), expired/invalid link state.
+- Lint clean; `tsc --noEmit` clean; production build green.
+
+### Database migrations
+
+- `20261012090000_fix_jwt_claim_gucs_for_postgrest13.sql` (applied locally via `db reset`; must be pushed to staging with the rest).
+
+### Git
+
+| Item | Value |
+| --- | --- |
+| Branch | `feature/phase-01-supabase-auth` → `develop` (no-ff merge) |
+| Remote | pushed (hashes in chat report) |
+
+### Manual setup actions
+
+- Unchanged: staging `db push` (needs `supabase login`), optional Google OAuth provider (#5c), C: drive cleanup, password rotation.
+
+### Next
+
+- **Subphase 1.2 — Organizations, workspaces and authorization** (Scala JWT middleware via JWKS, RBAC, invitations, cross-tenant isolation tests). The RLS GUC fix is the foundation it depends on.
+
+---
+
 ## 2026-10-11 — Phase 0 / Subphase 0.3: Supabase configuration & local environment
 
 **Status:** ✅ Completed and pushed (cloud `db push` to staging pending one user action — see Manual setup)

@@ -2,13 +2,14 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-10-11
+**Last updated:** 2026-10-12
 
 ---
 
 ## Current phase
 
-**Phase 0 — Foundation** · status: **complete** (0.0–0.4 done; promoted to `main` with tag `phase-0`)
+**Phase 0 — Foundation** · status: **complete** (promoted to `main`, tag `phase-0`)
+**Phase 1 — Auth, tenancy & UI foundation** · status: `in-progress` (1.1 complete; 1.2 next)
 
 ## Phase roadmap (provisional — ADR-0014)
 
@@ -41,6 +42,15 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 0.3 | Supabase configuration & local environment | **tested** | Local stack healthy; 4 foundational migrations applied; RLS + helpers verified via Doobie spec (15/15 local; staging connectivity 10 pass via session pooler — direct host is IPv6-only). Staging `db push` pending product-owner CLI login. |
 | 0.4 | CI/CD & developer experience | **tested** | GitHub Actions (scala / web / migrations jobs), request-ID + error-envelope middleware with tests, Docker images + compose verified, db-reset + env-loading scripts, SETUP smoke/troubleshooting/VC rules. |
 | — | **Phase 0 complete** — `develop` promoted to `main`, tag `phase-0` | done | See milestones below. |
+
+### Subphase detail — Phase 1
+
+| # | Subphase | Status | Notes |
+| --- | --- | --- | --- |
+| 1.1 | Supabase authentication — signup, email verification, login, logout, recovery, sessions, protected routes | **tested** | 18/18 unit + **6/6 Playwright e2e** (signup→verify→onboarding→dashboard, invalid creds, protected redirect, session refresh + logout, full password recovery incl. old-password rejection, expired-link state). Google button gated behind `NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED`. Caught + fixed a real RLS bug (PostgREST 13 GUC change) via e2e. |
+| 1.2 | Organizations, workspaces & authorization (JWT middleware, RBAC, cross-tenant tests) | planned | Next up. |
+| 1.3 | Application shell & design system | planned | |
+| 1.4 | Workspace administration & hardening | planned | |
 
 ## Completed milestones
 

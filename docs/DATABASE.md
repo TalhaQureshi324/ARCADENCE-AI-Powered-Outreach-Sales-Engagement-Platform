@@ -262,10 +262,11 @@ Canonical state machines live in `docs/ARCHITECTURE.md` §7. Schema mapping:
 **Defense in depth** (Scala-side checks are the gate; RLS is the backstop):
 
 1. **Scala API**: every request resolves `user → workspace_member(role)` for the addressed `workspaceId`; queries are always composed with an explicit `workspace_id` predicate. No Scala query runs without tenant scoping (enforced by repository-layer types + isolation tests).
-2. **RLS helper functions** (created in 0.3, `security definer`, `search_path` locked):
+2. **RLS helper functions** (created in 0.3, hardened for PostgREST 13+ in migration `20261012090000` — `request.jwt.claim.*` GUCs were removed there, so the helpers coalesce `request.jwt.sub` and `request.jwt.claims` too; `security definer` where they read `workspace_member`, `search_path` locked):
 
    ```sql
-   create function public.current_user_id() returns uuid …;         -- from auth.jwt() ->> 'sub'
+   create function public.current_user_id() returns uuid …;   -- claim.sub | jwt.sub | claims->>'sub'
+   create function public.current_user_email() returns text …;
    create function public.is_workspace_member(w uuid) returns boolean …;
    create function public.workspace_role(w uuid) returns workspace_role …;  -- for RBAC policies
    ```
