@@ -40,7 +40,8 @@ final class ConfigSpec extends FunSuite:
           databaseUrl = validEnv("DATABASE_URL"),
           jwtIssuer = validEnv("SUPABASE_JWT_ISSUER"),
           jwtAudience = validEnv("SUPABASE_JWT_AUDIENCE"),
-          jwksUrl = validEnv("SUPABASE_JWKS_URL")
+          jwksUrl = validEnv("SUPABASE_JWKS_URL"),
+          rateLimitPerMinute = 120
         )
       )
     )
@@ -57,7 +58,8 @@ final class ConfigSpec extends FunSuite:
           databaseUrl = validEnv("DATABASE_URL"),
           jwtIssuer = validEnv("SUPABASE_JWT_ISSUER"),
           jwtAudience = validEnv("SUPABASE_JWT_AUDIENCE"),
-          jwksUrl = validEnv("SUPABASE_JWKS_URL")
+          jwksUrl = validEnv("SUPABASE_JWKS_URL"),
+          rateLimitPerMinute = 120
         )
       )
     )
