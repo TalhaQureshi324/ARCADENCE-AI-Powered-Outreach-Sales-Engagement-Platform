@@ -25,9 +25,9 @@ import java.util.UUID
 final class WorkspaceAuthIntegrationSpec extends CatsEffectSuite:
 
   private val dbUrl = sys.env.getOrElse("TEST_DATABASE_URL", "")
-  private val jdbc =
+  private lazy val jdbc =
     DbUrl.parse(dbUrl).fold(_ => sys.error("bad TEST_DATABASE_URL"), identity)
-  private val xa = Transactor.fromDriverManager[IO](
+  private lazy val xa = Transactor.fromDriverManager[IO](
     "org.postgresql.Driver",
     jdbc.jdbcUrl,
     jdbc.user,
@@ -51,8 +51,8 @@ final class WorkspaceAuthIntegrationSpec extends CatsEffectSuite:
     def verify(token: String): IO[Either[AuthError, AuthenticatedUser]] =
       IO.pure(tokens.get(token).toRight(AuthError.Invalid))
 
-  private val repos = new WorkspaceRepos(xa)
-  private val app = new WorkspaceRoutes(
+  private lazy val repos = new WorkspaceRepos(xa)
+  private lazy val app = new WorkspaceRoutes(
     authenticator = fakeAuth,
     repos = repos,
     authorizer = new Authorizer(xa),
@@ -108,19 +108,23 @@ final class WorkspaceAuthIntegrationSpec extends CatsEffectSuite:
     super.beforeEach(context)
 
   override def beforeAll(): Unit =
-    (seedUser(userA, emailA) *> seedUser(userB, emailB)).unsafeRunSync()
-    super.beforeAll()
+    if dbUrl.nonEmpty then {
+      (seedUser(userA, emailA) *> seedUser(userB, emailB)).unsafeRunSync()
+      super.beforeAll()
+    }
 
   override def afterAll(): Unit =
-    // Cascade-friendly teardown: remove memberships/invitations/workspace, then users.
-    (for
-      _ <-
-        sql"delete from public.workspace where organization_id in (select id from public.organization where name like '%(organization)' and id in (select organization_id from public.workspace w join public.workspace_member m on m.workspace_id = w.id where m.user_id = $userA))".update.run
-      _ <-
-        sql"delete from public.organization where name like '%(organization)' and id not in (select organization_id from public.workspace where deleted_at is null)".update.run
-      _ <- sql"delete from auth.users where id in ($userA, $userB)".update.run
-    yield ()).transact(xa).unsafeRunSync()
-    super.afterAll()
+    if dbUrl.nonEmpty then {
+      // Cascade-friendly teardown: memberships/invitations/workspace, then users.
+      (for
+        _ <-
+          sql"delete from public.workspace where organization_id in (select id from public.organization where name like '%(organization)' and id in (select organization_id from public.workspace w join public.workspace_member m on m.workspace_id = w.id where m.user_id = $userA))".update.run
+        _ <-
+          sql"delete from public.organization where name like '%(organization)' and id not in (select organization_id from public.workspace where deleted_at is null)".update.run
+        _ <- sql"delete from auth.users where id in ($userA, $userB)".update.run
+      yield ()).transact(xa).unsafeRunSync()
+      super.afterAll()
+    }
 
   test("owner creates a workspace and becomes its owner member") {
     val (status, body) = request(

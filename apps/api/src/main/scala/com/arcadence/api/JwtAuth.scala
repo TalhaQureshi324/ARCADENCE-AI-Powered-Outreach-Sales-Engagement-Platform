@@ -85,10 +85,12 @@ final class SupabaseJwtAuthenticator(
     }.attempt
       .map { outcome =>
         outcome.left.foreach { e =>
-          System.err.println(s"jwt verify failed: ${e.getClass.getName}: ${e.getMessage}")
+          System.err.println(
+            s"jwt verify failed: ${e.getClass.getName}: ${e.getMessage}"
+          )
         }
         outcome match {
-          case Right(result) => result
+          case Right(result)                                           => result
           case Left(_: com.auth0.jwt.exceptions.TokenExpiredException) =>
             Left(AuthError.Expired)
           case Left(_: com.auth0.jwt.exceptions.JWTVerificationException) =>
