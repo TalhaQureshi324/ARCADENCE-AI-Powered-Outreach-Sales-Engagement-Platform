@@ -6,6 +6,34 @@
 
 ---
 
+## 2026-10-14 — Phase 2 / Subphase 2.2: Gmail integration
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **GmailProvider adapter (arcadence-core, `com.arcadence.core.email.gmail`)** — implements the Phase 2.1 `EmailProvider` contract over real Google endpoints: authorization-code + PKCE (S256) consent URL builder, token exchange with verifier, refresh-token grant, userinfo identity, Gmail profile validation, RFC 5322 MIME submission (text + multipart/alternative, RFC 2047 subjects, `raw` base64url), INBOX listing with page-token cursors, health check, grant revocation. Typed `ProviderError` mapping (400 invalid_grant/401 → InvalidCredentials; 403 rateLimitExceeded → RateLimited; insufficientPermissions → PermissionDenied; 5xx → Unreachable). Google endpoints injectable — tests run the full flows against a stub server. Access-token refreshes live in memory only (ADR-0021); the refresh token is the durable encrypted secret.
+- **OAuth flow (api)** — `POST /api/v1/email-connections/oauth/google/start` (permission-checked) returns a consent URL carrying an HMAC-SHA256-signed state (workspace + user + PKCE verifier + nonce, 10-minute expiry; key derived domain-separated from EMAIL_ENCRYPTION_KEY). `GET .../callback` (browser route, no bearer): signature + expiry + Google error params each land on distinct outcomes; membership re-checked at callback; account upserted (connected / reconnected), credentials encrypted via CredentialEncryptor and stored (kind oauth2, versioned), sync cursors seeded (inbox+sending), health event + audit written, 303 back to `/app/email-accounts?gmail=…`.
+- **Capabilities/UI** — capability matrix rows now carry `configured`; the Gmail card shows a real Connect button when configured, an honest "Google OAuth not configured on this server" notice otherwise. Accounts table adds Test send (dialog → authorized send via the adapter, `test_succeeded`/`test_failed` health) and Reconnect for reconnect_required/error Gmail accounts. Callback outcomes render as success/error banners and the URL is cleaned.
+- **Disconnect** now best-effort revokes the Google grant before purging local credentials.
+- **Config** — optional `GOOGLE_OAUTH_CLIENT_ID/SECRET/REDIRECT_URI`; absence → `configured=false` everywhere, `start` → 503 `not_configured` (never a dead button).
+
+### Notable fixes during 2.2
+
+1. GmailRoutes class-init order (endpoint val referenced before initialization → NPE in tests) — endpoint definitions moved above route assembly.
+2. CI-truth lesson from 2.1 applied: web files prettier-formatted before push; migration-free subphase so the Database job needed no change.
+
+### Tested (evidence)
+
+- Scala `Test/test` with `TEST_DATABASE_URL` → **117/117** (worker 2 · core 57 incl. GmailProviderSpec 11 — stub-server flows for exchange/PKCE form/transparent refresh/MIME submission/error mapping/revocation — + GmailMimeSpec 5 + OAuthStateSignerSpec 4 · api 58 incl. **GmailFlowIntegrationSpec 12**: capability `configured` flags, start URL state verification, tampered/expired/denied callbacks, full callback → account + encrypted-credential (decryptable) + health + audit + sync cursors, reconnection dedupe, test send, viewer/outsider gating, disconnect purge).
+- `scalafmtAll` success. Web: vitest 25/25 · lint 0 errors · format clean · build green.
+- **Playwright 9/9** — including a forged-state callback driven through the REAL API from the browser (lands on `/app/email-accounts?gmail=invalid_state`, banner shown, URL cleaned) and the honest unconfigured-Gmail card.
+- Live: API restarted with the 2.2 build; `/api/v1/email-providers` 401 envelope + security headers intact.
+
+### Blocked (manual)
+
+- Real-Google end-to-end (consent → real mailbox send) is **blocked on product-owner action 6a** (`docs/MANUAL_SETUP.md`): create the Google Cloud OAuth client (redirect URI `http://localhost:8080/api/v1/email-connections/oauth/google/callback`), then set `GOOGLE_OAUTH_CLIENT_ID/SECRET` in `apps/api/.env.local` and restart the API. Everything up to Google's consent screen is implemented and verified; restricted-scope verification remains a production-launch prerequisite (not required for test users).
+
 ## 2026-10-13 — Phase 2 / Subphase 2.1: Email account architecture
 
 **Status:** ✅ Completed and pushed

@@ -177,3 +177,16 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
   - Storage: `account_credentials` carries RLS enabled with **no policies** and revoked grants for `anon`/`authenticated` — PostgREST can never read or write it; only the service connection (which bypasses RLS) touches the table.
   - Hygiene: disconnecting an account purges its credentials row; deleting an account cascades credentials. No API response shape includes credential fields (enforced by integration test).
 - **Consequences:** Key loss is unrecoverable by design — generation and backup are product-owner manual-setup steps (`docs/MANUAL_SETUP.md`). Key rotation requires a lazy re-encrypt pass (planned with the first rotation need, not before).
+
+## ADR-0021 — Gmail integration: authorization-code + PKCE, minimum scopes, HMAC state, in-memory access refresh
+
+- **Date:** 2026-10-13 · **Status:** Accepted (Phase 2.2)
+- **Context:** The Gmail adapter (`GmailProvider`, arcadence-core) must connect mailboxes via real Google OAuth with no secrets in the browser, while supporting an unverified testing app during development.
+- **Decision:**
+  - **Flow:** authorization-code with PKCE (S256) and `access_type=offline&prompt=consent` for a refresh token. The web app asks the API (`POST /api/v1/email-connections/oauth/google/start`, permission-checked) for a consent URL and navigates the browser; Google returns to the **Scala API callback**, which validates the state, completes the exchange server-side, persists encrypted credentials, and 303-redirects back to `/app/email-accounts?gmail=…`.
+  - **State:** stateless HMAC-SHA256-signed payload (workspace + user + PKCE verifier + nonce + 10-minute expiry), keyed by a domain-separated derivation of `EMAIL_ENCRYPTION_KEY`. Tamper/expiry/consent-denial each land on distinct, user-visible outcomes.
+  - **Authorization re-check at callback:** the state's user must still hold `manage_email_accounts` on the state's workspace — a role change between start and callback cannot complete a connection.
+  - **Scopes (minimum necessary):** `gmail.send` + `gmail.readonly` + `userinfo.email`. `gmail.send`/`gmail.readonly` are **restricted** scopes: production use requires Google OAuth verification including a CASA security assessment; an unverified testing app with explicit test users is **not production approval** (documented in MANUAL_SETUP 6a).
+  - **Tokens:** the refresh token is the durable secret (AES-256-GCM at rest, ADR-0020); refreshed access tokens live in memory only (Google allows multiple outstanding access tokens, so re-refreshing is safe and no partial-write state exists). Disconnect purges the stored credentials AND best-effort revokes the grant at Google before the purge.
+  - **Placement:** the adapter lives in arcadence-core (http4s-client + circe added) so the worker can drive sync/reply flows in later phases without an API dependency; Google endpoints are injectable for stub-server tests.
+- **Consequences:** connect is honest about configuration state (`configured=false` surfaces "not configured" UI, `POST start` → 503 `not_configured`); Gmail message/thread ids and sync cursors persist via `provider_sync_state` (full incremental sync arrives in Phase 6); revocation is best-effort (Google may already have revoked).

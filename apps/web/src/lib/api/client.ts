@@ -147,10 +147,23 @@ export interface EmailProviderDto {
   hasHealthCheck: boolean;
   permissionsSummary: string;
   connectFlow: string;
+  /** True when this server's connect flow is ready (credentials present). */
+  configured: boolean;
 }
 
 export const emailProvidersApi = {
   list: () => apiFetch<EmailProviderDto[]>("/api/v1/email-providers"),
+};
+
+/** Gmail OAuth connect flow: ask the API for a state-signed authorize URL,
+ * then navigate the browser to Google's consent screen.
+ */
+export const gmailConnectApi = {
+  start: (workspaceId: string) =>
+    apiFetch<{ authorizeUrl: string }>("/api/v1/email-connections/oauth/google/start", {
+      method: "POST",
+      body: JSON.stringify({ workspaceId }),
+    }),
 };
 
 export interface AccountGroupDto {
@@ -241,5 +254,11 @@ export const emailAccountsApi = {
   health: (workspaceId: string, accountId: string) =>
     apiFetch<HealthEventDto[]>(
       `/api/v1/workspaces/${workspaceId}/email-accounts/${accountId}/health`,
+    ),
+  /** Authorized test send from a connected account. */
+  test: (workspaceId: string, accountId: string, to: string) =>
+    apiFetch<{ messageId: string }>(
+      `/api/v1/workspaces/${workspaceId}/email-accounts/${accountId}/test`,
+      { method: "POST", body: JSON.stringify({ to }) },
     ),
 };

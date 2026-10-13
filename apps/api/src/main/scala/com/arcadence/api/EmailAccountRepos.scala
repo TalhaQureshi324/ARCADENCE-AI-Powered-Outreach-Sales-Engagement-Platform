@@ -238,6 +238,98 @@ final class EmailAccountRepos(transactor: Transactor[IO]):
       .map(_ > 0)
       .transact(transactor)
 
+  /** Connect-flow upsert: create the account or mark an existing one
+    * reconnected. Returns (accountId, created).
+    */
+  def upsertConnectedAccount(
+      workspaceId: UUID,
+      provider: String,
+      emailAddress: String,
+      displayName: Option[String]
+  ): IO[(UUID, Boolean)] =
+    (for
+      existing <- sql"""
+        select id from public.email_accounts
+        where workspace_id = $workspaceId and lower(email_address) = lower($emailAddress)
+      """.query[UUID].option
+      id <- existing match
+        case Some(found) =>
+          sql"""
+            update public.email_accounts
+            set status = 'connected'::public.connection_status,
+                status_message = null,
+                display_name = coalesce(${displayName}, display_name)
+            where id = $found
+          """.update.run.as(found)
+        case None =>
+          sql"""
+            insert into public.email_accounts
+              (workspace_id, provider, email_address, display_name, status)
+            values ($workspaceId, ${provider}::public.email_provider, $emailAddress,
+                    ${displayName}, 'connected'::public.connection_status)
+            returning id
+          """.query[UUID].unique
+    yield (id, existing.isEmpty)).transact(transactor)
+
+  /** Upserts the encrypted credential row for an account. */
+  def storeCredentials(
+      accountId: UUID,
+      kind: String,
+      encryptedBlob: Array[Byte],
+      keyVersion: Int,
+      expiresAt: Option[OffsetDateTime]
+  ): IO[Unit] =
+    sql"""
+      insert into public.account_credentials
+        (email_account_id, kind, encrypted_blob, encryption_key_version, expires_at)
+      values ($accountId, $kind, $encryptedBlob, $keyVersion, $expiresAt)
+      on conflict (email_account_id) do update
+        set kind = excluded.kind,
+            encrypted_blob = excluded.encrypted_blob,
+            encryption_key_version = excluded.encryption_key_version,
+            expires_at = excluded.expires_at
+    """.update.run.void.transact(transactor)
+
+  /** Fetches the encrypted credential blob, workspace-scoped via a join. */
+  final case class CredentialRow(
+      kind: String,
+      encryptedBlob: Array[Byte],
+      keyVersion: Int
+  )
+
+  def loadCredentials(
+      workspaceId: UUID,
+      accountId: UUID
+  ): IO[Option[CredentialRow]] =
+    sql"""
+      select c.kind, c.encrypted_blob, c.encryption_key_version
+      from public.account_credentials c
+      join public.email_accounts a on a.id = c.email_account_id
+      where a.workspace_id = $workspaceId and a.id = $accountId
+    """.query[CredentialRow].option.transact(transactor)
+
+  /** Seeds the per-direction sync cursors for a freshly connected account. */
+  def ensureSyncState(accountId: UUID): IO[Unit] =
+    sql"""
+      insert into public.provider_sync_state (email_account_id, direction)
+      values ($accountId, 'inbox'), ($accountId, 'sending')
+      on conflict (email_account_id, direction) do nothing
+    """.update.run.void.transact(transactor)
+
+  def recordHealthEvent(
+      workspaceId: UUID,
+      accountId: UUID,
+      eventType: String,
+      message: Option[String],
+      details: Json = Json.obj()
+  ): IO[Unit] =
+    sql"""
+      insert into public.account_health_events
+        (workspace_id, email_account_id, event_type, message, details)
+      values ($workspaceId, $accountId, ${eventType}::public.account_health_event_type,
+              $message, ${details.noSpaces}::jsonb)
+    """.update.run.void.transact(transactor)
+
   /** Drops stored credentials for a workspace-scoped account (disconnect
     * hygiene — a disconnected account must not retain decryptable secrets).
     */

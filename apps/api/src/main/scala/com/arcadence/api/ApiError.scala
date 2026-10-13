@@ -43,6 +43,17 @@ object ApiError:
     val code = "conflict"
     val status = Status.Conflict
 
+  final case class ProviderNotConfigured(detail: String) extends ApiError:
+    val code = "not_configured"
+    val message = detail
+    val status = Status.ServiceUnavailable
+
+  /** Provider-side failure surfaced verbatim (safe detail, no secrets). */
+  final case class Provider(detail: String) extends ApiError:
+    val code = "provider_error"
+    val message = s"Provider rejected the operation: $detail"
+    val status = Status.BadGateway
+
   /** Wire shape of the error envelope (without the requestId, which the edge
     * middleware attaches).
     */

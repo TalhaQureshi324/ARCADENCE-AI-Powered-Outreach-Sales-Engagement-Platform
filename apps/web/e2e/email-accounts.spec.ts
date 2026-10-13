@@ -4,9 +4,13 @@ import { STRONG_PASSWORD, latestEmailLink, testEmail } from "./helpers/inbucket"
 
 const VERIFY_LINK = /https?:\/\/127\.0\.0\.1:54321\/auth\/v1\/verify\?[^\s"'<>]+/;
 
-/** Requires the Scala API to be running locally (port 8080). */
+/** Requires the Scala API to be running locally (port 8080) WITHOUT Google
+ * OAuth credentials (the not-configured path is the honest local default).
+ */
 test.describe("email accounts page", () => {
-  test("provider cards, groups CRUD and honest empty state", async ({ page }) => {
+  test("provider cards, groups CRUD, honest empty state and OAuth callback guard", async ({
+    page,
+  }) => {
     test.setTimeout(120_000);
     const email = testEmail("accounts");
 
@@ -36,13 +40,24 @@ test.describe("email accounts page", () => {
     await expect(page.getByText("Gmail / Google Workspace")).toBeVisible();
     await expect(page.getByText("Microsoft 365 / Outlook")).toBeVisible();
     await expect(page.getByText("SMTP / IMAP")).toBeVisible();
-    // Honest availability — connect flows are not wired yet, and the UI says so.
-    await expect(page.getByText("Setup arrives in subphase 2.2")).toBeVisible();
+    // Gmail flow is built (2.2) but unconfigured locally — the UI says so
+    // instead of showing a dead button; 2.3/2.4 have not arrived yet.
+    await expect(page.getByText("Google OAuth not configured on this server")).toBeVisible();
     await expect(page.getByText("Setup arrives in subphase 2.3")).toBeVisible();
     await expect(page.getByText("Setup arrives in subphase 2.4")).toBeVisible();
 
     // Accounts table shows the honest empty state.
     await expect(page.getByText("No email accounts connected yet")).toBeVisible();
+
+    // OAuth callback guard through the REAL API: a forged state parameter is
+    // rejected and the browser lands back here with a visible error banner.
+    await page.goto(
+      "http://localhost:8080/api/v1/email-connections/oauth/google/callback?code=x&state=forged.signature",
+    );
+    await expect(page).toHaveURL(/gmail=invalid_state/);
+    await expect(page.getByText(/connect request could not be verified/i)).toBeVisible();
+    // The banner URL was cleaned after display.
+    expect(await page.evaluate(() => window.location.search)).toBe("");
 
     // Create an account group.
     await page.getByLabel("New group name").fill("EU senders");

@@ -25,11 +25,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TBody, TD, TH, THead, TR, Table } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { useWorkspaces } from "@/components/shell/workspace-context";
+import { Dialog } from "@/components/ui/dialog";
 import {
   ApiError,
   accountGroupsApi,
   emailAccountsApi,
   emailProvidersApi,
+  gmailConnectApi,
   type AccountGroupDto,
   type EmailAccountDto,
   type EmailProviderDto,
@@ -50,6 +52,43 @@ function isUnauthorized(e: unknown): boolean {
 /** campaign managers and above manage email accounts (Permissions.scala). */
 function canManage(role: string): boolean {
   return role === "owner" || role === "admin" || role === "campaign_manager";
+}
+
+const CALLBACK_MESSAGES: Record<string, { variant: "success" | "error" | "info"; text: string }> = {
+  connected: { variant: "success", text: "Gmail account connected." },
+  reconnected: {
+    variant: "success",
+    text: "Gmail account reconnected — credentials refreshed.",
+  },
+  denied: {
+    variant: "error",
+    text: "Google consent was denied — the account was not connected.",
+  },
+  invalid_state: {
+    variant: "error",
+    text: "The connect request could not be verified (invalid state). Start again from the Connect button.",
+  },
+  expired: {
+    variant: "error",
+    text: "The connect request expired. Start again from the Connect button.",
+  },
+  forbidden: {
+    variant: "error",
+    text: "Your access to that workspace changed before the connection completed.",
+  },
+  not_configured: {
+    variant: "error",
+    text: "Google OAuth is not configured on this server (see docs/MANUAL_SETUP.md).",
+  },
+  error: { variant: "error", text: "Google reported a problem completing the connection." },
+};
+
+/** Asks the API for a state-signed authorize URL and navigates to Google's
+ * consent screen (full-page navigation — the callback returns here).
+ */
+async function startGmailConnect(workspaceId: string): Promise<void> {
+  const { authorizeUrl } = await gmailConnectApi.start(workspaceId);
+  window.location.href = authorizeUrl;
 }
 
 const STATUS_META: Record<string, { label: string; tone: BadgeTone }> = {
@@ -91,6 +130,36 @@ function formatDate(value: string | null): string {
 
 export function EmailAccountsContent() {
   const { workspaces, selected } = useWorkspaces();
+  const [connectNotice, setConnectNotice] = useState<string | null>(null);
+  const [noticeVariant, setNoticeVariant] = useState<"success" | "error" | "info">("info");
+
+  // OAuth callback landing: read ?gmail=..., show the outcome, clean the URL.
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      const params = new URLSearchParams(window.location.search);
+      const outcome = params.get("gmail");
+      if (!outcome) return;
+      const message = CALLBACK_MESSAGES[outcome] ?? {
+        variant: "info" as const,
+        text: `Connection finished with status: ${outcome}`,
+      };
+      setNoticeVariant(message.variant);
+      setConnectNotice(message.text);
+      params.delete("gmail");
+      params.delete("detail");
+      const cleaned = params.toString();
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${cleaned ? `?${cleaned}` : ""}`,
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (workspaces === null) {
     return (
@@ -120,7 +189,8 @@ export function EmailAccountsContent() {
           subtitle={`Connect sending identities for ${selected.name}. Your role: ${selected.role}.`}
         />
       </Card>
-      <ProvidersSection />
+      {connectNotice && <Alert variant={noticeVariant}>{connectNotice}</Alert>}
+      <ProvidersSection workspaceId={selected.id} myRole={selected.role} />
       <GroupsSection workspaceId={selected.id} myRole={selected.role} />
       <AccountsSection workspaceId={selected.id} myRole={selected.role} />
     </div>
@@ -129,10 +199,32 @@ export function EmailAccountsContent() {
 
 // -- Provider connection cards ------------------------------------------------
 
-function ProvidersSection() {
+function ProvidersSection({ workspaceId, myRole }: { workspaceId: string; myRole: string }) {
+  const router = useRouter();
+  const manageable = canManage(myRole);
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
   const [providers, setProviders] = useState<LoadState<EmailProviderDto[]>>({
     kind: "loading",
   });
+
+  async function connect(providerId: string) {
+    if (providerId !== "gmail") return;
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      await startGmailConnect(workspaceId); // navigates away on success
+    } catch (e) {
+      if (isUnauthorized(e)) {
+        const { createClient } = await import("@/lib/supabase/client");
+        await createClient().auth.signOut();
+        router.push("/login?expired=1");
+        return;
+      }
+      setConnectError(errorMessage(e));
+      setConnecting(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -183,11 +275,45 @@ function ProvidersSection() {
               {p.permissionsSummary}
             </p>
             <div className="border-border mt-4 border-t pt-3">
-              <Badge tone="warning">Setup arrives in {p.connectFlow}</Badge>
-              <p className="text-muted-foreground mt-2 text-xs">
-                The connect flow is built in {p.connectFlow}; provider-console prerequisites are
-                listed in docs/MANUAL_SETUP.md.
-              </p>
+              {p.configured ? (
+                manageable ? (
+                  <>
+                    <Button onClick={() => connect(p.provider)} loading={connecting}>
+                      Connect {p.label.split(" /")[0]}
+                    </Button>
+                    <p className="text-muted-foreground mt-2 text-xs">
+                      Google asks for the permissions listed above; you can revoke access at any
+                      time from this page or your Google account.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-muted-foreground text-xs">
+                    Connect flow is ready — managing accounts requires the campaign manager role or
+                    above.
+                  </p>
+                )
+              ) : p.provider === "gmail" ? (
+                <>
+                  <Badge tone="warning">Google OAuth not configured on this server</Badge>
+                  <p className="text-muted-foreground mt-2 text-xs">
+                    Set GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET — steps in
+                    docs/MANUAL_SETUP.md.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Badge tone="warning">Setup arrives in {p.connectFlow}</Badge>
+                  <p className="text-muted-foreground mt-2 text-xs">
+                    The connect flow is built in {p.connectFlow}; provider-console prerequisites are
+                    listed in docs/MANUAL_SETUP.md.
+                  </p>
+                </>
+              )}
+              {connectError && (
+                <div className="mt-2">
+                  <Alert variant="error">{connectError}</Alert>
+                </div>
+              )}
             </div>
           </Card>
         ))}
@@ -418,6 +544,11 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [health, setHealth] = useState<LoadState<HealthEventDto[]>>({ kind: "loading" });
+  const [testAccountId, setTestAccountId] = useState<string | null>(null);
+  const [testTo, setTestTo] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
+  const [reconnecting, setReconnecting] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -493,6 +624,46 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
     }
   }
 
+  async function runTestSend() {
+    if (!testAccountId || !testTo.trim()) return;
+    setTesting(true);
+    setTestError(null);
+    try {
+      await emailAccountsApi.test(workspaceId, testAccountId, testTo.trim());
+      toast("success", `Test message to ${testTo.trim()} accepted by the provider.`);
+      setTestAccountId(null);
+      setTestTo("");
+      await reload();
+    } catch (e) {
+      if (isUnauthorized(e)) {
+        const { createClient } = await import("@/lib/supabase/client");
+        await createClient().auth.signOut();
+        router.push("/login?expired=1");
+        return;
+      }
+      setTestError(errorMessage(e));
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function reconnectGmail() {
+    setReconnecting(true);
+    setActionError(null);
+    try {
+      await startGmailConnect(workspaceId); // navigates away on success
+    } catch (e) {
+      if (isUnauthorized(e)) {
+        const { createClient } = await import("@/lib/supabase/client");
+        await createClient().auth.signOut();
+        router.push("/login?expired=1");
+        return;
+      }
+      setActionError(errorMessage(e));
+      setReconnecting(false);
+    }
+  }
+
   async function remove(accountId: string) {
     setBusyId(accountId);
     setActionError(null);
@@ -539,7 +710,7 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
         <EmptyState
           icon={<Mail size={22} />}
           title="No email accounts connected yet"
-          description="Connect flows for Gmail, Microsoft 365 and SMTP/IMAP arrive in subphases 2.2–2.4. Provider prerequisites are documented in docs/MANUAL_SETUP.md."
+          description="Connect Gmail from the Providers section above. Microsoft 365 and SMTP/IMAP arrive in subphases 2.3–2.4 (prerequisites in docs/MANUAL_SETUP.md)."
         />
       ) : (
         <>
@@ -664,6 +835,31 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
                             Disconnect
                           </Button>
                         )}
+                        {manageable && a.provider === "gmail" && a.status === "connected" && (
+                          <Button
+                            variant="ghost"
+                            aria-label={`Send test message from ${a.emailAddress}`}
+                            onClick={() => {
+                              setTestAccountId(a.id);
+                              setTestTo("");
+                              setTestError(null);
+                            }}
+                          >
+                            Test send
+                          </Button>
+                        )}
+                        {manageable &&
+                          a.provider === "gmail" &&
+                          (a.status === "reconnect_required" || a.status === "error") && (
+                            <Button
+                              variant="ghost"
+                              loading={reconnecting}
+                              aria-label={`Reconnect ${a.emailAddress}`}
+                              onClick={() => reconnectGmail()}
+                            >
+                              Reconnect
+                            </Button>
+                          )}
                         {manageable &&
                           (confirmDeleteId === a.id ? (
                             <>
@@ -716,6 +912,40 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
             </TBody>
           </Table>
           {actionError && <Alert variant="error">{actionError}</Alert>}
+          <Dialog
+            open={testAccountId !== null}
+            onOpenChange={(open) => {
+              if (!open) setTestAccountId(null);
+            }}
+            title="Send a test message"
+            description="Arcadence sends a short verification email from this account so you can confirm the connection works end to end."
+          >
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void runTestSend();
+              }}
+            >
+              <Input
+                aria-label="Recipient email address"
+                placeholder="you@example.com"
+                type="email"
+                required
+                value={testTo}
+                onChange={(e) => setTestTo(e.target.value)}
+              />
+              {testError && <Alert variant="error">{testError}</Alert>}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="ghost" onClick={() => setTestAccountId(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" loading={testing} disabled={!testTo.trim()}>
+                  Send test message
+                </Button>
+              </div>
+            </form>
+          </Dialog>
           {expandedId && (
             <div className="border-border bg-surface-sunken mt-3 rounded-lg border p-4">
               <h3 className="text-foreground text-sm font-semibold">Health events</h3>

@@ -85,7 +85,10 @@ Implemented (2.1):
 
 Planned:
 
-- ⬜ (2.2) Gmail OAuth: `GET /api/v1/email-connections/oauth/google/start` → consent; `GET .../callback` (state-validated)
+- ✅ (2.2) `POST /api/v1/email-connections/oauth/google/start` `{workspaceId}` → `{authorizeUrl}` (M+; 503 `not_configured` without console credentials; state = HMAC-signed workspace+user+PKCE verifier, 10-min TTL)
+- ✅ (2.2) `GET /api/v1/email-connections/oauth/google/callback?code&state` — browser route (no bearer; state-validated, membership re-checked) → 303 to `/app/email-accounts?gmail=connected|reconnected|denied|invalid_state|expired|forbidden|not_configured|error`
+- ✅ (2.2) `POST /api/v1/workspaces/{id}/email-accounts/{accountId}/test` `{to}` (M+) — authorized test send; records `test_succeeded`/`test_failed`; provider failures surface as 502 `provider_error`
+- ✅ (2.2) disconnect now best-effort revokes the Google grant before purging credentials; capability matrix rows carry `configured`
 - ⬜ (2.3) Microsoft OAuth equivalents
 - ⬜ (2.4) SMTP/IMAP connect (`POST .../email-accounts` with TLS settings), `POST .../{connId}/test-send`
 

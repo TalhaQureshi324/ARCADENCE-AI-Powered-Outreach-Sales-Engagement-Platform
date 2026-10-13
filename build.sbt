@@ -57,10 +57,19 @@ lazy val core = (project in file("modules/core"))
     buildInfoPackage     := "com.arcadence.core.build",
     buildInfoOptions += BuildInfoOption.BuildTime,
     libraryDependencies ++= Seq(
-      "org.typelevel"  %% "cats-core"   % V.catsCore,
-      "org.typelevel"  %% "cats-effect" % V.catsEffect,
-      "org.tpolecat"   %% "doobie-core" % V.doobie,
-      "org.postgresql" % "postgresql"   % V.postgres
+      "org.typelevel"  %% "cats-core"        % V.catsCore,
+      "org.typelevel"  %% "cats-effect"      % V.catsEffect,
+      "org.tpolecat"   %% "doobie-core"      % V.doobie,
+      "org.postgresql" % "postgresql"        % V.postgres,
+      // Provider adapters (Phase 2): HTTP access to Google/Microsoft/SMTP worlds
+      "org.http4s"     %% "http4s-client"       % V.http4s,
+      "org.http4s"     %% "http4s-ember-client" % V.http4s,
+      "org.http4s"     %% "http4s-circe"        % V.http4s,
+      "io.circe"       %% "circe-core"          % V.circe,
+      "io.circe"       %% "circe-parser"        % V.circe
+    ),
+    libraryDependencies ++= Seq(
+      "org.http4s" %% "http4s-dsl" % V.http4s % Test
     )
   )
 

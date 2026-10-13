@@ -57,7 +57,7 @@ flowchart LR
 - **Capability matrix** (`ProviderCapabilities`) — what each provider supports (send, inbox sync, replies, token refresh, health checks) declared separately from the adapter; the API capability endpoint and the dashboard connect cards render from this matrix, never from hardcoded UI assumptions.
 - **Account state machine** (`EmailAccountStatus`) — `connected / reconnect_required / rate_limited / suspended / error / disconnected` with an explicit legal-transition matrix enforced API-side; transitions write `account_health_events` (the dashboard health trail) and are audited.
 - **Credential encryption** (`CredentialEncryptor`, ADR-0020) — AES-256-GCM; adapters persist secrets only through the caller-provided store callback, so adapter code never touches ciphertext or keys.
-- Status: the contract, matrix, state machine and encryptor are implemented and tested (Phase 2.1); concrete Gmail (2.2), Microsoft Graph (2.3) and SMTP/IMAP (2.4) adapters implement the trait in their subphases.
+- Status: contract, matrix, state machine and encryptor (Phase 2.1) plus the **Gmail adapter** (`com.arcadence.core.email.gmail.GmailProvider` — OAuth authorization-code + PKCE, offline refresh, MIME submission, INBOX listing, revocation; ADR-0021) are implemented and tested against a stub Google server. Microsoft Graph (2.3) and SMTP/IMAP (2.4) adapters follow; Google endpoints are injectable, so tests run full flows without network.
 
 ### 2.2 Supabase (platform of record)
 

@@ -59,80 +59,124 @@ object Main extends IOApp:
         resources.flatMap { (transactor, authenticator) =>
           val repositories = new WorkspaceRepos(transactor)
           val authorizer = new Authorizer(transactor)
+          val accountRepos = new EmailAccountRepos(transactor)
           val workspaceRoutes = new WorkspaceRoutes(
             authenticator = authenticator,
             repos = repositories,
             authorizer = authorizer,
             appOrigin = "http://localhost:3000"
           )
-          val emailAccountRoutes = new EmailAccountRoutes(
-            authenticator = authenticator,
-            repos = new EmailAccountRepos(transactor),
-            authorizer = authorizer
-          )
 
-          val dbReady: IO[Boolean] =
-            sql"select 1"
-              .query[Int]
-              .unique
-              .transact(transactor)
-              .attempt
-              .map(_.isRight)
-
-          val health = new HealthRoutes(identity, dbCheck = Some(dbReady))
-
-          // Browser calls (localhost:3000) hit WorkspaceRoutes directly —
-          // CORS must cover the whole API surface, not just health.
-          import org.http4s.Method.*
-          val corsPolicy =
-            org.http4s.server.middleware.CORS.policy.withAllowOriginAll
-              .withAllowCredentials(false)
-              .withAllowMethodsIn(Set(GET, POST, PATCH, PUT, DELETE, OPTIONS))
-              .withAllowHeadersIn(
-                Set(
-                  org.typelevel.ci.CIString("Authorization"),
-                  org.typelevel.ci.CIString("Content-Type"),
-                  org.typelevel.ci.CIString("Idempotency-Key")
-                )
+          // Provider adapters (Phase 2.2): Gmail when OAuth credentials exist.
+          org.http4s.ember.client.EmberClientBuilder
+            .default[IO]
+            .withUserAgent(
+              org.http4s.headers.`User-Agent`(
+                org.http4s
+                  .ProductId(s"arcadence-api/${BuildInfo.version}", None)
               )
-          // Hardening: per-caller rate limiting + security headers (Phase 1.4).
-          val hardenedRoutes: HttpRoutes[IO] =
-            RateLimit(config.rateLimitPerMinute)(
-              SecurityHeaders(workspaceRoutes.http <+> emailAccountRoutes.http)
             )
+            .build
+            .use(httpClient =>
+              ProviderRegistry.build(config, httpClient).flatMap { registry =>
+                val emailAccountRoutes = new EmailAccountRoutes(
+                  authenticator = authenticator,
+                  repos = accountRepos,
+                  authorizer = authorizer,
+                  registry = Some(registry),
+                  revokeCredentials = (providerId, workspaceId, accountId) =>
+                    registry.adapter(providerId) match
+                      case None          => IO.unit
+                      case Some(adapter) =>
+                        adapter
+                          .revokeAccess(
+                            registry.credentialLoader(
+                              accountRepos,
+                              workspaceId,
+                              accountId
+                            )
+                          )
+                          .attempt
+                          .void
+                )
+                val gmailRoutes = new GmailRoutes(
+                  authenticator = authenticator,
+                  repos = accountRepos,
+                  authorizer = authorizer,
+                  registry = registry
+                )
 
-          val allRoutes: HttpRoutes[IO] =
-            corsPolicy(health.http <+> hardenedRoutes)
+                val dbReady: IO[Boolean] =
+                  sql"select 1"
+                    .query[Int]
+                    .unique
+                    .transact(transactor)
+                    .attempt
+                    .map(_.isRight)
 
-          val routes =
-            new RequestContext(logger)(new ErrorEnvelope(logger)(allRoutes))
+                val health = new HealthRoutes(identity, dbCheck = Some(dbReady))
 
-          // JSON error envelope for unmatched paths too (plain Router would
-          // return text). Unmatched paths bypass RequestContext, so a request
-          // id is generated here when absent.
-          val app: HttpApp[IO] = Kleisli { req =>
-            val requestId = Option(ApiResponses.requestIdOf(req))
-              .filter(_.nonEmpty)
-              .getOrElse(java.util.UUID.randomUUID().toString)
-            routes(req).getOrElseF(IO.pure(ApiResponses.notFound(requestId)))
-          }
+                // Browser calls (localhost:3000) hit WorkspaceRoutes directly —
+                // CORS must cover the whole API surface, not just health.
+                import org.http4s.Method.*
+                val corsPolicy =
+                  org.http4s.server.middleware.CORS.policy.withAllowOriginAll
+                    .withAllowCredentials(false)
+                    .withAllowMethodsIn(
+                      Set(GET, POST, PATCH, PUT, DELETE, OPTIONS)
+                    )
+                    .withAllowHeadersIn(
+                      Set(
+                        org.typelevel.ci.CIString("Authorization"),
+                        org.typelevel.ci.CIString("Content-Type"),
+                        org.typelevel.ci.CIString("Idempotency-Key")
+                      )
+                    )
+                // Hardening: per-caller rate limiting + security headers (Phase 1.4).
+                val hardenedRoutes: HttpRoutes[IO] =
+                  RateLimit(config.rateLimitPerMinute)(
+                    SecurityHeaders(
+                      workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http
+                    )
+                  )
 
-          applyLogLevel *>
-            logger.info(
-              s"arcadence-api ${BuildInfo.version} starting on port ${config.port}"
-            ) *>
-            EmberServerBuilder
-              .default[IO]
-              .withHost(host"0.0.0.0")
-              // API_PORT is validated to [1, 65535] by ApiConfig; fallback unreachable.
-              .withPort(Port.fromInt(config.port).getOrElse(port"8080"))
-              .withHttpApp(app)
-              .withShutdownTimeout(5.seconds)
-              .build
-              .use(_ =>
-                logger.info(
-                  s"arcadence-api ${BuildInfo.version} listening on port ${config.port}"
-                ) *> IO.never
-              )
-              .as(ExitCode.Success)
+                val allRoutes: HttpRoutes[IO] =
+                  corsPolicy(health.http <+> hardenedRoutes)
+
+                val routes =
+                  new RequestContext(logger)(
+                    new ErrorEnvelope(logger)(allRoutes)
+                  )
+
+                // JSON error envelope for unmatched paths too (plain Router would
+                // return text). Unmatched paths bypass RequestContext, so a request
+                // id is generated here when absent.
+                val app: HttpApp[IO] = Kleisli { req =>
+                  val requestId = Option(ApiResponses.requestIdOf(req))
+                    .filter(_.nonEmpty)
+                    .getOrElse(java.util.UUID.randomUUID().toString)
+                  routes(req)
+                    .getOrElseF(IO.pure(ApiResponses.notFound(requestId)))
+                }
+
+                applyLogLevel *>
+                  logger.info(
+                    s"arcadence-api ${BuildInfo.version} starting on port ${config.port}"
+                  ) *>
+                  EmberServerBuilder
+                    .default[IO]
+                    .withHost(host"0.0.0.0")
+                    // API_PORT is validated to [1, 65535] by ApiConfig; fallback unreachable.
+                    .withPort(Port.fromInt(config.port).getOrElse(port"8080"))
+                    .withHttpApp(app)
+                    .withShutdownTimeout(5.seconds)
+                    .build
+                    .use(_ =>
+                      logger.info(
+                        s"arcadence-api ${BuildInfo.version} listening on port ${config.port}"
+                      ) *> IO.never
+                    )
+                    .as(ExitCode.Success)
+              }
+            )
         }
