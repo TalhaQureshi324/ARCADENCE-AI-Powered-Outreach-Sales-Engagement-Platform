@@ -99,7 +99,9 @@ final case class AuthorizationResult(
     code: String,
     redirectUri: String,
     /** Anti-CSRF state value; adapters validate before exchanging. */
-    state: String
+    state: String,
+    /** PKCE code_verifier when the flow used PKCE (S256). */
+    codeVerifier: Option[String] = None
 )
 
 /** Opaque credential payload — concrete implementations live in adapters and

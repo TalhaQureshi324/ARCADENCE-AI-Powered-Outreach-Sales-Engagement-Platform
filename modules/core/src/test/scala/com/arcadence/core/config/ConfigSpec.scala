@@ -49,7 +49,10 @@ final class ConfigSpec extends FunSuite:
           jwtAudience = validEnv("SUPABASE_JWT_AUDIENCE"),
           jwksUrl = validEnv("SUPABASE_JWKS_URL"),
           rateLimitPerMinute = 120,
-          credentialEncryptionKey = testEncryptionKey
+          credentialEncryptionKey = testEncryptionKey,
+          googleOAuthClientId = None,
+          googleOAuthClientSecret = None,
+          googleOAuthRedirectUri = None
         )
       )
     )
@@ -68,7 +71,10 @@ final class ConfigSpec extends FunSuite:
           jwtAudience = validEnv("SUPABASE_JWT_AUDIENCE"),
           jwksUrl = validEnv("SUPABASE_JWKS_URL"),
           rateLimitPerMinute = 120,
-          credentialEncryptionKey = testEncryptionKey
+          credentialEncryptionKey = testEncryptionKey,
+          googleOAuthClientId = None,
+          googleOAuthClientSecret = None,
+          googleOAuthRedirectUri = None
         )
       )
     )

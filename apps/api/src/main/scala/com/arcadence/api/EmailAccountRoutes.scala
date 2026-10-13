@@ -33,7 +33,10 @@ object EmailAccountDtos:
       canRefreshToken: Boolean,
       hasHealthCheck: Boolean,
       permissionsSummary: String,
-      connectFlow: String
+      connectFlow: String,
+      /** True when this server's connect flow is ready (credentials present).
+        */
+      configured: Boolean
   )
   object ProviderDto:
     given Encoder[ProviderDto] = deriveEncoder
@@ -127,7 +130,12 @@ object EmailAccountDtos:
 final class EmailAccountRoutes(
     authenticator: Authenticator,
     repos: EmailAccountRepos,
-    authorizer: Authorizer
+    authorizer: Authorizer,
+    registry: Option[ProviderRegistry] = None,
+    /** Best-effort provider-side revocation before credential purge (OAuth
+      * adapters); default no-op for tests without adapters.
+      */
+    revokeCredentials: (String, UUID, UUID) => IO[Unit] = (_, _, _) => IO.unit
 ):
   private val errorOut = statusCode.and(jsonBody[Envelope])
 
@@ -175,7 +183,8 @@ final class EmailAccountRoutes(
       canRefreshToken = c.canRefreshToken,
       hasHealthCheck = c.hasHealthCheck,
       permissionsSummary = c.permissionsSummary,
-      connectFlow = c.connectFlow
+      connectFlow = c.connectFlow,
+      configured = registry.exists(_.configured(c.provider))
     )
 
   private def groupDto(g: repos.GroupView): AccountGroupDto =
@@ -506,6 +515,14 @@ final class EmailAccountRoutes(
                     eventType = eventType,
                     eventMessage = eventMessage
                   )
+            // Revoke at the provider (best effort) before the local purge so
+            // the refresh token stops working even if the purge then fails.
+            _ <-
+              if applied && clearCredentials then
+                account.traverse_(a =>
+                  revokeCredentials(a.provider, workspaceId, accountId)
+                )
+              else IO.unit
             _ <-
               if applied && clearCredentials then
                 repos.purgeCredentials(workspaceId, accountId)
