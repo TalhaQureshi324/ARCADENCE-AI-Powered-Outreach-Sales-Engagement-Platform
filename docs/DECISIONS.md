@@ -159,3 +159,21 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
   - **Connections:** Scala services use direct (5432) or session-pooled connections appropriate to persistent workers; transaction pooling (6543) only for short-lived request paths with prepared statements disabled (`prepareThreshold=0`) and no cross-transaction session assumptions.
 - **Consequences:** Deterministic, reviewable schema evolution; one migration set applies identically from laptop to CI; no dashboard drift.
 - **Refinement (2026-10-11, Phase 0.3):** current Supabase projects expose the **direct connection IPv6-only**; on IPv4-only networks/services use the **session pooler** (`aws-<n>-<region>.pooler.supabase.com:5432`, user `postgres.<project-ref>`) — session mode preserves JDBC prepared statements, so the transaction-pooling caveats don't apply. Verified live against staging (`aws-0-ap-northeast-1`). Production host selection (direct vs pooler) re-evaluated at deployment with this constraint.
+
+## ADR-0019 — Email account naming: email_accounts / account_credentials (supersedes provisional email_connection / email_credential)
+
+- **Date:** 2026-10-13 · **Status:** Accepted (Phase 2.1)
+- **Context:** The Phase 0 ERD provisionally named the sending-identity tables `email_connection` / `email_credential`. The product owner's Phase 2 plan explicitly specifies `email_accounts`, `account_credentials`, `sender_domains`, `account_groups`, `account_health_events`, `provider_sync_state`. Per AGENTS.md §1 the owner's written plan wins; no dependent tables exist yet (campaign assignments, conversations and messages arrive in Phases 4–6), so the rename is free today and expensive later.
+- **Decision:** Implement the Phase 2 names. Later phases FK to `email_accounts.id`. The account state enum also takes the Phase 2 values (`connected`, `reconnect_required`, `rate_limited`, `suspended`, `error`, `disconnected`), replacing the provisional `connection_status` values before any consumer existed (migration `20261013090000`).
+- **Consequences:** docs/DATABASE.md §6.2 and docs/API.md §3.3 track the new names; provider-facing code speaks "email account", not "connection". "email_connections" survives only as the OAuth route prefix planned for 2.2/2.3.
+
+## ADR-0020 — Credential encryption: AES-256-GCM with a single managed key, versioned ciphertexts, RLS-locked storage
+
+- **Date:** 2026-10-13 · **Status:** Accepted (Phase 2.1)
+- **Context:** Provider credentials (OAuth refresh tokens, SMTP/IMAP passwords) must never reach the browser, logs, or PostgREST. The Scala service is the only trusted writer; Supabase Vault is not used because credentials are read exclusively by the API/worker service connection, not by SQL clients.
+- **Decision:**
+  - Algorithm: AES-256-GCM (`CredentialEncryptor` in `arcadence-core`). Ciphertext layout: 12-byte random nonce ‖ ciphertext ‖ 16-byte GCM tag. Authentication failures (wrong key, tampering) are indistinguishable by design and surfaced as `DecryptFailed.Rejected`, never exceptions.
+  - Key management: exactly one 32-byte key provisioned out-of-band as `EMAIL_ENCRYPTION_KEY` (base64), validated at API startup (fail-fast; wrong length or non-base64 refuses boot). `account_credentials.encryption_key_version` (currently 1) tags ciphertexts so a future rotation re-encrypts lazily without a flag day.
+  - Storage: `account_credentials` carries RLS enabled with **no policies** and revoked grants for `anon`/`authenticated` — PostgREST can never read or write it; only the service connection (which bypasses RLS) touches the table.
+  - Hygiene: disconnecting an account purges its credentials row; deleting an account cascades credentials. No API response shape includes credential fields (enforced by integration test).
+- **Consequences:** Key loss is unrecoverable by design — generation and backup are product-owner manual-setup steps (`docs/MANUAL_SETUP.md`). Key rotation requires a lazy re-encrypt pass (planned with the first rotation need, not before).

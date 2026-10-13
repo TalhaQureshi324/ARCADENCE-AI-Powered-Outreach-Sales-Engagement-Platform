@@ -51,6 +51,14 @@ flowchart LR
 - **Supabase Realtime** subscribes the browser directly to customer-facing live updates (inbox, campaign progress) where suitable.
 - Every feature ships loading, success, empty, validation, error, and permission-denied states.
 
+### 2.1b Provider adapter layer (Phase 2, in `arcadence-core`)
+
+- **`EmailProvider` trait** — the single contract every provider adapter implements: authorization completion, connection validation, message submission, threaded replies, inbox synchronization (cursor-based), health checks, token refresh, and access revocation. Adapters return typed `ProviderError` values (invalid credentials / permission denied / rate limited / throttled / unreachable) — never exceptions across the boundary.
+- **Capability matrix** (`ProviderCapabilities`) — what each provider supports (send, inbox sync, replies, token refresh, health checks) declared separately from the adapter; the API capability endpoint and the dashboard connect cards render from this matrix, never from hardcoded UI assumptions.
+- **Account state machine** (`EmailAccountStatus`) — `connected / reconnect_required / rate_limited / suspended / error / disconnected` with an explicit legal-transition matrix enforced API-side; transitions write `account_health_events` (the dashboard health trail) and are audited.
+- **Credential encryption** (`CredentialEncryptor`, ADR-0020) — AES-256-GCM; adapters persist secrets only through the caller-provided store callback, so adapter code never touches ciphertext or keys.
+- Status: the contract, matrix, state machine and encryptor are implemented and tested (Phase 2.1); concrete Gmail (2.2), Microsoft Graph (2.3) and SMTP/IMAP (2.4) adapters implement the trait in their subphases.
+
 ### 2.2 Supabase (platform of record)
 
 | Capability | Usage |

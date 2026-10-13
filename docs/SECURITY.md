@@ -30,7 +30,7 @@
 
 ## 4. Data protection
 
-- **Provider credentials** (OAuth refresh tokens, SMTP/IMAP passwords) are stored encrypted at rest. Envelope encryption design (key management via environment/KMS-held master key vs. database-level primitives such as pgsodium) is finalized in the email-connections phase and recorded here + ADR.
+- **Provider credentials** (OAuth refresh tokens, SMTP/IMAP passwords) are stored encrypted at rest with AES-256-GCM (`CredentialEncryptor`, arcadence-core; ADR-0020): 12-byte random nonces, 16-byte auth tags, key held in the `EMAIL_ENCRYPTION_KEY` environment variable (base64, 32 bytes, validated at startup), ciphertexts tagged with `encryption_key_version` for future rotation. The `account_credentials` table has RLS enabled with **no policies** (PostgREST can never read it); disconnecting purges credentials; no API response includes credential fields (integration-tested). Wrong-key/tamper detections are indistinguishable by design.
 - **Storage:** private buckets only; access via short-lived signed URLs minted after authorization (ADR-0006).
 - **PII discipline:** leads/contacts contain personal data — least-privilege defaults, no PII or credentials in logs, deletion pathways honored (GDPR-aligned retention rules defined in the compliance workstream).
 

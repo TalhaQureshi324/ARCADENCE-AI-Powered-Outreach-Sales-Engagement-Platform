@@ -58,6 +58,7 @@ lazy val core = (project in file("modules/core"))
     buildInfoOptions += BuildInfoOption.BuildTime,
     libraryDependencies ++= Seq(
       "org.typelevel"  %% "cats-core"   % V.catsCore,
+      "org.typelevel"  %% "cats-effect" % V.catsEffect,
       "org.tpolecat"   %% "doobie-core" % V.doobie,
       "org.postgresql" % "postgresql"   % V.postgres
     )

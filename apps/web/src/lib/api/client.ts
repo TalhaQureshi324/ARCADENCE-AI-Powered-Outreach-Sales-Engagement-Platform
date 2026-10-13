@@ -135,3 +135,111 @@ export const workspaceSettingsApi = {
       body: JSON.stringify(patch),
     }),
 };
+
+export interface EmailProviderDto {
+  provider: string;
+  label: string;
+  authType: string;
+  canSend: boolean;
+  canSyncInbox: boolean;
+  canSendReply: boolean;
+  canRefreshToken: boolean;
+  hasHealthCheck: boolean;
+  permissionsSummary: string;
+  connectFlow: string;
+}
+
+export const emailProvidersApi = {
+  list: () => apiFetch<EmailProviderDto[]>("/api/v1/email-providers"),
+};
+
+export interface AccountGroupDto {
+  id: string;
+  name: string;
+  accountCount: number;
+  createdAt: string;
+}
+
+export const accountGroupsApi = {
+  list: (workspaceId: string) =>
+    apiFetch<AccountGroupDto[]>(`/api/v1/workspaces/${workspaceId}/account-groups`),
+  create: (workspaceId: string, name: string) =>
+    apiFetch<AccountGroupDto>(`/api/v1/workspaces/${workspaceId}/account-groups`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  rename: (workspaceId: string, groupId: string, name: string) =>
+    apiFetch<AccountGroupDto>(`/api/v1/workspaces/${workspaceId}/account-groups/${groupId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }),
+  remove: (workspaceId: string, groupId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/account-groups/${groupId}`, {
+      method: "DELETE",
+    }),
+};
+
+export interface EmailAccountDto {
+  id: string;
+  accountGroupId: string | null;
+  accountGroupName: string | null;
+  provider: string;
+  emailAddress: string;
+  displayName: string | null;
+  status: string;
+  statusMessage: string | null;
+  dailySendCap: number | null;
+  isDefault: boolean;
+  lastSyncedAt: string | null;
+  createdAt: string;
+}
+
+export interface HealthEventDto {
+  id: string;
+  eventType: string;
+  message: string | null;
+  occurredAt: string;
+}
+
+export const emailAccountsApi = {
+  list: (workspaceId: string) =>
+    apiFetch<EmailAccountDto[]>(`/api/v1/workspaces/${workspaceId}/email-accounts`),
+  get: (workspaceId: string, accountId: string) =>
+    apiFetch<EmailAccountDto>(`/api/v1/workspaces/${workspaceId}/email-accounts/${accountId}`),
+  update: (
+    workspaceId: string,
+    accountId: string,
+    patch: {
+      displayName?: string | null;
+      accountGroupId?: string | null;
+      dailySendCap?: number | null;
+    },
+  ) =>
+    apiFetch<EmailAccountDto>(`/api/v1/workspaces/${workspaceId}/email-accounts/${accountId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  pause: (workspaceId: string, accountId: string) =>
+    apiFetch<EmailAccountDto>(
+      `/api/v1/workspaces/${workspaceId}/email-accounts/${accountId}/pause`,
+      { method: "POST" },
+    ),
+  resume: (workspaceId: string, accountId: string) =>
+    apiFetch<EmailAccountDto>(
+      `/api/v1/workspaces/${workspaceId}/email-accounts/${accountId}/resume`,
+      { method: "POST" },
+    ),
+  disconnect: (workspaceId: string, accountId: string) =>
+    apiFetch<EmailAccountDto>(
+      `/api/v1/workspaces/${workspaceId}/email-accounts/${accountId}/disconnect`,
+      { method: "POST" },
+    ),
+  remove: (workspaceId: string, accountId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/email-accounts/${accountId}`, {
+      method: "DELETE",
+    }),
+  health: (workspaceId: string, accountId: string) =>
+    apiFetch<HealthEventDto[]>(
+      `/api/v1/workspaces/${workspaceId}/email-accounts/${accountId}/health`,
+    ),
+};

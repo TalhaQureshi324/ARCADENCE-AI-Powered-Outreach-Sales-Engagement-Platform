@@ -65,6 +65,11 @@ object Main extends IOApp:
             authorizer = authorizer,
             appOrigin = "http://localhost:3000"
           )
+          val emailAccountRoutes = new EmailAccountRoutes(
+            authenticator = authenticator,
+            repos = new EmailAccountRepos(transactor),
+            authorizer = authorizer
+          )
 
           val dbReady: IO[Boolean] =
             sql"select 1"
@@ -93,7 +98,7 @@ object Main extends IOApp:
           // Hardening: per-caller rate limiting + security headers (Phase 1.4).
           val hardenedRoutes: HttpRoutes[IO] =
             RateLimit(config.rateLimitPerMinute)(
-              SecurityHeaders(workspaceRoutes.http)
+              SecurityHeaders(workspaceRoutes.http <+> emailAccountRoutes.http)
             )
 
           val allRoutes: HttpRoutes[IO] =

@@ -78,20 +78,37 @@ erDiagram
 | `workspace_member` | Membership + role | `id`, `workspace_id` FK, `user_id` (= auth.users.id), `role workspace_role` | `unique(workspace_id, user_id)` | `user_id` |
 | `invitation` | Pending member invites | `id`, `workspace_id` FK, `email`, `role`, `token`, `invited_by`, `expires_at`, `accepted_at` | `unique(token)`, `unique(workspace_id, lower(email))` where not accepted | `workspace_id`, `email` |
 
-### 6.2 Email connections
+### 6.2 Email accounts (implemented in `20261013090000`, Phase 2.1)
+
+> Naming: the Phase 0 provisional design called these `email_connection` /
+> `email_credential`; the Phase 2 plan (product owner) names them
+> `email_accounts` / `account_credentials` — see ADR-0019. Later tables that
+> reference a sending account (campaign assignments, conversations, messages)
+> FK to `email_accounts.id`.
 
 ```mermaid
 erDiagram
-    workspace ||--o{ email_connection : has
-    email_connection ||--o| email_credential : "secured by"
+    workspace ||--o{ email_accounts : has
+    workspace ||--o{ account_group : has
+    email_accounts }o--o| account_group : "grouped by"
+    email_accounts ||--o| account_credentials : "secured by"
+    email_accounts ||--o{ account_health_events : "reports"
+    email_accounts ||--o{ provider_sync_state : "cursors"
+    workspace ||--o{ sender_domains : "verified via"
 ```
 
 | Table | Purpose | Key columns | Unique / constraints | Indexes |
 | --- | --- | --- | --- | --- |
-| `email_connection` | Gmail / Microsoft / SMTP-IMAP sending+receiving account | `id`, `workspace_id` FK, `provider email_provider`, `email_address`, `display_name`, `status connection_status`, `auth_error text`, `daily_send_cap`, `is_default bool` | `unique(workspace_id, lower(email_address))` | `(workspace_id, status)` |
-| `email_credential` | Encrypted secrets, 1:1 with connection | `id`, `email_connection_id` FK unique, `kind oauth2|password`, `encrypted_blob bytea`, `encryption_key_version int`, `expires_at` (token expiry) | unique(connection) | — |
+| `account_group` | Operator-defined grouping of accounts | `id`, `workspace_id` FK, `name` (1–80) | unique index `(workspace_id, lower(name))` | `(workspace_id)` |
+| `email_accounts` | Gmail / Microsoft / SMTP-IMAP sending+receiving identity | `id`, `workspace_id` FK, `account_group_id` FK null (group delete → null), `provider email_provider`, `email_address`, `display_name`, `status connection_status` default `disconnected`, `status_message` (safe provider error), `daily_send_cap` (1–10000, null = workspace default), `signature`, `is_default`, `last_synced_at` | unique index `(workspace_id, lower(email_address))` | `(workspace_id, status)`, `(account_group_id)` |
+| `account_credentials` | Encrypted secrets, 1:1 with an account | `id`, `email_account_id` FK unique cascade, `kind oauth2\|password`, `encrypted_blob bytea`, `encryption_key_version int`, `expires_at` | unique(account) | — |
+| `sender_domains` | Custom sending domain registry (SPF/DKIM lifecycle in later phases) | `id`, `workspace_id` FK, `domain`, `verification_status unverified\|pending\|verified\|failed`, `dns_records jsonb`, `verified_at`, `last_checked_at` | unique index `(workspace_id, lower(domain))` | `(workspace_id)` |
+| `account_health_events` | Append-only lifecycle/health trail feeding dashboard indicators | `id`, `workspace_id` FK, `email_account_id` FK cascade, `event_type account_health_event_type`, `message`, `details jsonb`, `occurred_at` | — | `(email_account_id, occurred_at desc)` |
+| `provider_sync_state` | Durable per-account/per-direction sync cursors | `id`, `email_account_id` FK cascade, `direction inbox\|sending`, `sync_status idle\|syncing\|error`, `cursor jsonb`, `last_error`, `last_synced_at` | unique `(email_account_id, direction)` | — |
 
-Encrypted columns are written only by the Scala server (envelope encryption; key management in `docs/SECURITY.md` §4). Never exposed to the browser or logs.
+Account states (`connection_status`, Phase 2 plan): `connected`, `reconnect_required`, `rate_limited`, `suspended`, `error`, `disconnected`. Transitions are enforced in the Scala API state machine (`EmailAccountStatus.canTransitionTo`), recorded as health events, and applied race-safely (guarded UPDATE).
+
+Credentials are written only by the Scala server (AES-256-GCM envelope encryption, ADR-0020; key management in `docs/SECURITY.md` §4). `account_credentials` has RLS enabled with **no policies** — PostgREST can neither read nor write it; only the trusted service connection touches it. Secrets are never returned by any API response or written to logs.
 
 ### 6.3 Contacts & lists
 
@@ -224,7 +241,7 @@ erDiagram
 | --- | --- |
 | `workspace_role` | owner, admin, campaign_manager, member, viewer (campaign_manager added in `20261012100000`) |
 | `email_provider` | gmail, microsoft, smtp_imap |
-| `connection_status` | connected, auth_error, syncing, paused, disconnected |
+| `connection_status` | connected, reconnect_required, rate_limited, suspended, error, disconnected (replaced provisional values in `20261013090000`) |
 | `contact_verification` | unknown, valid, risky, invalid |
 | `contact_state` | active, unsubscribed, complained, bounced |
 | `field_type` | text, number, date, boolean, url |
@@ -242,6 +259,7 @@ erDiagram
 | `activity_type` | note, call, meeting, task, email_linked |
 | `ai_kind` | campaign_copy, reply_draft, lead_summary, other |
 | `ai_status` | succeeded, failed |
+| `account_health_event_type` | connected, disconnected, reconnect_required, token_refreshed, rate_limited, sync_error, send_error, paused, resumed, test_succeeded, test_failed |
 | `subscription_status` | trialing, active, past_due, canceled |
 
 ---
