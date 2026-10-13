@@ -71,12 +71,23 @@ Legend: ✅ implemented · ⬜ designed. Roles: O=owner, A=admin, M=member, V=vi
 - ⬜ `PATCH|DELETE /api/v1/workspaces/{workspaceId}/members/{userId}` — O (role change/remove)
 - ⬜ `POST /api/v1/invitations/accept` — invited user
 
-### 3.3 Email connections — Phase 2
+### 3.3 Email accounts — Phase 2
 
-- ⬜ `GET|POST /api/v1/workspaces/{id}/email-connections`
-- ⬜ `GET /api/v1/email-connections/oauth/{provider}/start` → consent redirect; `GET .../callback` (state-validated)
-- ⬜ `PATCH|DELETE /api/v1/workspaces/{id}/email-connections/{connId}` (pause/resume/disconnect; A/M+)
-- ⬜ `POST .../{connId}/test-send` — verification email (M+)
+Implemented (2.1):
+
+- ✅ `GET /api/v1/email-providers` — capability matrix (authenticated); no secrets
+- ✅ `GET /api/v1/workspaces/{id}/email-accounts` (view) · `GET .../{accountId}` (view)
+- ✅ `PATCH .../{accountId}` — displayName / accountGroupId / dailySendCap (M+; absent = unchanged, explicit null = clear)
+- ✅ `POST .../{accountId}/pause` · `/resume` · `/disconnect` (M+; state-machine validated, audited, disconnect purges credentials)
+- ✅ `DELETE .../{accountId}` (M+; cascades credentials, health, sync state)
+- ✅ `GET .../{accountId}/health` (view) — recent account_health_events
+- ✅ `GET|POST /api/v1/workspaces/{id}/account-groups` (view / M+) · `PATCH|DELETE .../account-groups/{groupId}` (M+)
+
+Planned:
+
+- ⬜ (2.2) Gmail OAuth: `GET /api/v1/email-connections/oauth/google/start` → consent; `GET .../callback` (state-validated)
+- ⬜ (2.3) Microsoft OAuth equivalents
+- ⬜ (2.4) SMTP/IMAP connect (`POST .../email-accounts` with TLS settings), `POST .../{connId}/test-send`
 
 ### 3.4 Leads & lists — Phase 3
 

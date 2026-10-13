@@ -22,7 +22,7 @@ Verify any machine with `scripts/check-toolchain.sh`. Windows notes: winget inst
 
 ## 2. Environment variables
 
-Copy each app's `.env.example` to `.env.local` in the same directory — dev scripts source these automatically. **Never commit real values** (`.env*` except `.env.example` is git-ignored).
+Copy each app's `.env.example` to `.env.local` in the same directory — dev scripts source these automatically. **Never commit real values** (`.env*` except `.env.example` is git-ignored). For the API, `EMAIL_ENCRYPTION_KEY` is required since Phase 2.1: set it to `openssl rand -base64 32` output — the API refuses to start without a valid 32-byte key.
 
 | Variable | Scope | Secret? | Notes |
 | --- | --- | --- | --- |

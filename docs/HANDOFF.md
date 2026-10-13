@@ -6,6 +6,36 @@
 
 ---
 
+## 2026-10-13 — Phase 2 / Subphase 2.1: Email account architecture
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **Database (migration `20261013090000_email_accounts.sql`)**: `email_accounts`, `account_credentials`, `sender_domains`, `account_groups`, `account_health_events`, `provider_sync_state` per the Phase 2 plan (naming supersedes the provisional `email_connection`/`email_credential` — ADR-0019). `connection_status` enum takes the Phase 2 states (connected, reconnect_required, rate_limited, suspended, error, disconnected); new `account_health_event_type` enum. RLS mirrors tenancy tables; `account_credentials` is RLS-locked with **no policies** + revoked grants (PostgREST can never touch it). Functional unique indexes on `(workspace_id, lower(email_address))`, group names and domains.
+- **Core (arcadence-core)**: `EmailProvider` trait — the adapter contract for connection validation, submission, replies, cursor-based inbox sync, health checks, token refresh, revocation, with typed `ProviderError` values; `ProviderCapabilities` static capability matrix (single source for the API + dashboard cards); `EmailAccountStatus` state machine with explicit legal-transition matrix; `CredentialEncryptor` — AES-256-GCM (12-byte nonce ‖ ciphertext ‖ tag), key versioning, tamper→`DecryptFailed.Rejected` (ADR-0020). cats-effect added to core deps.
+- **Config**: `EMAIL_ENCRYPTION_KEY` (base64, 32 bytes) required at API startup — fail-fast with aggregated errors; local key generated into git-ignored `.env.local`; `.env.example`, compose and SETUP/MANUAL_SETUP docs updated.
+- **API**: `GET /api/v1/email-providers` (capability matrix); workspace-scoped email-accounts list/get/patch (absent=unchanged, explicit null=clear via null-aware circe decoder)/pause/resume/disconnect/delete + `/health` trail; account-groups CRUD with duplicate-name 409. New `manage_email_accounts` permission (campaign_manager+; viewers/members read-only). All transitions guarded-UPDATE race-safe, health-event + audit logged; disconnect purges credentials.
+- **Web**: `/app/email-accounts` — provider connection cards (capability lists, OAuth vs TLS badges, honest "setup arrives in subphase 2.2/2.3/2.4" availability), account groups manager (create/rename inline/two-step delete), accounts table (status dot+badge, provider badge, group assign select, daily cap, last sync, pause/resume/disconnect/remove actions, expandable health-events panel), permission-gated UI. Sidebar nav item + api client additions.
+
+### Bugs found and fixed during 2.1
+
+1. **circe explicit-null decoding** (caught by integration test): derived `Option[Option[T]]` decoders map JSON `null` to `None` — "null clears the value" silently never reached the repo. Fixed with a null-aware hand-written decoder on `UpdateAccountRequest`.
+2. Doobie `fragments.intercalate` does not exist in 1.0.0-RC12 — SET clauses built via fragment reduction.
+3. Local `supabase db reset` required after a partial migration run; expression-unique constraints converted to unique indexes (Postgres does not allow `unique (a, lower(b))` as a table constraint).
+
+### Tested (evidence)
+
+- Scala `Test/test` with `TEST_DATABASE_URL` → **85/85** (worker 2 · core 37 incl. CredentialEncryptorSpec 7 + EmailAccountStatusSpec 7 + ProviderCapabilitiesSpec 5 + ConfigSpec key-validation 2 · api 46 incl. EmailAccountIntegrationSpec 14: capability matrix, group CRUD + duplicate 409, viewer/member read-manage split, owner+viewer+outsider matrix, credential-field leak check, lifecycle pause/resume/disconnect + 409 on illegal transition, credential purge on disconnect, health trail, cascade delete, cross-tenant end-state).
+- `scalafmtAll` + `scalafmtCheckAll` → success. Web: Vitest **25/25**, lint clean (new files), `next build` green with `/app/email-accounts` registered.
+- **Playwright 9/9** (auth 6 · shell 1 · multi-org 1 · new email-accounts spec: signup → workspace → provider cards incl. honest availability badges → groups create/rename/delete → empty state). One strict-mode locator fix during the run (getByLabel substring matched two inputs).
+- Live: API restarted with new config; `GET /api/v1/email-providers` unauthenticated → 401 envelope with all five security headers + request id.
+
+### Notes
+
+- Local Supabase stack was `db reset` during development — local e2e users/workspace rows were recreated fresh by the suites; no data of record is kept locally.
+- Docker Desktop stopped mid-session (Windows shell crash); restarted, stack recovered.
+
 ## 2026-10-12 — Phase 1 / Subphase 1.4: Workspace administration & hardening
 
 **Status:** ✅ Completed and pushed — **Phase 1 milestone**

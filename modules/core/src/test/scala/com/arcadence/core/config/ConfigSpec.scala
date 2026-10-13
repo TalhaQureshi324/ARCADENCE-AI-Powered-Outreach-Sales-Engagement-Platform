@@ -2,7 +2,12 @@ package com.arcadence.core.config
 
 import munit.FunSuite
 
+import java.util.Base64
+
 final class ConfigSpec extends FunSuite:
+
+  private val testEncryptionKey: String =
+    Base64.getEncoder.encodeToString(Array.fill(32)(7.toByte))
 
   private val validEnv = Map(
     "API_PORT" -> "9000",
@@ -10,7 +15,8 @@ final class ConfigSpec extends FunSuite:
     "DATABASE_URL" -> "postgresql://postgres:secret@db.example.com:5432/app",
     "SUPABASE_JWT_ISSUER" -> "https://ref.supabase.co/auth/v1",
     "SUPABASE_JWT_AUDIENCE" -> "ref",
-    "SUPABASE_JWKS_URL" -> "https://ref.supabase.co/auth/v1/.well-known/jwks.json"
+    "SUPABASE_JWKS_URL" -> "https://ref.supabase.co/auth/v1/.well-known/jwks.json",
+    "EMAIL_ENCRYPTION_KEY" -> testEncryptionKey
   )
 
   test("ApiConfig.fromEnv requires database and JWT settings") {
@@ -21,7 +27,8 @@ final class ConfigSpec extends FunSuite:
       "DATABASE_URL",
       "SUPABASE_JWT_ISSUER",
       "SUPABASE_JWT_AUDIENCE",
-      "SUPABASE_JWKS_URL"
+      "SUPABASE_JWKS_URL",
+      "EMAIL_ENCRYPTION_KEY"
     )
       .foreach(name =>
         assert(error.contains(name), s"error must mention $name")
@@ -41,7 +48,8 @@ final class ConfigSpec extends FunSuite:
           jwtIssuer = validEnv("SUPABASE_JWT_ISSUER"),
           jwtAudience = validEnv("SUPABASE_JWT_AUDIENCE"),
           jwksUrl = validEnv("SUPABASE_JWKS_URL"),
-          rateLimitPerMinute = 120
+          rateLimitPerMinute = 120,
+          credentialEncryptionKey = testEncryptionKey
         )
       )
     )
@@ -59,10 +67,24 @@ final class ConfigSpec extends FunSuite:
           jwtIssuer = validEnv("SUPABASE_JWT_ISSUER"),
           jwtAudience = validEnv("SUPABASE_JWT_AUDIENCE"),
           jwksUrl = validEnv("SUPABASE_JWKS_URL"),
-          rateLimitPerMinute = 120
+          rateLimitPerMinute = 120,
+          credentialEncryptionKey = testEncryptionKey
         )
       )
     )
+  }
+
+  test("ApiConfig.fromEnv rejects a non-base64 encryption key") {
+    val result = ApiConfig.fromEnv(
+      validEnv + ("EMAIL_ENCRYPTION_KEY" -> "definitely not base64 !!!")
+    )
+    assert(result.left.exists(_.contains("EMAIL_ENCRYPTION_KEY")))
+  }
+
+  test("ApiConfig.fromEnv rejects an encryption key that is not 32 bytes") {
+    val short = Base64.getEncoder.encodeToString(Array.fill(16)(1.toByte))
+    val result = ApiConfig.fromEnv(validEnv + ("EMAIL_ENCRYPTION_KEY" -> short))
+    assert(result.left.exists(_.contains("EMAIL_ENCRYPTION_KEY")))
   }
 
   test("ApiConfig.fromEnv treats blank values as unset") {

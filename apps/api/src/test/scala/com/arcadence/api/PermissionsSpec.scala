@@ -22,8 +22,11 @@ final class PermissionsSpec extends FunSuite:
     val member = Permissions.forRole(Member)
     val manager = Permissions.forRole(CampaignManager)
     assert(manager.contains(ManageCampaigns))
+    assert(manager.contains(ManageEmailAccounts))
     assert(!manager.contains(ManageMembers))
-    assert(manager.subsetOf(member ++ Set(ManageCampaigns)))
+    assert(
+      manager.subsetOf(member ++ Set(ManageCampaigns, ManageEmailAccounts))
+    )
   }
 
   test("admin manages members but not workspace-level danger zone") {
@@ -40,6 +43,7 @@ final class PermissionsSpec extends FunSuite:
         ViewWorkspace,
         EditContent,
         ManageCampaigns,
+        ManageEmailAccounts,
         ManageMembers,
         ManageWorkspace
       )
