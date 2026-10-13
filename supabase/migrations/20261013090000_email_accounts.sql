@@ -103,7 +103,18 @@ create table public.account_credentials (
 );
 
 alter table public.account_credentials enable row level security;
-revoke all on public.account_credentials from anon, authenticated;
+-- Revoke PostgREST access when the Supabase roles exist (plain PostgreSQL
+-- in CI has no anon/authenticated roles — keep the migration portable).
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'anon') then
+    execute 'revoke all on public.account_credentials from anon';
+  end if;
+  if exists (select 1 from pg_roles where rolname = 'authenticated') then
+    execute 'revoke all on public.account_credentials from authenticated';
+  end if;
+end
+$$;
 
 create trigger account_credentials_set_updated_at before update on public.account_credentials
   for each row execute function public.set_updated_at();

@@ -42,9 +42,7 @@ test.describe("email accounts page", () => {
     await expect(page.getByText("Setup arrives in subphase 2.4")).toBeVisible();
 
     // Accounts table shows the honest empty state.
-    await expect(
-      page.getByText("No email accounts connected yet")
-    ).toBeVisible();
+    await expect(page.getByText("No email accounts connected yet")).toBeVisible();
 
     // Create an account group.
     await page.getByLabel("New group name").fill("EU senders");

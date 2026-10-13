@@ -37,9 +37,7 @@ import {
 } from "@/lib/api/client";
 
 type LoadState<T> =
-  | { kind: "loading" }
-  | { kind: "loaded"; data: T }
-  | { kind: "error"; message: string };
+  { kind: "loading" } | { kind: "loaded"; data: T } | { kind: "error"; message: string };
 
 function errorMessage(e: unknown): string {
   return e instanceof ApiError ? e.message : "Something went wrong — is the API running?";
@@ -152,8 +150,7 @@ function ProvidersSection() {
   }, []);
 
   if (providers.kind === "loading") return <Skeleton className="h-44" />;
-  if (providers.kind === "error")
-    return <Alert variant="error">{providers.message}</Alert>;
+  if (providers.kind === "error") return <Alert variant="error">{providers.message}</Alert>;
 
   return (
     <section aria-label="Available providers">
@@ -167,7 +164,10 @@ function ProvidersSection() {
                 {p.authType === "oauth2" ? "OAuth 2.0" : "TLS + password"}
               </Badge>
             </div>
-            <ul className="text-muted-foreground mt-3 space-y-1 text-xs" aria-label={`${p.label} capabilities`}>
+            <ul
+              className="text-muted-foreground mt-3 space-y-1 text-xs"
+              aria-label={`${p.label} capabilities`}
+            >
               {p.canSend && <li>✓ Campaign + test sends</li>}
               {p.canSyncInbox && <li>✓ Inbox synchronization</li>}
               {p.canSendReply && <li>✓ Threaded replies</li>}
@@ -185,8 +185,8 @@ function ProvidersSection() {
             <div className="border-border mt-4 border-t pt-3">
               <Badge tone="warning">Setup arrives in {p.connectFlow}</Badge>
               <p className="text-muted-foreground mt-2 text-xs">
-                The connect flow is built in {p.connectFlow}; provider-console
-                prerequisites are listed in docs/MANUAL_SETUP.md.
+                The connect flow is built in {p.connectFlow}; provider-console prerequisites are
+                listed in docs/MANUAL_SETUP.md.
               </p>
             </div>
           </Card>
@@ -319,9 +319,7 @@ function GroupsSection({ workspaceId, myRole }: { workspaceId: string; myRole: s
                           onChange={(e) => setRenameValue(e.target.value)}
                           className="max-w-xs"
                         />
-                        <Button onClick={() => renameGroup(g.id)}>
-                          Save
-                        </Button>
+                        <Button onClick={() => renameGroup(g.id)}>Save</Button>
                         <Button
                           variant="ghost"
                           onClick={() => setRenamingId(null)}
@@ -524,8 +522,7 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
   }
 
   if (accounts.kind === "loading") return <Skeleton className="h-40" />;
-  if (accounts.kind === "error")
-    return <Alert variant="error">{accounts.message}</Alert>;
+  if (accounts.kind === "error") return <Alert variant="error">{accounts.message}</Alert>;
 
   return (
     <Card>
@@ -704,7 +701,11 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
                           aria-expanded={expandedId === a.id}
                           onClick={() => setExpandedId(expandedId === a.id ? null : a.id)}
                         >
-                          {expandedId === a.id ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          {expandedId === a.id ? (
+                            <ChevronDown size={14} />
+                          ) : (
+                            <ChevronRight size={14} />
+                          )}
                           <History size={14} />
                         </Button>
                       </div>
@@ -719,9 +720,7 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
             <div className="border-border bg-surface-sunken mt-3 rounded-lg border p-4">
               <h3 className="text-foreground text-sm font-semibold">Health events</h3>
               {health.kind === "loading" && <Skeleton className="mt-2 h-16" />}
-              {health.kind === "error" && (
-                <Alert variant="error">{health.message}</Alert>
-              )}
+              {health.kind === "error" && <Alert variant="error">{health.message}</Alert>}
               {health.kind === "loaded" && health.data.length === 0 && (
                 <p className="text-muted-foreground mt-2 text-sm">
                   No health events recorded for this account yet.
