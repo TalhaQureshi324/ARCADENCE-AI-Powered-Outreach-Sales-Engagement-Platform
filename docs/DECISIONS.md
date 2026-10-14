@@ -203,3 +203,16 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
   - **Revocation:** Graph has no per-app token revoke; disconnect calls `POST /me/revokeSignInSessions` (invalidates this app's refresh tokens) best-effort before the local credential purge.
   - **Error mapping:** 400 consent-family → InvalidCredentials; 401 → InvalidCredentials; 403 → PermissionDenied (tenant blocking surfaces here); 429 → RateLimited with Retry-After; 503/504 → Unreachable. Provider codes/messages are preserved in the (secret-free) detail.
 - **Consequences:** the dashboard treats Gmail and Microsoft identically (`configured` flag, connect button, reconnect, test send); account selection (`login_hint`) is wired at the authorize URL for future multi-account flows; real-Google/real-Microsoft verification both wait on the respective console credentials (MANUAL_SETUP 6a/7).
+
+## ADR-0023 — SMTP/IMAP adapter: Jakarta Mail (angus), mandatory TLS, server-side credential validation, UID cursors
+
+- **Date:** 2026-10-14 · **Status:** Accepted (Phase 2.4)
+- **Context:** The third provider path (configurable SMTP submission + IMAP retrieval) must complete the capability matrix without weakening security: no plaintext, no "disable two-factor" advice, and credentials that never leak through errors, logs, or responses.
+- **Decision:**
+  - **Library:** Jakarta Mail on the angus-mail implementation (`angus-mail` + `jakarta.mail-api`), blocking calls wrapped in `IO.blocking`. GreenMail (`greenmail`, test scope) provides REAL SMTP/IMAP servers for protocol-level tests, run in implicit-TLS mode with test-scoped JVM trust properties (cleared after the suite; production defaults always validate certificates).
+  - **Security modes:** `ssl` (implicit TLS) or `starttls` (`starttls.required=true` — the upgrade is mandatory, never opportunistic). Plaintext is rejected during shape validation, before any network attempt. Deployments may pin socket factories / trust anchors globally via the standard `mail.*` system properties, which the adapter exposes as session-level defaults (never overriding explicit settings).
+  - **Validation:** the connect endpoint validates credentials by REALLY signing in to both servers before creating the account; failures map to typed errors (auth failure → 400-family InvalidCredentials surfaced as 502 `provider_error`; unknown host / refused → Unreachable; TLS handshake → guidance to check the security mode). Passwords are never echoed in any detail, response, or log.
+  - **Duplicates:** same workspace + lower(email) → 409 `conflict` without a second server round-trip.
+  - **Cursors:** inbox sync pages newest-25 with the last seen IMAP UID as cursor (`jakarta.mail.UIDFolder`); CONDSTORE/QRESYNC and the unified sync engine arrive in Phase 6.
+  - **OAuth-only operations** (`completeAuthorization`, `refresh`, `revokeAccess`) return `NotSupported` values; disconnect simply purges the local encrypted credentials.
+- **Consequences:** all three providers now expose consistent capabilities through one registry; the connect form collects app-password-style credentials with explicit provider guidance (Google App Passwords / Entra app passwords / provider-specific permission notes in MANUAL_SETUP); TLS behavior against real production servers remains a provider-console verification item, noted in MANUAL_SETUP.

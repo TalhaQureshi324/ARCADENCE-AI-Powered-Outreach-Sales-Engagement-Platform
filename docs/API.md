@@ -92,7 +92,7 @@ Planned:
 - ✅ (2.3) `POST /api/v1/email-connections/oauth/microsoft/start` `{workspaceId}` → `{authorizeUrl}` (M+; tenant-aware authority, same signed-state shape; 503 `not_configured` without an app registration)
 - ✅ (2.3) `GET /api/v1/email-connections/oauth/microsoft/callback?code&state` — browser route → 303 `/app/email-accounts?microsoft=connected|reconnected|denied|invalid_state|expired|forbidden|not_configured|error`
 - ✅ (2.3) test-send / disconnect / capability `configured` are provider-agnostic — the shared `/test` endpoint moved to the email-accounts routes and routes through the adapter registry
-- ⬜ (2.4) SMTP/IMAP connect (`POST .../email-accounts` with TLS settings), `POST .../{connId}/test-send`
+- ✅ (2.4) `POST /api/v1/workspaces/{id}/email-accounts` `{emailAddress, displayName?, username, password, smtp{Host,Port,Security}, imap{Host,Port,Security}}` (M+) — credentials validated by real server sign-in before creation; 409 on duplicates; 502 `provider_error` (never echoes the password); `signature` now patchable on every account (explicit null clears); account payloads carry `signature` + inbox `syncStatus`/`syncError`
 
 ### 3.4 Leads & lists — Phase 3
 

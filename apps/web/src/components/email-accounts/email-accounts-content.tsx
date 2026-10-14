@@ -148,6 +148,7 @@ export function EmailAccountsContent() {
   const { workspaces, selected } = useWorkspaces();
   const [connectNotice, setConnectNotice] = useState<string | null>(null);
   const [noticeVariant, setNoticeVariant] = useState<"success" | "error" | "info">("info");
+  const [accountsVersion, setAccountsVersion] = useState(0);
 
   // OAuth callback landing: read ?gmail=..., show the outcome, clean the URL.
   useEffect(() => {
@@ -207,39 +208,59 @@ export function EmailAccountsContent() {
         />
       </Card>
       {connectNotice && <Alert variant={noticeVariant}>{connectNotice}</Alert>}
-      <ProvidersSection workspaceId={selected.id} myRole={selected.role} />
+      <ProvidersSection
+        workspaceId={selected.id}
+        myRole={selected.role}
+        onAccountCreated={() => setAccountsVersion((v) => v + 1)}
+      />
       <GroupsSection workspaceId={selected.id} myRole={selected.role} />
-      <AccountsSection workspaceId={selected.id} myRole={selected.role} />
+      <AccountsSection
+        workspaceId={selected.id}
+        myRole={selected.role}
+        refreshKey={accountsVersion}
+      />
     </div>
   );
 }
 
 // -- Provider connection cards ------------------------------------------------
 
-function ProvidersSection({ workspaceId, myRole }: { workspaceId: string; myRole: string }) {
+function ProvidersSection({
+  workspaceId,
+  myRole,
+  onAccountCreated,
+}: {
+  workspaceId: string;
+  myRole: string;
+  onAccountCreated: () => void;
+}) {
   const router = useRouter();
   const manageable = canManage(myRole);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [smtpFormOpen, setSmtpFormOpen] = useState(false);
   const [providers, setProviders] = useState<LoadState<EmailProviderDto[]>>({
     kind: "loading",
   });
 
   async function connect(providerId: string) {
-    if (!(OAUTH_PROVIDERS as readonly string[]).includes(providerId)) return;
-    setConnecting(true);
-    setConnectError(null);
-    try {
-      await startProviderConnect(workspaceId, "gmail"); // navigates away on success
-    } catch (e) {
-      if (isUnauthorized(e)) {
-        const { createClient } = await import("@/lib/supabase/client");
-        await createClient().auth.signOut();
-        router.push("/login?expired=1");
-        return;
+    if ((OAUTH_PROVIDERS as readonly string[]).includes(providerId)) {
+      setConnecting(true);
+      setConnectError(null);
+      try {
+        await startProviderConnect(workspaceId, providerId); // navigates away on success
+      } catch (e) {
+        if (isUnauthorized(e)) {
+          const { createClient } = await import("@/lib/supabase/client");
+          await createClient().auth.signOut();
+          router.push("/login?expired=1");
+          return;
+        }
+        setConnectError(errorMessage(e));
+        setConnecting(false);
       }
-      setConnectError(errorMessage(e));
-      setConnecting(false);
+    } else if (providerId === "smtp_imap") {
+      setSmtpFormOpen(true);
     }
   }
 
@@ -318,10 +339,9 @@ function ProvidersSection({ workspaceId, myRole }: { workspaceId: string; myRole
                 </>
               ) : (
                 <>
-                  <Badge tone="warning">Setup arrives in {p.connectFlow}</Badge>
+                  <Badge tone="warning">Not yet available</Badge>
                   <p className="text-muted-foreground mt-2 text-xs">
-                    The connect flow is built in {p.connectFlow}; provider-console prerequisites are
-                    listed in docs/MANUAL_SETUP.md.
+                    This provider&apos;s connect flow has not shipped yet.
                   </p>
                 </>
               )}
@@ -334,7 +354,200 @@ function ProvidersSection({ workspaceId, myRole }: { workspaceId: string; myRole
           </Card>
         ))}
       </div>
+      <ConnectSmtpImapDialog
+        open={smtpFormOpen}
+        workspaceId={workspaceId}
+        onClose={() => setSmtpFormOpen(false)}
+        onConnected={onAccountCreated}
+      />
     </section>
+  );
+}
+
+// -- SMTP/IMAP connect form ---------------------------------------------------
+
+const SECURITY_OPTIONS = [
+  { value: "ssl", label: "SSL/TLS (implicit)" },
+  { value: "starttls", label: "STARTTLS (upgrade)" },
+];
+
+function ConnectSmtpImapDialog({
+  open,
+  workspaceId,
+  onClose,
+  onConnected,
+}: {
+  open: boolean;
+  workspaceId: string;
+  onClose: () => void;
+  onConnected: () => void;
+}) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const emptyForm = {
+    emailAddress: "",
+    displayName: "",
+    username: "",
+    password: "",
+    smtpHost: "",
+    smtpPort: "587",
+    smtpSecurity: "starttls",
+    imapHost: "",
+    imapPort: "993",
+    imapSecurity: "ssl",
+  };
+  const [form, setForm] = useState(emptyForm);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function set(field: keyof typeof form, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submit() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await emailAccountsApi.create(workspaceId, {
+        emailAddress: form.emailAddress.trim(),
+        displayName: form.displayName.trim() || undefined,
+        username: form.username.trim(),
+        password: form.password,
+        smtpHost: form.smtpHost.trim(),
+        smtpPort: Number(form.smtpPort),
+        smtpSecurity: form.smtpSecurity,
+        imapHost: form.imapHost.trim(),
+        imapPort: Number(form.imapPort),
+        imapSecurity: form.imapSecurity,
+      });
+      toast("success", "SMTP/IMAP account connected and verified.");
+      setForm(emptyForm);
+      onClose();
+      onConnected();
+    } catch (e) {
+      if (isUnauthorized(e)) {
+        const { createClient } = await import("@/lib/supabase/client");
+        await createClient().auth.signOut();
+        router.push("/login?expired=1");
+        return;
+      }
+      setError(errorMessage(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title="Connect an SMTP/IMAP account"
+      description="Arcadence verifies the credentials by signing in to both servers (TLS required) before storing them encrypted. Use an app password where the provider demands one — never disable two-factor protection."
+    >
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <Input
+          aria-label="Email address"
+          placeholder="sender@yourdomain.com"
+          type="email"
+          required
+          value={form.emailAddress}
+          onChange={(e) => set("emailAddress", e.target.value)}
+        />
+        <Input
+          aria-label="Display name (optional)"
+          placeholder="e.g. Primary sender"
+          value={form.displayName}
+          onChange={(e) => set("displayName", e.target.value)}
+        />
+        <Input
+          aria-label="Username"
+          placeholder="usually the email address"
+          required
+          value={form.username}
+          onChange={(e) => set("username", e.target.value)}
+        />
+        <Input
+          aria-label="Password"
+          type="password"
+          required
+          value={form.password}
+          onChange={(e) => set("password", e.target.value)}
+        />
+        <div className="grid grid-cols-3 gap-2">
+          <Input
+            aria-label="SMTP host"
+            placeholder="smtp.example.com"
+            required
+            value={form.smtpHost}
+            onChange={(e) => set("smtpHost", e.target.value)}
+          />
+          <Input
+            aria-label="SMTP port"
+            type="number"
+            required
+            value={form.smtpPort}
+            onChange={(e) => set("smtpPort", e.target.value)}
+          />
+          <select
+            aria-label="SMTP security"
+            value={form.smtpSecurity}
+            onChange={(e) => set("smtpSecurity", e.target.value)}
+            className="border-border bg-surface text-foreground rounded-lg border px-2 py-2 text-sm"
+          >
+            {SECURITY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <Input
+            aria-label="IMAP host"
+            placeholder="imap.example.com"
+            required
+            value={form.imapHost}
+            onChange={(e) => set("imapHost", e.target.value)}
+          />
+          <Input
+            aria-label="IMAP port"
+            type="number"
+            required
+            value={form.imapPort}
+            onChange={(e) => set("imapPort", e.target.value)}
+          />
+          <select
+            aria-label="IMAP security"
+            value={form.imapSecurity}
+            onChange={(e) => set("imapSecurity", e.target.value)}
+            className="border-border bg-surface text-foreground rounded-lg border px-2 py-2 text-sm"
+          >
+            {SECURITY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        {error && <Alert variant="error">{error}</Alert>}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={submitting}>
+            Verify and connect
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 
@@ -549,7 +762,15 @@ function GroupsSection({ workspaceId, myRole }: { workspaceId: string; myRole: s
 
 // -- Accounts table --------------------------------------------------------------
 
-function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole: string }) {
+function AccountsSection({
+  workspaceId,
+  myRole,
+  refreshKey,
+}: {
+  workspaceId: string;
+  myRole: string;
+  refreshKey: number;
+}) {
   const router = useRouter();
   const { toast } = useToast();
   const manageable = canManage(myRole);
@@ -565,6 +786,9 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
   const [reconnecting, setReconnecting] = useState(false);
+  const [signatureAccountId, setSignatureAccountId] = useState<string | null>(null);
+  const [signatureValue, setSignatureValue] = useState("");
+  const [savingSignature, setSavingSignature] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -602,7 +826,7 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
     return () => {
       cancelled = true;
     };
-  }, [workspaceId]);
+  }, [workspaceId, refreshKey]);
 
   useEffect(() => {
     if (!expandedId) return;
@@ -647,6 +871,7 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
     try {
       await emailAccountsApi.test(workspaceId, testAccountId, testTo.trim());
       toast("success", `Test message to ${testTo.trim()} accepted by the provider.`);
+      rememberTestRecipient(testTo.trim());
       setTestAccountId(null);
       setTestTo("");
       await reload();
@@ -660,6 +885,55 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
       setTestError(errorMessage(e));
     } finally {
       setTesting(false);
+    }
+  }
+
+  /** Test-recipient selection: per-workspace history of verified recipients
+   * (localStorage — convenience only, never a send-list).
+   */
+  const [recentRecipients, setRecentRecipients] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      try {
+        const raw = localStorage.getItem(`arcadence-test-recipients-${workspaceId}`);
+        if (raw) setRecentRecipients(JSON.parse(raw) as string[]);
+      } catch {
+        // ignore malformed history
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId]);
+  function rememberTestRecipient(address: string) {
+    setRecentRecipients((current) => {
+      const next = [address, ...current.filter((a) => a !== address)].slice(0, 5);
+      try {
+        localStorage.setItem(`arcadence-test-recipients-${workspaceId}`, JSON.stringify(next));
+      } catch {
+        // storage unavailable — the input still works
+      }
+      return next;
+    });
+  }
+
+  async function saveSignature() {
+    if (!signatureAccountId) return;
+    setSavingSignature(true);
+    setActionError(null);
+    try {
+      await emailAccountsApi.update(workspaceId, signatureAccountId, {
+        signature: signatureValue.trim() === "" ? null : signatureValue,
+      });
+      toast("success", "Signature saved.");
+      setSignatureAccountId(null);
+      await reload();
+    } catch (e) {
+      setActionError(errorMessage(e));
+    } finally {
+      setSavingSignature(false);
     }
   }
 
@@ -726,7 +1000,7 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
         <EmptyState
           icon={<Mail size={22} />}
           title="No email accounts connected yet"
-          description="Connect Gmail from the Providers section above. Microsoft 365 and SMTP/IMAP arrive in subphases 2.3–2.4 (prerequisites in docs/MANUAL_SETUP.md)."
+          description="Connect Gmail, Microsoft 365 or SMTP/IMAP from the Providers section above (provider prerequisites in docs/MANUAL_SETUP.md)."
         />
       ) : (
         <>
@@ -739,6 +1013,7 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
                 <TH>Group</TH>
                 <TH>Daily cap</TH>
                 <TH>Last sync</TH>
+                <TH>Sync</TH>
                 <TH>
                   <span className="sr-only">Actions</span>
                 </TH>
@@ -820,6 +1095,19 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
                       </span>
                     </TD>
                     <TD>
+                      {a.syncError ? (
+                        <span className="text-danger text-xs" title={a.syncError}>
+                          Error
+                        </span>
+                      ) : a.syncStatus ? (
+                        <span className="text-muted-foreground text-xs capitalize">
+                          {a.syncStatus}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </TD>
+                    <TD>
                       <div className="flex items-center justify-end gap-1">
                         {manageable && a.status === "connected" && (
                           <Button
@@ -851,7 +1139,7 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
                             Disconnect
                           </Button>
                         )}
-                        {manageable && a.provider === "gmail" && a.status === "connected" && (
+                        {manageable && a.status === "connected" && (
                           <Button
                             variant="ghost"
                             aria-label={`Send test message from ${a.emailAddress}`}
@@ -862,6 +1150,18 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
                             }}
                           >
                             Test send
+                          </Button>
+                        )}
+                        {manageable && a.status === "connected" && (
+                          <Button
+                            variant="ghost"
+                            aria-label={`Edit signature for ${a.emailAddress}`}
+                            onClick={() => {
+                              setSignatureAccountId(a.id);
+                              setSignatureValue(a.signature ?? "");
+                            }}
+                          >
+                            Signature
                           </Button>
                         )}
                         {manageable &&
@@ -943,6 +1243,24 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
                 void runTestSend();
               }}
             >
+              {recentRecipients.length > 0 && (
+                <div
+                  className="flex flex-wrap items-center gap-1"
+                  aria-label="Recent test recipients"
+                >
+                  <span className="text-muted-foreground text-xs">Recent:</span>
+                  {recentRecipients.map((addr) => (
+                    <button
+                      key={addr}
+                      type="button"
+                      onClick={() => setTestTo(addr)}
+                      className="border-border bg-surface-sunken text-muted-foreground hover:text-foreground rounded-full border px-2 py-0.5 text-xs"
+                    >
+                      {addr}
+                    </button>
+                  ))}
+                </div>
+              )}
               <Input
                 aria-label="Recipient email address"
                 placeholder="you@example.com"
@@ -958,6 +1276,39 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
                 </Button>
                 <Button type="submit" loading={testing} disabled={!testTo.trim()}>
                   Send test message
+                </Button>
+              </div>
+            </form>
+          </Dialog>
+          <Dialog
+            open={signatureAccountId !== null}
+            onOpenChange={(open) => {
+              if (!open) setSignatureAccountId(null);
+            }}
+            title="Preferred signature"
+            description="Appended to plain-text campaign steps sent from this account (applies when campaigns reference the account signature)."
+          >
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveSignature();
+              }}
+            >
+              <textarea
+                aria-label="Signature"
+                value={signatureValue}
+                onChange={(e) => setSignatureValue(e.target.value)}
+                rows={5}
+                placeholder={"Best regards,\nYour Name"}
+                className="border-border bg-surface text-foreground focus-visible:outline-primary w-full rounded-lg border p-2 text-sm focus-visible:outline-2"
+              />
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="ghost" onClick={() => setSignatureAccountId(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" loading={savingSignature}>
+                  Save signature
                 </Button>
               </div>
             </form>

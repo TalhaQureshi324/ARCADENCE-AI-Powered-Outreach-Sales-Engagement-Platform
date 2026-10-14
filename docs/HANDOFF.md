@@ -8,6 +8,35 @@
 
 ---
 
+---
+
+## 2026-10-14 — Phase 2 / Subphase 2.4: SMTP/IMAP + completed email-account dashboard — PHASE 2 MILESTONE
+
+**Status:** ✅ Completed and pushed — **Phase 2 milestone (tag `phase-2`)**
+
+### Implemented
+
+- **SmtpImapProvider adapter (arcadence-core, `com.arcadence.core.email.smtpimap`)** — Jakarta Mail on angus behind the same 2.1 contract: shape validation (ports/hosts/TLS modes) before any network attempt, **mandatory TLS** (`ssl` implicit or `starttls.required` — no plaintext), real SMTP+IMAP sign-in validation, RFC 5322 submission (text/HTML alternative, In-Reply-To/References replies), IMAP INBOX retrieval newest-25 with the last seen UID as the durable cursor, typed error mapping (auth failure → InvalidCredentials; unknown host/refused → Unreachable; TLS handshake → security-mode guidance). OAuth-only operations return NotSupported values. System `mail.*` properties act as session defaults so deployments can pin trust anchors without code changes.
+- **Connect-by-credentials endpoint** — `POST /api/v1/workspaces/{id}/email-accounts`: permission-checked, shape-validated, credentials validated by REAL server sign-in before creation (failures → 502 `provider_error`, password never echoed anywhere), duplicates → 409 `conflict`, account + encrypted `password`-kind credentials + sync cursors + health + audit created on success.
+- **Dashboard completion** — signature is now settable/clearable on every account (PATCH explicit-null semantics, UI editor dialog); account payloads carry `signature` + inbox `syncStatus`/`syncError`; the accounts table shows a Sync column; the test-send dialog remembers recent test recipients per workspace (localStorage quick-picks); the SMTP/IMAP provider card offers a real connect form (host/port/security selects, app-password guidance) that surfaces server rejections honestly.
+- **Config** — no new required settings; the smtp_imap adapter is always registered (`configured=true`).
+
+### Tested (evidence)
+
+- Scala `Test/test` with `TEST_DATABASE_URL` → **152/152** (worker 2 · core 75 incl. **SmtpImapProviderSpec 8 over REAL GreenMail TLS servers**: dual login, wrong-password → InvalidCredentials without echo, unknown host → Unreachable, real message delivery, reply headers, UID cursor · api 75 incl. **SmtpImapFlowIntegrationSpec 7**: real-server validation before creation, duplicate 409, 502 provider error without password echo, signature set/clear, test send delivered through real SMTP, disconnect purge).
+- `scalafmtAll` success. Web: vitest 25/25 · lint clean · format clean · build green.
+- **Playwright 9/9** — incl. the SMTP/IMAP connect form rejecting a dead server (127.0.0.1:1) with a visible error, then cancelling; honest Google/Microsoft unconfigured cards; forged-state OAuth callback guard.
+
+### Notes / known issues
+
+- TLS behavior against production providers (Gmail/365 certificate chains) is verified by the first real connect per provider (docs/MANUAL_SETUP.md 8a); GreenMail covers protocol logic with its bundled self-signed cert, trusted only inside the test JVM and cleared afterwards.
+- GreenMail runs plain servers in some legacy examples — our suites use its TLS setups to match the adapter's mandatory-TLS posture.
+- Docker Desktop stopped mid-session again (Windows); restarted and the local stack recovered with no data loss.
+
+### Phase 2 milestone
+
+- `develop` merged to `main`, annotated tag **`phase-2`** pushed; CI green on both branches.
+
 ## 2026-10-14 — Phase 2 / Subphase 2.3: Microsoft 365 integration
 
 **Status:** ✅ Completed and pushed

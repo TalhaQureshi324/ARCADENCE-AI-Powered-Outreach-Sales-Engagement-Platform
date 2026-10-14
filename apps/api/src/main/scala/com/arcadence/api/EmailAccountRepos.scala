@@ -35,6 +35,8 @@ final class EmailAccountRepos(transactor: Transactor[IO]):
       signature: Option[String],
       isDefault: Boolean,
       lastSyncedAt: Option[OffsetDateTime],
+      syncStatus: Option[String],
+      syncError: Option[String],
       createdAt: OffsetDateTime
   )
 
@@ -42,9 +44,11 @@ final class EmailAccountRepos(transactor: Transactor[IO]):
       select a.id, a.workspace_id, a.account_group_id, g.name,
              a.provider, a.email_address, a.display_name, a.status,
              a.status_message, a.daily_send_cap, a.signature, a.is_default,
-             a.last_synced_at, a.created_at
+             a.last_synced_at, ss.sync_status, ss.last_error, a.created_at
       from public.email_accounts a
       left join public.account_group g on g.id = a.account_group_id
+      left join public.provider_sync_state ss
+        on ss.email_account_id = a.id and ss.direction = 'inbox'
     """
 
   implicit val accountRead: Read[AccountView] = Read[
@@ -62,6 +66,8 @@ final class EmailAccountRepos(transactor: Transactor[IO]):
         Option[String],
         Boolean,
         Option[OffsetDateTime],
+        Option[String],
+        Option[String],
         OffsetDateTime
     )
   ].map {
@@ -79,6 +85,8 @@ final class EmailAccountRepos(transactor: Transactor[IO]):
           sig,
           isDefault,
           lastSync,
+          syncStatus,
+          syncError,
           createdAt
         ) =>
       AccountView(
@@ -95,6 +103,8 @@ final class EmailAccountRepos(transactor: Transactor[IO]):
         sig,
         isDefault,
         lastSync,
+        syncStatus,
+        syncError,
         createdAt
       )
   }
@@ -178,7 +188,8 @@ final class EmailAccountRepos(transactor: Transactor[IO]):
   final case class AccountPatch(
       displayName: Option[Option[String]] = None,
       accountGroupId: Option[Option[UUID]] = None,
-      dailySendCap: Option[Option[Int]] = None
+      dailySendCap: Option[Option[Int]] = None,
+      signature: Option[Option[String]] = None
   )
 
   def updateAccount(
@@ -190,6 +201,7 @@ final class EmailAccountRepos(transactor: Transactor[IO]):
     patch.displayName.foreach(v => sets += fr"display_name = $v")
     patch.accountGroupId.foreach(v => sets += fr"account_group_id = $v")
     patch.dailySendCap.foreach(v => sets += fr"daily_send_cap = $v")
+    patch.signature.foreach(v => sets += fr"signature = $v")
     val assignments = sets.result()
     if assignments.isEmpty then IO.pure(0)
     else
@@ -270,6 +282,20 @@ final class EmailAccountRepos(transactor: Transactor[IO]):
             returning id
           """.query[UUID].unique
     yield (id, existing.isEmpty)).transact(transactor)
+
+  /** Creates a manually-connected (SMTP/IMAP) account; returns the new id. */
+  def createSmtpImapAccount(
+      workspaceId: UUID,
+      emailAddress: String,
+      displayName: Option[String]
+  ): IO[UUID] =
+    sql"""
+      insert into public.email_accounts
+        (workspace_id, provider, email_address, display_name, status)
+      values ($workspaceId, 'smtp_imap', $emailAddress, ${displayName},
+              'connected'::public.connection_status)
+      returning id
+    """.query[UUID].unique.transact(transactor)
 
   /** Upserts the encrypted credential row for an account. */
   def storeCredentials(
