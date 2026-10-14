@@ -451,7 +451,7 @@ final class GmailFlowIntegrationSpec extends CatsEffectSuite:
         case None      => fail("credentials row missing")
         case Some(row) =>
           assertEquals(row.kind, "oauth2")
-          registry.decryptCredentials(row.encryptedBlob) match
+          registry.decryptGmail(row.encryptedBlob) match
             case Right(g) =>
               assertEquals(g.refreshToken, Some("rt-flow"))
               assertEquals(g.accessToken, "at-flow")

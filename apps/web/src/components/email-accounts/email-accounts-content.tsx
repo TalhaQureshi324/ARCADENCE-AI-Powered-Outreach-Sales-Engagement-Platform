@@ -31,7 +31,7 @@ import {
   accountGroupsApi,
   emailAccountsApi,
   emailProvidersApi,
-  gmailConnectApi,
+  oauthConnectApi,
   type AccountGroupDto,
   type EmailAccountDto,
   type EmailProviderDto,
@@ -80,14 +80,30 @@ const CALLBACK_MESSAGES: Record<string, { variant: "success" | "error" | "info";
     variant: "error",
     text: "Google OAuth is not configured on this server (see docs/MANUAL_SETUP.md).",
   },
-  error: { variant: "error", text: "Google reported a problem completing the connection." },
+  error: { variant: "error", text: "The provider reported a problem completing the connection." },
 };
+
+const OAUTH_PROVIDERS = ["gmail", "microsoft"] as const;
+
+function unconfiguredNotice(providerId: string): { badge: string; hint: string } | null {
+  if (providerId === "gmail")
+    return {
+      badge: "Google OAuth not configured on this server",
+      hint: "Set GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET — steps in docs/MANUAL_SETUP.md.",
+    };
+  if (providerId === "microsoft")
+    return {
+      badge: "Microsoft OAuth not configured on this server",
+      hint: "Set MSFT_OAUTH_CLIENT_ID / MSFT_OAUTH_CLIENT_SECRET — steps in docs/MANUAL_SETUP.md.",
+    };
+  return null;
+}
 
 /** Asks the API for a state-signed authorize URL and navigates to Google's
  * consent screen (full-page navigation — the callback returns here).
  */
-async function startGmailConnect(workspaceId: string): Promise<void> {
-  const { authorizeUrl } = await gmailConnectApi.start(workspaceId);
+async function startProviderConnect(workspaceId: string, providerId: string): Promise<void> {
+  const { authorizeUrl } = await oauthConnectApi.start(providerId, workspaceId);
   window.location.href = authorizeUrl;
 }
 
@@ -139,7 +155,7 @@ export function EmailAccountsContent() {
     Promise.resolve().then(() => {
       if (cancelled) return;
       const params = new URLSearchParams(window.location.search);
-      const outcome = params.get("gmail");
+      const outcome = params.get("gmail") ?? params.get("microsoft");
       if (!outcome) return;
       const message = CALLBACK_MESSAGES[outcome] ?? {
         variant: "info" as const,
@@ -148,6 +164,7 @@ export function EmailAccountsContent() {
       setNoticeVariant(message.variant);
       setConnectNotice(message.text);
       params.delete("gmail");
+      params.delete("microsoft");
       params.delete("detail");
       const cleaned = params.toString();
       window.history.replaceState(
@@ -209,11 +226,11 @@ function ProvidersSection({ workspaceId, myRole }: { workspaceId: string; myRole
   });
 
   async function connect(providerId: string) {
-    if (providerId !== "gmail") return;
+    if (!(OAUTH_PROVIDERS as readonly string[]).includes(providerId)) return;
     setConnecting(true);
     setConnectError(null);
     try {
-      await startGmailConnect(workspaceId); // navigates away on success
+      await startProviderConnect(workspaceId, "gmail"); // navigates away on success
     } catch (e) {
       if (isUnauthorized(e)) {
         const { createClient } = await import("@/lib/supabase/client");
@@ -292,12 +309,11 @@ function ProvidersSection({ workspaceId, myRole }: { workspaceId: string; myRole
                     above.
                   </p>
                 )
-              ) : p.provider === "gmail" ? (
+              ) : unconfiguredNotice(p.provider) ? (
                 <>
-                  <Badge tone="warning">Google OAuth not configured on this server</Badge>
+                  <Badge tone="warning">{unconfiguredNotice(p.provider)!.badge}</Badge>
                   <p className="text-muted-foreground mt-2 text-xs">
-                    Set GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET — steps in
-                    docs/MANUAL_SETUP.md.
+                    {unconfiguredNotice(p.provider)!.hint}
                   </p>
                 </>
               ) : (
@@ -647,11 +663,11 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
     }
   }
 
-  async function reconnectGmail() {
+  async function reconnect(providerId: string) {
     setReconnecting(true);
     setActionError(null);
     try {
-      await startGmailConnect(workspaceId); // navigates away on success
+      await startProviderConnect(workspaceId, providerId); // navigates away on success
     } catch (e) {
       if (isUnauthorized(e)) {
         const { createClient } = await import("@/lib/supabase/client");
@@ -849,13 +865,13 @@ function AccountsSection({ workspaceId, myRole }: { workspaceId: string; myRole:
                           </Button>
                         )}
                         {manageable &&
-                          a.provider === "gmail" &&
+                          (OAUTH_PROVIDERS as readonly string[]).includes(a.provider) &&
                           (a.status === "reconnect_required" || a.status === "error") && (
                             <Button
                               variant="ghost"
                               loading={reconnecting}
                               aria-label={`Reconnect ${a.emailAddress}`}
-                              onClick={() => reconnectGmail()}
+                              onClick={() => reconnect(a.provider)}
                             >
                               Reconnect
                             </Button>

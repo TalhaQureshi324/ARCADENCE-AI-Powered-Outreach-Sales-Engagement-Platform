@@ -93,13 +93,20 @@ object Main extends IOApp:
                             registry.credentialLoader(
                               accountRepos,
                               workspaceId,
-                              accountId
+                              accountId,
+                              providerId
                             )
                           )
                           .attempt
                           .void
                 )
                 val gmailRoutes = new GmailRoutes(
+                  authenticator = authenticator,
+                  repos = accountRepos,
+                  authorizer = authorizer,
+                  registry = registry
+                )
+                val microsoftRoutes = new MicrosoftRoutes(
                   authenticator = authenticator,
                   repos = accountRepos,
                   authorizer = authorizer,
@@ -136,7 +143,7 @@ object Main extends IOApp:
                 val hardenedRoutes: HttpRoutes[IO] =
                   RateLimit(config.rateLimitPerMinute)(
                     SecurityHeaders(
-                      workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http
+                      workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http
                     )
                   )
 

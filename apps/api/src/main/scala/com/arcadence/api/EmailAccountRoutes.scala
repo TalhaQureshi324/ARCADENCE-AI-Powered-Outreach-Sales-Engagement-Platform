@@ -5,7 +5,11 @@ import cats.syntax.all.*
 import com.arcadence.api.ApiError.Envelope
 import com.arcadence.api.EmailAccountDtos.*
 import com.arcadence.api.Permissions.Permission
-import com.arcadence.core.email.{EmailAccountStatus, ProviderCapabilities}
+import com.arcadence.core.email.{
+  EmailAccountStatus,
+  OutboundMessage,
+  ProviderCapabilities
+}
 import io.circe.Json
 import org.http4s.HttpRoutes
 import sttp.capabilities.fs2.Fs2Streams
@@ -111,6 +115,18 @@ object EmailAccountDtos:
         dailySendCap <- field[Int]("dailySendCap")
       yield UpdateAccountRequest(displayName, accountGroupId, dailySendCap)
     }
+
+  final case class TestSendRequest(to: String)
+  object TestSendRequest:
+    given Encoder[TestSendRequest] = deriveEncoder
+    given Decoder[TestSendRequest] = deriveDecoder
+    given Schema[TestSendRequest] = Schema.derived
+
+  final case class TestSendResponse(messageId: String)
+  object TestSendResponse:
+    given Encoder[TestSendResponse] = deriveEncoder
+    given Decoder[TestSendResponse] = deriveDecoder
+    given Schema[TestSendResponse] = Schema.derived
 
   final case class HealthEventDto(
       id: UUID,
@@ -731,6 +747,126 @@ final class EmailAccountRoutes(
           }
       }
 
+  // -- authorized test send (provider-agnostic via the adapter registry) ------
+
+  private val testSend = endpoint.post
+    .in(
+      "api" / "v1" / "workspaces" / path[UUID](
+        "workspaceId"
+      ) / "email-accounts" / path[UUID](
+        "accountId"
+      ) / "test"
+    )
+    .in(header[Option[String]]("Authorization"))
+    .in(jsonBody[TestSendRequest])
+    .out(jsonBody[TestSendResponse])
+    .errorOut(errorOut)
+
+  private def testSendLogic(
+      workspaceId: UUID,
+      accountId: UUID,
+      authorization: Option[String],
+      request: TestSendRequest
+  ): IO[Either[(SttpStatus, Envelope), TestSendResponse]] =
+    requirePermission(
+      authorization,
+      workspaceId,
+      Permission.ManageEmailAccounts
+    )
+      .flatMap {
+        case Left(envelope) => IO.pure(Left(envelope))
+        case Right(_)       =>
+          val email = request.to.trim
+          if !email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$") then
+            IO.pure(
+              Left(
+                failed(
+                  ApiError.Invalid("Enter a valid recipient email address.")
+                )
+              )
+            )
+          else
+            repos.findAccount(workspaceId, accountId).flatMap {
+              case None =>
+                IO.pure(Left(failed(ApiError.NotFound("email account"))))
+              case Some(account) =>
+                registry match
+                  case None =>
+                    IO.pure(
+                      Left(
+                        failed(
+                          ApiError.Invalid(
+                            "This account's provider adapter is not available yet."
+                          )
+                        )
+                      )
+                    )
+                  case Some(reg) =>
+                    reg.adapter(account.provider) match
+                      case None =>
+                        IO.pure(
+                          Left(
+                            failed(
+                              ApiError.Invalid(
+                                "This account's provider adapter is not available yet."
+                              )
+                            )
+                          )
+                        )
+                      case Some(adapter) =>
+                        val load = reg.credentialLoader(
+                          repos,
+                          workspaceId,
+                          accountId,
+                          account.provider
+                        )
+                        adapter
+                          .submit(
+                            load,
+                            OutboundMessage(
+                              from = account.emailAddress,
+                              to = List(email),
+                              subject = "Arcadence connection test",
+                              textBody =
+                                "This is an automated connection test from Arcadence. " +
+                                  "If you received this message, the account is able to send.",
+                              htmlBody = None,
+                              headers = Map.empty
+                            )
+                          )
+                          .flatMap {
+                            case Right(messageId) =>
+                              repos
+                                .recordHealthEvent(
+                                  workspaceId,
+                                  accountId,
+                                  "test_succeeded",
+                                  Some(
+                                    s"Test message to $email accepted by the provider."
+                                  )
+                                )
+                                .as(Right(TestSendResponse(messageId.value)))
+                            case Left(providerError) =>
+                              repos
+                                .recordHealthEvent(
+                                  workspaceId,
+                                  accountId,
+                                  "test_failed",
+                                  Some(providerError.detail.take(200))
+                                )
+                                .as(
+                                  Left(
+                                    failed(
+                                      ApiError.Provider(
+                                        providerError.detail.take(200)
+                                      )
+                                    )
+                                  )
+                                )
+                          }
+            }
+      }
+
   // -- assembly ---------------------------------------------------------------
 
   val http: HttpRoutes[IO] = Http4sServerInterpreter[IO]().toRoutes(
@@ -806,6 +942,9 @@ final class EmailAccountRoutes(
       ),
       deleteGroup.serverLogic((workspaceId, groupId, auth) =>
         deleteGroupLogic(auth, workspaceId, groupId)
+      ),
+      testSend.serverLogic((workspaceId, accountId, auth, req) =>
+        testSendLogic(workspaceId, accountId, auth, req)
       )
     )
   )

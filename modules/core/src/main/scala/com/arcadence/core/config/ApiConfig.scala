@@ -13,7 +13,11 @@ final case class ApiConfig(
     credentialEncryptionKey: String,
     googleOAuthClientId: Option[String],
     googleOAuthClientSecret: Option[String],
-    googleOAuthRedirectUri: Option[String]
+    googleOAuthRedirectUri: Option[String],
+    microsoftOAuthClientId: Option[String],
+    microsoftOAuthClientSecret: Option[String],
+    microsoftOAuthRedirectUri: Option[String],
+    microsoftOAuthTenant: Option[String]
 )
 
 object ApiConfig:
@@ -28,7 +32,11 @@ object ApiConfig:
     credentialEncryptionKey = "",
     googleOAuthClientId = None,
     googleOAuthClientSecret = None,
-    googleOAuthRedirectUri = None
+    googleOAuthRedirectUri = None,
+    microsoftOAuthClientId = None,
+    microsoftOAuthClientSecret = None,
+    microsoftOAuthRedirectUri = None,
+    microsoftOAuthTenant = None
   )
 
   /** True when the Google OAuth console credentials are provisioned — drives
@@ -36,6 +44,10 @@ object ApiConfig:
     */
   def googleOAuthConfigured(config: ApiConfig): Boolean =
     config.googleOAuthClientId.nonEmpty && config.googleOAuthClientSecret.nonEmpty
+
+  /** True when the Microsoft (Graph) OAuth app registration is provisioned. */
+  def microsoftOAuthConfigured(config: ApiConfig): Boolean =
+    config.microsoftOAuthClientId.nonEmpty && config.microsoftOAuthClientSecret.nonEmpty
 
   /** Reads the API process configuration from the process environment. The
     * database, JWT-verification and credential-encryption settings are required
@@ -55,7 +67,11 @@ object ApiConfig:
       encryptionKey(env),
       optional(env, "GOOGLE_OAUTH_CLIENT_ID"),
       optional(env, "GOOGLE_OAUTH_CLIENT_SECRET"),
-      optional(env, "GOOGLE_OAUTH_REDIRECT_URI")
+      optional(env, "GOOGLE_OAUTH_REDIRECT_URI"),
+      optional(env, "MSFT_OAUTH_CLIENT_ID"),
+      optional(env, "MSFT_OAUTH_CLIENT_SECRET"),
+      optional(env, "MSFT_OAUTH_REDIRECT_URI"),
+      optional(env, "MSFT_OAUTH_TENANT")
     )
       .mapN(ApiConfig.apply)
       .toEither

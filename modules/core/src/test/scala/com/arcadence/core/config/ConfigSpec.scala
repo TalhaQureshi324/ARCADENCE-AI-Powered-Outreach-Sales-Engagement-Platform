@@ -52,7 +52,11 @@ final class ConfigSpec extends FunSuite:
           credentialEncryptionKey = testEncryptionKey,
           googleOAuthClientId = None,
           googleOAuthClientSecret = None,
-          googleOAuthRedirectUri = None
+          googleOAuthRedirectUri = None,
+          microsoftOAuthClientId = None,
+          microsoftOAuthClientSecret = None,
+          microsoftOAuthRedirectUri = None,
+          microsoftOAuthTenant = None
         )
       )
     )
@@ -74,7 +78,11 @@ final class ConfigSpec extends FunSuite:
           credentialEncryptionKey = testEncryptionKey,
           googleOAuthClientId = None,
           googleOAuthClientSecret = None,
-          googleOAuthRedirectUri = None
+          googleOAuthRedirectUri = None,
+          microsoftOAuthClientId = None,
+          microsoftOAuthClientSecret = None,
+          microsoftOAuthRedirectUri = None,
+          microsoftOAuthTenant = None
         )
       )
     )

@@ -89,7 +89,9 @@ Planned:
 - ✅ (2.2) `GET /api/v1/email-connections/oauth/google/callback?code&state` — browser route (no bearer; state-validated, membership re-checked) → 303 to `/app/email-accounts?gmail=connected|reconnected|denied|invalid_state|expired|forbidden|not_configured|error`
 - ✅ (2.2) `POST /api/v1/workspaces/{id}/email-accounts/{accountId}/test` `{to}` (M+) — authorized test send; records `test_succeeded`/`test_failed`; provider failures surface as 502 `provider_error`
 - ✅ (2.2) disconnect now best-effort revokes the Google grant before purging credentials; capability matrix rows carry `configured`
-- ⬜ (2.3) Microsoft OAuth equivalents
+- ✅ (2.3) `POST /api/v1/email-connections/oauth/microsoft/start` `{workspaceId}` → `{authorizeUrl}` (M+; tenant-aware authority, same signed-state shape; 503 `not_configured` without an app registration)
+- ✅ (2.3) `GET /api/v1/email-connections/oauth/microsoft/callback?code&state` — browser route → 303 `/app/email-accounts?microsoft=connected|reconnected|denied|invalid_state|expired|forbidden|not_configured|error`
+- ✅ (2.3) test-send / disconnect / capability `configured` are provider-agnostic — the shared `/test` endpoint moved to the email-accounts routes and routes through the adapter registry
 - ⬜ (2.4) SMTP/IMAP connect (`POST .../email-accounts` with TLS settings), `POST .../{connId}/test-send`
 
 ### 3.4 Leads & lists — Phase 3
