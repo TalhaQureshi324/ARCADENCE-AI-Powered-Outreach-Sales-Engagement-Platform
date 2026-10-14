@@ -96,6 +96,23 @@ Planned:
 
 ### 3.4 Leads & lists — Phase 3
 
+Implemented (3.1):
+
+- ✅ `POST /api/v1/workspaces/{id}/contacts` (E+) — email normalized lowercase (dedup per workspace → 409), display casing kept in `emailDisplay`; custom fields validated against defined fields
+- ✅ `GET /contacts` (view) — filters `q/state/verification/companyId/listId/tagId`, sorts `created_desc|created_asc|email_asc|email_desc`, cursor pagination (opaque cursor; sort-aware keyset), `limit` ≤ 100, response `{items, nextCursor, total}`
+- ✅ `GET|PATCH|DELETE /contacts/{contactId}` (view / E+) — PATCH absent=unchanged, explicit null=clear
+- ✅ `POST /contacts/batch` (E+) — ≤200; invalid email anywhere rejects the whole batch (422); new→created, existing→skipped
+- ✅ `GET /contacts/{id}/provenance` (view) — manual/api/import/verification trail
+- ✅ `POST /contacts/{id}/tags`, `DELETE /contacts/{id}/tags/{tagId}` (E+)
+- ✅ `GET|POST /companies`, `PATCH|DELETE /companies/{id}` (view / E+)
+- ✅ `GET|POST /lead-lists`, `PATCH|DELETE /lead-lists/{id}`, `POST|DELETE /lead-lists/{id}/members[/{contactId}]`, `GET .../members` (view / E+) — membership idempotent
+
+Planned:
+
+- ⬜ (3.2) imports: `POST /imports` upload → header mapping → `POST /imports/{id}/start` with duplicate strategy; progress, history, error report download
+- ⬜ (3.3) verification + suppression APIs
+- ⬜ (3.4) segments, bulk ops, merge, export
+
 - ⬜ `GET|POST /api/v1/workspaces/{id}/contacts` · `GET|PATCH|DELETE .../contacts/{contactId}`
 - ⬜ `POST .../contacts/import` (CSV via signed URL) · `GET .../contacts/export`
 - ⬜ `GET|POST|PATCH|DELETE .../companies[/{companyId}]`

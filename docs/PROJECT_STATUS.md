@@ -2,7 +2,7 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-10-14 (2.4 — Phase 2 complete)
+**Last updated:** 2026-10-15 (3.1 — Phase 3 started)
 
 ---
 
@@ -11,6 +11,7 @@
 **Phase 0 — Foundation** · status: **complete** (promoted to `main`, tag `phase-0`)
 **Phase 1 — Auth, tenancy & UI foundation** · status: **complete** (promoted to `main`, tag `phase-1`)
 **Phase 2 — Email account connections** · status: **complete** (promoted to `main`, tag `phase-2`)
+**Phase 3 — Lead management engine** · status: **in-progress** (3.1 done)
 
 ## Phase roadmap (provisional — ADR-0014)
 
@@ -21,7 +22,7 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 0 | Foundation — repo, tooling, scaffolds, CI, skeleton services, health checks, deployment wiring | **in-progress** |
 | 1 | Authentication & workspaces — Supabase Auth SSR, multi-tenant model, RBAC, RLS | planned |
 | 2 | Email account connections — Gmail OAuth, Microsoft OAuth, SMTP/IMAP, credential storage | **complete** |
-| 3 | Lead management — leads, lists, import/export, verification hooks, suppression | planned |
+| 3 | Lead management — leads, lists, import/export, verification hooks, suppression | in-progress |
 | 4 | Campaigns & sequences — builder, scheduling, personalization | planned |
 | 5 | Sending engine — durable send queue, provider submission, tracking, bounce handling | planned |
 | 6 | Unified inbox — two-way sync, threading, realtime updates | planned |
@@ -52,6 +53,12 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 1.2 | Organizations, workspaces & authorization (JWT middleware, RBAC, cross-tenant tests) | **tested** | Supabase JWTs verified via JWKS (ES256, iss/aud/exp); explicit permission model (owner/admin/campaign_manager/member/viewer); workspaces + members + invitations API with audit trail; 7/7 cross-tenant isolation tests. Staging migrations + RLS verified 15/15. |
 | 1.3 | Application shell & design system | **tested** | Token-based light/dark theme, 12 UI primitives (Radix dialog/dropdown/tabs, table, pagination, skeletons, badges, toasts, empty states, avatar, breadcrumbs), responsive sidebar shell with workspace selector (live API data), ⌘K command palette, profile/notifications menus; dashboard with real API data + honest empty/roadmap states; 7/7 Playwright e2e incl. workspace creation. |
 | 1.4 | Workspace administration & hardening | **tested** | Settings UI (members/invitations/profile tabs, permission-aware, live API data); invitation accept page; per-caller rate limiting; security headers (API + Next.js); session-expiry handling. 8/8 Playwright incl. two-organization cross-tenant lifecycle. |
+
+### Subphase detail — Phase 3
+
+| # | Subphase | Status | Notes |
+| --- | --- | --- | --- |
+| 3.1 | Contacts & companies — 8 tables (company, contact, lead_list, list_membership, tag, contact_tag, custom_field, source_provenance) with normalized-email dedup, display-casing retention, provenance trail; CRUD + filter/sort/cursor-pagination + batch + companies/lists/tags/custom-fields APIs (permission-gated, sort-aware keyset cursors); /app/leads UI (Contacts/Companies/Lists/Tags & Fields tabs, create dialogs, member management) | **tested** | Migration `20261015090000` applied locally + staging; Scala 163/163 (2 worker + 75 core + 86 api incl. LeadsIntegrationSpec 11: dedup 409, normalization + display casing, custom-field validation, batch all-or-nothing validation, cursor stability (sort-aware), tenant isolation, provenance); Playwright 10/10 incl. leads CRUD/dedup/search/tags/lists; fixed long-standing web envelope parsing (top-level code/message now surfaces real API errors). |
 
 ### Subphase detail — Phase 2
 

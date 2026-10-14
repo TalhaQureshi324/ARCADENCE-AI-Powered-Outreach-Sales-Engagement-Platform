@@ -112,6 +112,11 @@ object Main extends IOApp:
                   authorizer = authorizer,
                   registry = registry
                 )
+                val leadsRoutes = new ContactRoutes(
+                  authenticator = authenticator,
+                  repos = new LeadsRepos(transactor),
+                  authorizer = authorizer
+                )
 
                 val dbReady: IO[Boolean] =
                   sql"select 1"
@@ -143,7 +148,7 @@ object Main extends IOApp:
                 val hardenedRoutes: HttpRoutes[IO] =
                   RateLimit(config.rateLimitPerMinute)(
                     SecurityHeaders(
-                      workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http
+                      workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http <+> leadsRoutes.http
                     )
                   )
 

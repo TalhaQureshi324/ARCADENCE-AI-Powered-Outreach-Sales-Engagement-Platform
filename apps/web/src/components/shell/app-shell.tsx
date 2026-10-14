@@ -45,7 +45,7 @@ const NAV_ITEMS = [
   { href: "/app", label: "Dashboard", icon: LayoutDashboard, active: true },
   { href: "/soon/inbox", label: "Inbox", icon: Inbox, soon: true },
   { href: "/soon/campaigns", label: "Campaigns", icon: BarChart3, soon: true },
-  { href: "/soon/leads", label: "Leads", icon: Users, soon: true },
+  { href: "/app/leads", label: "Leads", icon: Users },
   { href: "/app/email-accounts", label: "Email Accounts", icon: Mail },
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];
