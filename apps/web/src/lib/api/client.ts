@@ -181,6 +181,42 @@ export const importsApi = {
     }),
 };
 
+export interface SuppressionDto {
+  id: string;
+  email: string;
+  contactId: string | null;
+  reason: string;
+  source: string;
+  createdAt: string;
+}
+
+export const verificationApi = {
+  verify: (workspaceId: string, contactId: string) =>
+    apiFetch<{
+      contactId: string;
+      email: string;
+      status: string;
+      provider: string;
+      details: string;
+      suppressed: boolean;
+    }>(`/api/v1/workspaces/${workspaceId}/contacts/${contactId}/verify`, { method: "POST" }),
+  suppressions: {
+    list: (workspaceId: string, q?: string) =>
+      apiFetch<SuppressionDto[]>(
+        `/api/v1/workspaces/${workspaceId}/suppressions${q ? `?q=${encodeURIComponent(q)}` : ""}`,
+      ),
+    create: (workspaceId: string, input: { email?: string; contactId?: string; reason: string }) =>
+      apiFetch<SuppressionDto>(`/api/v1/workspaces/${workspaceId}/suppressions`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    remove: (workspaceId: string, suppressionId: string) =>
+      apiFetch<void>(`/api/v1/workspaces/${workspaceId}/suppressions/${suppressionId}`, {
+        method: "DELETE",
+      }),
+  },
+};
+
 // -- Leads (Phase 3.1) ---------------------------------------------------------
 
 export interface ContactDto {
