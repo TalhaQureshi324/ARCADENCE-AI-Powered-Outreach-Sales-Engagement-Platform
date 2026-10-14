@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TBody, TD, TH, THead, TR, Table } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
+import { ImportsTab } from "@/components/leads/imports-tab";
 import { useWorkspaces } from "@/components/shell/workspace-context";
 import {
   ApiError,
@@ -33,7 +34,6 @@ import {
   leadListsApi,
   tagsApi,
   type CompanyDto,
-  type ContactDto,
   type ContactPage,
   type CustomFieldDto,
   type LeadListDto,
@@ -104,12 +104,16 @@ export function LeadsContent() {
       <Tabs defaultValue="contacts">
         <TabsList>
           <TabsTrigger value="contacts">Contacts</TabsTrigger>
+          <TabsTrigger value="imports">Import</TabsTrigger>
           <TabsTrigger value="companies">Companies</TabsTrigger>
           <TabsTrigger value="lists">Lists</TabsTrigger>
           <TabsTrigger value="tax">Tags &amp; Fields</TabsTrigger>
         </TabsList>
         <TabsContent value="contacts">
           <ContactsTab workspaceId={selected.id} myRole={selected.role} />
+        </TabsContent>
+        <TabsContent value="imports">
+          <ImportsTab workspaceId={selected.id} myRole={selected.role} />
         </TabsContent>
         <TabsContent value="companies">
           <CompaniesTab workspaceId={selected.id} myRole={selected.role} />
@@ -262,7 +266,7 @@ function ContactsTab({ workspaceId, myRole }: { workspaceId: string; myRole: str
           description={
             appliedQuery
               ? `No contacts match “${appliedQuery}”.`
-              : "Create your first contact, or wait for the CSV import (arriving in the next subphase)."
+              : "Create your first contact or use the Import tab for CSV files."
           }
           action={
             editable ? (

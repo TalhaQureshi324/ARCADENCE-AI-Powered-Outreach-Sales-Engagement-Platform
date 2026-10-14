@@ -129,6 +129,58 @@ export const invitationsApi = {
     }),
 };
 
+export interface ImportJobDto {
+  id: string;
+  fileName: string;
+  status: string;
+  duplicateStrategy: string;
+  totalRows: number;
+  processedRows: number;
+  insertedRows: number;
+  updatedRows: number;
+  skippedRows: number;
+  invalidRows: number;
+  duplicateRows: number;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const importsApi = {
+  /** Uploads raw CSV bytes for parsing; returns the job + headers + preview. */
+  upload: (workspaceId: string, fileName: string, bytes: Uint8Array) =>
+    apiFetch<{ job: ImportJobDto; headers: string[]; preview: string[][] }>(
+      `/api/v1/workspaces/${workspaceId}/imports/upload?fileName=${encodeURIComponent(fileName)}`,
+      {
+        method: "POST",
+        body: bytes as unknown as BodyInit,
+        headers: { "Content-Type": "application/octet-stream" },
+      },
+    ),
+  start: (
+    workspaceId: string,
+    jobId: string,
+    input: {
+      mapping: Record<string, string>;
+      duplicateStrategy: string;
+      defaults?: Record<string, string>;
+      targetListId?: string;
+    },
+  ) =>
+    apiFetch<ImportJobDto>(`/api/v1/workspaces/${workspaceId}/imports/${jobId}/start`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  list: (workspaceId: string) =>
+    apiFetch<ImportJobDto[]>(`/api/v1/workspaces/${workspaceId}/imports`),
+  get: (workspaceId: string, jobId: string) =>
+    apiFetch<ImportJobDto>(`/api/v1/workspaces/${workspaceId}/imports/${jobId}`),
+  retry: (workspaceId: string, jobId: string) =>
+    apiFetch<ImportJobDto>(`/api/v1/workspaces/${workspaceId}/imports/${jobId}/retry`, {
+      method: "POST",
+    }),
+};
+
 // -- Leads (Phase 3.1) ---------------------------------------------------------
 
 export interface ContactDto {
