@@ -20,6 +20,9 @@ lazy val V = new {
   val logback         = "1.6.5"
   val munit           = "1.3.6"
   val munitCatsEffect = "2.2.1"
+  val angusMail       = "2.0.3"
+  val jakartaMail     = "2.1.3"
+  val greenMail       = "2.1.3"
 }
 
 ThisBuild / organization  := "com.arcadence"
@@ -66,10 +69,14 @@ lazy val core = (project in file("modules/core"))
       "org.http4s"     %% "http4s-ember-client" % V.http4s,
       "org.http4s"     %% "http4s-circe"        % V.http4s,
       "io.circe"       %% "circe-core"          % V.circe,
-      "io.circe"       %% "circe-parser"        % V.circe
+      "io.circe"       %% "circe-parser"        % V.circe,
+      // SMTP/IMAP adapter (Phase 2.4)
+      "org.eclipse.angus" % "angus-mail"        % V.angusMail,
+      "jakarta.mail"      % "jakarta.mail-api"  % V.jakartaMail
     ),
     libraryDependencies ++= Seq(
-      "org.http4s" %% "http4s-dsl" % V.http4s % Test
+      "org.http4s" %% "http4s-dsl" % V.http4s % Test,
+      "com.icegreen" % "greenmail" % V.greenMail % Test
     )
   )
 
@@ -95,6 +102,9 @@ lazy val api = (project in file("apps/api"))
       "org.typelevel"               %% "log4cats-core"       % V.log4cats,
       "org.typelevel"               %% "log4cats-slf4j"      % V.log4cats,
       "ch.qos.logback"              % "logback-classic"      % V.logback
+    ),
+    libraryDependencies ++= Seq(
+      "com.icegreen" % "greenmail" % V.greenMail % Test
     )
   )
 

@@ -18,6 +18,10 @@ import com.arcadence.core.email.microsoft.{
   GraphProvider,
   MicrosoftCredentials
 }
+import com.arcadence.core.email.smtpimap.{
+  SmtpImapCredentials as SmtpImapCredentialsType,
+  SmtpImapProvider
+}
 import io.circe.Json
 import org.http4s.client.Client
 
@@ -57,6 +61,14 @@ final class ProviderRegistry(
   def registerMicrosoft(provider: GraphProvider): Unit =
     providers(EmailProvider.Microsoft) = provider
 
+  def smtpImap: Option[SmtpImapProvider] =
+    providers.get(EmailProvider.SmtpImap).collect { case p: SmtpImapProvider =>
+      p
+    }
+
+  def registerSmtpImap(provider: SmtpImapProvider): Unit =
+    providers(EmailProvider.SmtpImap) = provider
+
   def adapter(providerId: String): Option[EmailProvider] =
     providers.get(providerId)
 
@@ -65,7 +77,9 @@ final class ProviderRegistry(
     providerId match
       case EmailProvider.Gmail     => gmail.isDefined
       case EmailProvider.Microsoft => microsoft.isDefined
-      case _                       => false // smtp_imap (2.4)
+      // SMTP/IMAP needs no console credentials — the user supplies them
+      case EmailProvider.SmtpImap => smtpImap.isDefined
+      case _                      => false
 
   /** Serializes + encrypts provider credentials for at-rest storage. */
   def encryptCredentials(
@@ -80,7 +94,10 @@ final class ProviderRegistry(
   def decryptCredentials(
       blob: Array[Byte],
       providerId: String
-  ): Either[String, GmailCredentials | MicrosoftCredentials] =
+  ): Either[
+    String,
+    GmailCredentials | MicrosoftCredentials | SmtpImapCredentialsType
+  ] =
     encryptor
       .decryptString(blob)
       .left
@@ -93,6 +110,8 @@ final class ProviderRegistry(
           case EmailProvider.Gmail     => GmailCredentials.fromJsonString(text)
           case EmailProvider.Microsoft =>
             MicrosoftCredentials.fromJsonString(text)
+          case EmailProvider.SmtpImap =>
+            SmtpImapCredentialsType.fromJsonString(text)
           case other => Left(s"no credential decoder for provider $other")
       }
 
@@ -128,20 +147,23 @@ final class ProviderRegistry(
       repos: EmailAccountRepos,
       accountId: UUID
   ): Credentials => IO[Unit] = creds =>
-    val (json, expiresAt) = creds match
-      case g: GmailCredentials     => (g.toJson, g.accessTokenExpiresAt)
-      case m: MicrosoftCredentials => (m.toJson, m.accessTokenExpiresAt)
-      case _                       => (Json.Null, OffsetDateTime.now)
+    val (json, kind, expiresAt) = creds match
+      case g: GmailCredentials =>
+        (g.toJson, "oauth2", Some(g.accessTokenExpiresAt))
+      case m: MicrosoftCredentials =>
+        (m.toJson, "oauth2", Some(m.accessTokenExpiresAt))
+      case p: SmtpImapCredentialsType => (p.toJson, "password", None)
+      case _                          => (Json.Null, "oauth2", None)
     if json.isNull then
       IO.raiseError(new IllegalStateException("unknown credential type"))
     else
       IO(encryptor.encryptString(json.noSpaces)).flatMap { blob =>
         repos.storeCredentials(
           accountId,
-          "oauth2",
+          kind,
           blob,
           encryptor.keyVersion,
-          Some(expiresAt)
+          expiresAt
         )
       }
 
@@ -201,6 +223,8 @@ object ProviderRegistry:
           )
         )
       }
+    // SMTP/IMAP: stateless adapter, always available (per-account credentials)
+    registry.registerSmtpImap(new SmtpImapProvider)
     (config.microsoftOAuthClientId, config.microsoftOAuthClientSecret).tupled
       .foreach { case (clientId, clientSecret) =>
         val microsoftRedirect = config.microsoftOAuthRedirectUri.getOrElse(

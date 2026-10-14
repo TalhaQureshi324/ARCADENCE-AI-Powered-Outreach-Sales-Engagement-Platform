@@ -202,9 +202,25 @@ export interface EmailAccountDto {
   status: string;
   statusMessage: string | null;
   dailySendCap: number | null;
+  signature: string | null;
   isDefault: boolean;
   lastSyncedAt: string | null;
+  syncStatus: string | null;
+  syncError: string | null;
   createdAt: string;
+}
+
+export interface SmtpImapConnectInput {
+  emailAddress: string;
+  displayName?: string;
+  username: string;
+  password: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecurity: string;
+  imapHost: string;
+  imapPort: number;
+  imapSecurity: string;
 }
 
 export interface HealthEventDto {
@@ -217,6 +233,14 @@ export interface HealthEventDto {
 export const emailAccountsApi = {
   list: (workspaceId: string) =>
     apiFetch<EmailAccountDto[]>(`/api/v1/workspaces/${workspaceId}/email-accounts`),
+  /** Connect an SMTP/IMAP account: the server validates the credentials
+   * against the real servers, stores them encrypted, and returns the account.
+   */
+  create: (workspaceId: string, input: SmtpImapConnectInput) =>
+    apiFetch<EmailAccountDto>(`/api/v1/workspaces/${workspaceId}/email-accounts`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   get: (workspaceId: string, accountId: string) =>
     apiFetch<EmailAccountDto>(`/api/v1/workspaces/${workspaceId}/email-accounts/${accountId}`),
   update: (
@@ -226,6 +250,7 @@ export const emailAccountsApi = {
       displayName?: string | null;
       accountGroupId?: string | null;
       dailySendCap?: number | null;
+      signature?: string | null;
     },
   ) =>
     apiFetch<EmailAccountDto>(`/api/v1/workspaces/${workspaceId}/email-accounts/${accountId}`, {

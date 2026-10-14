@@ -41,11 +41,25 @@ test.describe("email accounts page", () => {
     await expect(page.getByText("Microsoft 365 / Outlook")).toBeVisible();
     await expect(page.getByText("SMTP / IMAP")).toBeVisible();
     // Gmail (2.2) and Microsoft (2.3) flows are built but unconfigured
-    // locally — the UI says so instead of showing dead buttons; 2.4 has not
-    // arrived yet.
+    // locally — the UI says so instead of showing dead buttons. SMTP/IMAP
+    // (2.4) needs no console setup and offers a real connect form.
     await expect(page.getByText("Google OAuth not configured on this server")).toBeVisible();
     await expect(page.getByText("Microsoft OAuth not configured on this server")).toBeVisible();
-    await expect(page.getByText("Setup arrives in subphase 2.4")).toBeVisible();
+
+    // SMTP/IMAP connect form opens from the provider card and rejects a
+    // dead server honestly (connection refused on 127.0.0.1:1).
+    await page.getByRole("button", { name: "Connect SMTP" }).click();
+    await expect(page.getByText("Connect an SMTP/IMAP account")).toBeVisible();
+    await page.getByLabel("Email address").fill("dead@server.test");
+    await page.getByLabel("Username").fill("dead@server.test");
+    await page.getByLabel("Password").fill("nope");
+    await page.getByLabel("SMTP host").fill("127.0.0.1");
+    await page.getByLabel("SMTP port").fill("1");
+    await page.getByLabel("IMAP host").fill("127.0.0.1");
+    await page.getByLabel("IMAP port").fill("1");
+    await page.getByRole("button", { name: "Verify and connect" }).click();
+    await expect(page.locator("[role='alert']").first()).toBeVisible({ timeout: 20000 });
+    await page.getByRole("button", { name: "Cancel" }).click();
 
     // Accounts table shows the honest empty state.
     await expect(page.getByText("No email accounts connected yet")).toBeVisible();
