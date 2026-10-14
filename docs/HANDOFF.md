@@ -6,6 +6,31 @@
 
 ---
 
+---
+
+## 2026-10-14 — Phase 2 / Subphase 2.3: Microsoft 365 integration
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **GraphProvider adapter (arcadence-core, `com.arcadence.core.email.microsoft`)** — Microsoft identity platform v2 + Graph behind the 2.1 contract: tenant-aware authorization-code + PKCE consent URL, token exchange with verifier, refresh grant, `/me` identity (mail/userPrincipalName/displayName/id), **draft-then-send submission** (POST /me/messages → POST /me/messages/{id}/send — captures the provider message id that `/me/sendMail` does not return), createReply + body patch + send for threaded replies, INBOX listing with `$orderby` + `@odata.nextLink` `$skiptoken` as the durable cursor, health probe, and `revokeSignInSessions` revocation. Typed error mapping: 400 consent family (invalid_grant/consent_required/interaction_required) + 401 → InvalidCredentials; 403 → PermissionDenied (tenant app-blocking surfaces here); 429 → RateLimited with Retry-After; 503/504 → Unreachable. Phase 6 headroom: same folder surface converts to `/delta` links and Graph change notifications without touching the account model (ADR-0022).
+- **Connect flow (api)** — `POST /api/v1/email-connections/oauth/microsoft/start` + `GET .../microsoft/callback`: identical HMAC-signed-state security shape to Gmail (workspace+user+PKCE verifier+nonce, 10-min TTL, callback-side permission re-check), account upsert (connected/reconnected), AES-GCM credentials (MicrosoftCredentials), sync cursors seeded, health + audit written, 303 back with `microsoft=…` outcome.
+- **Provider-agnostic hardening** — the authorized test-send endpoint MOVED from GmailRoutes to the email-accounts routes and routes through the adapter registry (no double-mounting now that two OAuth providers exist); registry credential load/store generalized over GmailCredentials | MicrosoftCredentials with provider-aware decryption.
+- **UI** — connect button, unconfigured notice (MSFT_OAUTH_* hint), callback outcome banners and the Reconnect action now work for BOTH Gmail and Microsoft; capability rows carry `configured`.
+- **Config** — optional `MSFT_OAUTH_CLIENT_ID/SECRET/REDIRECT_URI/TENANT` (default tenant `common`).
+
+### Tested (evidence)
+
+- Scala `Test/test` with `TEST_DATABASE_URL` → **137/137** (worker 2 · core 67 incl. **GraphProviderSpec 11** — consent failure, missing permissions 403, throttling 429 with Retry-After, draft/send/reply flows, skiptoken cursor, revocation · api 68 incl. **MicrosoftFlowIntegrationSpec 10** — capability `configured`, start URL + state verification, tamper/expiry/denial callbacks, encrypted-credential round-trip under the Microsoft decoder, reconnection dedupe, test-send permission gating, disconnect purge).
+- `scalafmtAll` success. Web: vitest 25/25 · lint clean · format clean · build green.
+- **Playwright 9/9** — honest Microsoft unconfigured card asserted; forged-state Gmail callback path re-verified through the live API.
+- Refactor regression: GmailFlowIntegrationSpec 12/12 still green after the test-send move.
+
+### Blocked (manual)
+
+- Real-Graph end-to-end waits on **item 7** (`docs/MANUAL_SETUP.md`): Entra app registration → `MSFT_OAUTH_CLIENT_ID/SECRET` in `apps/api/.env.local`, redirect `http://localhost:8080/api/v1/email-connections/oauth/microsoft/callback`. Tenant admin consent may be required depending on the tenant's app policy.
+
 ## 2026-10-14 — Phase 2 / Subphase 2.2: Gmail integration
 
 **Status:** ✅ Completed and pushed

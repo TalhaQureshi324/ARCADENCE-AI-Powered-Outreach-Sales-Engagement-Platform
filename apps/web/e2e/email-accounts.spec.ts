@@ -40,10 +40,11 @@ test.describe("email accounts page", () => {
     await expect(page.getByText("Gmail / Google Workspace")).toBeVisible();
     await expect(page.getByText("Microsoft 365 / Outlook")).toBeVisible();
     await expect(page.getByText("SMTP / IMAP")).toBeVisible();
-    // Gmail flow is built (2.2) but unconfigured locally — the UI says so
-    // instead of showing a dead button; 2.3/2.4 have not arrived yet.
+    // Gmail (2.2) and Microsoft (2.3) flows are built but unconfigured
+    // locally — the UI says so instead of showing dead buttons; 2.4 has not
+    // arrived yet.
     await expect(page.getByText("Google OAuth not configured on this server")).toBeVisible();
-    await expect(page.getByText("Setup arrives in subphase 2.3")).toBeVisible();
+    await expect(page.getByText("Microsoft OAuth not configured on this server")).toBeVisible();
     await expect(page.getByText("Setup arrives in subphase 2.4")).toBeVisible();
 
     // Accounts table shows the honest empty state.

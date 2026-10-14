@@ -158,9 +158,9 @@ export const emailProvidersApi = {
 /** Gmail OAuth connect flow: ask the API for a state-signed authorize URL,
  * then navigate the browser to Google's consent screen.
  */
-export const gmailConnectApi = {
-  start: (workspaceId: string) =>
-    apiFetch<{ authorizeUrl: string }>("/api/v1/email-connections/oauth/google/start", {
+export const oauthConnectApi = {
+  start: (provider: string, workspaceId: string) =>
+    apiFetch<{ authorizeUrl: string }>(`/api/v1/email-connections/oauth/${provider}/start`, {
       method: "POST",
       body: JSON.stringify({ workspaceId }),
     }),

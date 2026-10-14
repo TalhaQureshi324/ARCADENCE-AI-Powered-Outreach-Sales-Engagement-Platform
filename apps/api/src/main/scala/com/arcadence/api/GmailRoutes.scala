@@ -44,18 +44,6 @@ object GmailDtos:
     given Decoder[StartResponse] = deriveDecoder
     given Schema[StartResponse] = Schema.derived
 
-  final case class TestSendRequest(to: String)
-  object TestSendRequest:
-    given Encoder[TestSendRequest] = deriveEncoder
-    given Decoder[TestSendRequest] = deriveDecoder
-    given Schema[TestSendRequest] = Schema.derived
-
-  final case class TestSendResponse(messageId: String)
-  object TestSendResponse:
-    given Encoder[TestSendResponse] = deriveEncoder
-    given Decoder[TestSendResponse] = deriveDecoder
-    given Schema[TestSendResponse] = Schema.derived
-
 /** Gmail connect flow (Phase 2.2): state-signed authorization start, a
   * browser-facing OAuth callback that lands back on the web app, and the
   * authorized test send.
@@ -155,19 +143,6 @@ final class GmailRoutes(
           }
     }
 
-  private val testSend = endpoint.post
-    .in(
-      "api" / "v1" / "workspaces" / path[UUID](
-        "workspaceId"
-      ) / "email-accounts" / path[UUID](
-        "accountId"
-      ) / "test"
-    )
-    .in(header[Option[String]]("Authorization"))
-    .in(jsonBody[TestSendRequest])
-    .out(jsonBody[TestSendResponse])
-    .errorOut(errorOut)
-
   // -- assembly ----------------------------------------------------------------
 
   val http: HttpRoutes[IO] =
@@ -175,7 +150,7 @@ final class GmailRoutes(
       List[ServerEndpoint[Fs2Streams[IO], IO]](
         start.serverLogic((auth, req) => startLogic(auth, req))
       )
-    ) <+> callbackRoute <+> testSendRoute
+    ) <+> callbackRoute
 
   // The OAuth callback: browser navigation, no bearer header. Any failure
   // lands back on the email-accounts page with a safe query-string error.
@@ -290,7 +265,7 @@ final class GmailRoutes(
                   case g: com.arcadence.core.email.gmail.GmailCredentials =>
                     g.accessTokenExpiresAt
                   case _ => OffsetDateTime.now.plusSeconds(3600)
-                registry.credentialStorer(repos, accountId, expiresAt)(creds)
+                registry.credentialStorer(repos, accountId)(creds)
             }
             _ <- repos.recordHealthEvent(
               workspaceId,
@@ -319,108 +294,6 @@ final class GmailRoutes(
 
   // -- authorized test send ------------------------------------------------------
 
-  private def testSendRoute: HttpRoutes[IO] =
-    Http4sServerInterpreter[IO]().toRoutes(
-      List[ServerEndpoint[Fs2Streams[IO], IO]](
-        testSend.serverLogic((workspaceId, accountId, auth, req) =>
-          testSendLogic(workspaceId, accountId, auth, req)
-        )
-      )
-    )
-
-  private def testSendLogic(
-      workspaceId: UUID,
-      accountId: UUID,
-      authorization: Option[String],
-      request: TestSendRequest
-  ): IO[Either[(SttpStatus, Envelope), TestSendResponse]] =
-    verifyBearer(authorization).flatMap {
-      case Left(envelope) => IO.pure(Left(envelope))
-      case Right(user)    =>
-        authorizer
-          .requirePermission(user, workspaceId, Permission.ManageEmailAccounts)
-          .flatMap {
-            case Left(error) => IO.pure(Left(failed(error)))
-            case Right(_)    =>
-              val email = request.to.trim
-              if !email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$") then
-                IO.pure(
-                  Left(
-                    failed(
-                      ApiError.Invalid("Enter a valid recipient email address.")
-                    )
-                  )
-                )
-              else
-                repos.findAccount(workspaceId, accountId).flatMap {
-                  case None =>
-                    IO.pure(Left(failed(ApiError.NotFound("email account"))))
-                  case Some(account) =>
-                    registry.adapter(account.provider) match
-                      case None =>
-                        IO.pure(
-                          Left(
-                            failed(
-                              ApiError.Invalid(
-                                "This account's provider adapter is not available yet."
-                              )
-                            )
-                          )
-                        )
-                      case Some(adapter) =>
-                        val load = registry.credentialLoader(
-                          repos,
-                          workspaceId,
-                          accountId
-                        )
-                        adapter
-                          .submit(
-                            load,
-                            OutboundMessage(
-                              from = account.emailAddress,
-                              to = List(email),
-                              subject = "Arcadence connection test",
-                              textBody =
-                                "This is an automated connection test from Arcadence. " +
-                                  "If you received this message, the account is able to send.",
-                              htmlBody = None,
-                              headers = Map.empty
-                            )
-                          )
-                          .flatMap {
-                            case Right(messageId) =>
-                              repos
-                                .recordHealthEvent(
-                                  workspaceId,
-                                  accountId,
-                                  "test_succeeded",
-                                  Some(
-                                    s"Test message to $email accepted by the provider."
-                                  )
-                                )
-                                .as(Right(TestSendResponse(messageId.value)))
-                            case Left(providerError) =>
-                              repos
-                                .recordHealthEvent(
-                                  workspaceId,
-                                  accountId,
-                                  "test_failed",
-                                  Some(providerError.detail.take(200))
-                                )
-                                .as(
-                                  Left(
-                                    failed(
-                                      ApiError.Provider(
-                                        providerError.detail.take(200)
-                                      )
-                                    )
-                                  )
-                                )
-                          }
-                }
-          }
-    }
-
   // -- helpers -------------------------------------------------------------------
 
   private def redirect(query: String): Response[IO] =
@@ -438,3 +311,4 @@ object GmailRoutes:
 
 object EmailProviderId:
   val Gmail: String = "gmail"
+  val Microsoft: String = "microsoft"
