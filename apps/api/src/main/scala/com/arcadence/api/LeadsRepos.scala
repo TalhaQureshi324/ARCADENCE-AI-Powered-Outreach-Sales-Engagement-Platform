@@ -15,7 +15,7 @@ import java.util.UUID
   * lists, tags, custom fields and source provenance. All queries are
   * workspace-scoped; emails are stored normalized (lowercase).
   */
-final class LeadsRepos(transactor: Transactor[IO]):
+final class LeadsRepos(val transactor: Transactor[IO]):
 
   // fragment helpers (doobie 1.0 fragments object lacks intercalate)
   private def joinFr(sep: String, fs: List[Fragment]): Fragment =
@@ -624,6 +624,126 @@ final class LeadsRepos(transactor: Transactor[IO]):
       .to[List]
       .transact(transactor)
       .map(_.toSet)
+
+  // -- verification + suppression (Phase 3.3) -----------------------------------
+
+  /** Applies a verification result to the contact. */
+  def applyVerification(
+      workspaceId: UUID,
+      contactId: UUID,
+      status: String,
+      provider: String,
+      checkedAt: OffsetDateTime
+  ): IO[Int] =
+    sql"""
+      update public.contact
+      set verification_status = ${status}::public.contact_verification,
+          verification_provider = $provider,
+          verification_checked_at = $checkedAt
+      where workspace_id = $workspaceId and id = $contactId
+    """.update.run.transact(transactor)
+
+  final case class SuppressionView(
+      id: UUID,
+      email: String,
+      contactId: Option[UUID],
+      reason: String,
+      source: String,
+      createdAt: OffsetDateTime
+  )
+
+  def addSuppression(
+      workspaceId: UUID,
+      email: String,
+      contactId: Option[UUID],
+      reason: String,
+      source: String,
+      actor: UUID
+  ): IO[SuppressionView] =
+    (for
+      id <- sql"""
+        insert into public.suppression (workspace_id, email, contact_id, reason, source, created_by)
+        values ($workspaceId, $email, ${contactId}, ${reason}::public.suppression_reason,
+                ${source}::public.suppression_source, $actor)
+        on conflict (workspace_id, email) do update set reason = excluded.reason
+        returning id
+      """.query[UUID].unique
+      row <- sql"""
+        select id, email, contact_id, reason::text, source::text, created_at
+        from public.suppression where id = $id
+      """.query[SuppressionView].unique
+    yield row).transact(transactor)
+
+  def listSuppressions(
+      workspaceId: UUID,
+      q: Option[String],
+      limit: Int = 100
+  ): IO[List[SuppressionView]] =
+    val base = fr"""
+      select id, email, contact_id, reason::text, source::text, created_at
+      from public.suppression
+      where workspace_id = $workspaceId
+    """
+    val filter = q
+      .map { term =>
+        val like = s"%${term.toLowerCase}%"
+        fr" and lower(email) like $like"
+      }
+      .getOrElse(Fragment.empty)
+    (base ++ filter ++ fr"order by created_at desc limit $limit")
+      .query[SuppressionView]
+      .to[List]
+      .transact(transactor)
+
+  def findSuppression(
+      workspaceId: UUID,
+      suppressionId: UUID
+  ): IO[Option[SuppressionView]] =
+    sql"""
+      select id, email, contact_id, reason::text, source::text, created_at
+      from public.suppression where workspace_id = $workspaceId and id = $suppressionId
+    """.query[SuppressionView].option.transact(transactor)
+
+  def deleteSuppression(workspaceId: UUID, suppressionId: UUID): IO[Boolean] =
+    sql"delete from public.suppression where workspace_id = $workspaceId and id = $suppressionId".update.run
+      .map(_ > 0)
+      .transact(transactor)
+
+  /** Bulk suppressed-email check for the import pipeline. */
+  def suppressedEmails(
+      workspaceId: UUID,
+      emails: List[String]
+  ): IO[Set[String]] =
+    if emails.isEmpty then IO.pure(Set.empty)
+    else
+      val inList = emails
+        .map(e => fr"$e")
+        .reduceOption((a, b) => a ++ fr", " ++ b)
+        .getOrElse(Fragment.empty)
+      (fr"select email from public.suppression where workspace_id = $workspaceId and email in (" ++ inList ++ fr")")
+        .query[String]
+        .to[List]
+        .transact(transactor)
+        .map(_.toSet)
+
+  /** Reactivates a contact (state -> active) when its suppression is removed.
+    */
+  def reactivateContact(workspaceId: UUID, contactId: UUID): IO[Int] =
+    sql"""
+      update public.contact set state = 'active'
+      where workspace_id = $workspaceId and id = $contactId and state <> 'active'
+    """.update.run.transact(transactor)
+
+  /** Sets a contact's lifecycle state (suppression side-effects). */
+  def setContactState(
+      workspaceId: UUID,
+      contactId: UUID,
+      state: String
+  ): IO[Unit] =
+    sql"""
+      update public.contact set state = ${state}::public.contact_state
+      where workspace_id = $workspaceId and id = $contactId
+    """.update.run.void.transact(transactor)
 
   def audit(
       workspaceId: UUID,

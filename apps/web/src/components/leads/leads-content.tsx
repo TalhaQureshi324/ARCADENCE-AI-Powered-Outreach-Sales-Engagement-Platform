@@ -32,6 +32,7 @@ import {
   contactsApi,
   customFieldsApi,
   leadListsApi,
+  verificationApi,
   tagsApi,
   type CompanyDto,
   type ContactPage,
@@ -179,6 +180,29 @@ function ContactsTab({ workspaceId, myRole }: { workspaceId: string; myRole: str
       cancelled = true;
     };
   }, [workspaceId, appliedQuery, sort, currentCursor]);
+
+  async function verify(contactId: string) {
+    setBusyId(contactId);
+    setError(null);
+    try {
+      const result = await verificationApi.verify(workspaceId, contactId);
+      toast(
+        result.status === "invalid" ? "error" : "success",
+        `${result.email}: ${result.status} (${result.provider})`,
+      );
+      load(currentCursor, appliedQuery, sort);
+    } catch (e) {
+      if (isUnauthorized(e)) {
+        const { createClient } = await import("@/lib/supabase/client");
+        await createClient().auth.signOut();
+        router.push("/login?expired=1");
+        return;
+      }
+      setError(errorMessage(e));
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   async function remove(contactId: string) {
     setBusyId(contactId);
@@ -333,15 +357,24 @@ function ContactsTab({ workspaceId, myRole }: { workspaceId: string; myRole: str
                       {editable && (
                         <div className="flex items-center justify-end gap-1">
                           {busyId === c.id ? (
-                            <span className="text-muted-foreground text-xs">Deleting…</span>
+                            <span className="text-muted-foreground text-xs">Working…</span>
                           ) : (
-                            <Button
-                              variant="ghost"
-                              aria-label={`Delete ${c.email}`}
-                              onClick={() => remove(c.id)}
-                            >
-                              <Trash2 size={14} />
-                            </Button>
+                            <>
+                              <Button
+                                variant="ghost"
+                                aria-label={`Verify ${c.email}`}
+                                onClick={() => verify(c.id)}
+                              >
+                                Verify
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                aria-label={`Delete ${c.email}`}
+                                onClick={() => remove(c.id)}
+                              >
+                                <Trash2 size={14} />
+                              </Button>
+                            </>
                           )}
                         </div>
                       )}

@@ -14,6 +14,29 @@
 
 ---
 
+---
+
+## 2026-10-15 — Phase 3 / Subphase 3.3: Verification & suppression
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **Provider abstraction (core, `email.verification`)** — `EmailVerificationProvider` trait + `SyntaxMxProvider` default (syntax check, MX lookup via JNDI DNS with bounded timeouts). Per the plan: **syntax+MX alone never classifies an address as verified** — MX found → `risky`, no MX → `invalid`, DNS errors → `unknown`. Licensed external providers plug into the same trait when API keys exist (MANUAL_SETUP 12a).
+- **Verification API** — `POST /contacts/{id}/verify` + `/contacts/verify-batch` (≤25): persists verification_status/checked_at/provider on the contact, writes provenance (source=verification), **auto-suppresses invalid results** (reason=invalid, source=automatic; contact → bounced).
+- **Suppression** — `suppression` table (workspace-scoped, unique per email; reuses Phase 0 reason/source enums) + API: list/search, create by email-or-contact (dedup upserts reason), delete = **reactivation** restricted to admin+ (manage_members), audited, and **unsubscribe/complaint suppressions are permanent** (409 on delete attempt). Removal reactivates the contact (state → active).
+- **Import enforcement** — suppressed emails are skipped during CSV import (recorded in the error report as `suppressed: …`), enforced at Phase 3.2's batched pipeline.
+- **Web** — Suppression tab on /app/leads (add-by-email with reason, list, permanent badges, two-step reactivation with admin gate) and a **Verify** action on every contact row (toast shows provider verdict; badges refresh).
+
+### Tested (evidence)
+
+- **VerificationSuppressionSpec 8/8** (DB-gated): risky-never-verified, invalid → auto-suppress + bounced state + suppression row, manual suppression create/dedupe/list, viewer 403, unsubscribe suppression PERMANENT (owner delete → 409), admin removal → reactivation + audit row, import skips suppressed emails.
+- Full Scala suite: **178/178** (worker 2 · core 101 incl. new core provider file compile · api 75). Web: tsc/lint/vitest 25/25/build green.
+
+### Notes
+
+- MX lookups hit real DNS only in the default provider path at runtime; tests use a stub provider (no network). Licensed provider API keys are a future MANUAL_SETUP item.
+
 ## 2026-10-15 — Phase 3 / Subphase 3.2: CSV import pipeline
 
 **Status:** ✅ Completed and pushed

@@ -11,7 +11,7 @@
 **Phase 0 — Foundation** · status: **complete** (promoted to `main`, tag `phase-0`)
 **Phase 1 — Auth, tenancy & UI foundation** · status: **complete** (promoted to `main`, tag `phase-1`)
 **Phase 2 — Email account connections** · status: **complete** (promoted to `main`, tag `phase-2`)
-**Phase 3 — Lead management engine** · status: **in-progress** (3.1–3.2 done)
+**Phase 3 — Lead management engine** · status: **in-progress** (3.1–3.3 done)
 
 ## Phase roadmap (provisional — ADR-0014)
 
@@ -60,6 +60,7 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | --- | --- | --- | --- |
 | 3.1 | Contacts & companies — 8 tables (company, contact, lead_list, list_membership, tag, contact_tag, custom_field, source_provenance) with normalized-email dedup, display-casing retention, provenance trail; CRUD + filter/sort/cursor-pagination + batch + companies/lists/tags/custom-fields APIs (permission-gated, sort-aware keyset cursors); /app/leads UI (Contacts/Companies/Lists/Tags & Fields tabs, create dialogs, member management) | **tested** | Migration `20261015090000` applied locally + staging; Scala 163/163 (2 worker + 75 core + 86 api incl. LeadsIntegrationSpec 11: dedup 409, normalization + display casing, custom-field validation, batch all-or-nothing validation, cursor stability (sort-aware), tenant isolation, provenance); Playwright 10/10 incl. leads CRUD/dedup/search/tags/lists; fixed long-standing web envelope parsing (top-level code/message now surfaces real API errors). |
 | 3.2 | CSV import pipeline — durable import_job/import_error tables; upload → header/preview → column mapping → duplicate strategy (skip/update/reject); batched processing (500/batch, bounded memory) with per-batch progress; idempotent retries via UNIQUE (job, row) provenance; restart marks interrupted jobs failed→retryable; downloadable error report; Imports tab (upload, mapping UI, strategy, target list, live progress, retry, error download) | **tested** | Migration `20261015100000` applied locally + staging; ImportIntegrationSpec 7/7 incl. the plan's 10,000-record import (batched: ~9s), duplicate skip/update semantics, malformed/empty CSV 422, error report content, idempotent retry (no dup contacts), tenant isolation; real bug found+fixed (partial unique index broke ON CONFLICT → provenance markers never wrote); restart-recovery endpoint verified by marking running→failed. |
+| 3.3 | Verification & suppression — EmailVerificationProvider abstraction (SyntaxMxProvider default: syntax + MX via JNDI; syntax+MX never yields verified, per plan), manual + batch verification with provenance, invalid auto-suppression, suppression table + CRUD with reactivation guard (delete = admin+ only, audited; unsubscribe/complaint permanent), import enforcement (suppressed emails skipped) | **tested** | Migration `20261015200000` applied locally + staging; VerificationSuppressionSpec 8/8 (risky-not-verified, invalid auto-suppress + bounced state, manual suppression + dedupe, viewer 403, unsubscribe permanent 409, admin removal + reactivation + audit, import skips suppressed); external licensed providers remain a MANUAL_SETUP item (12a) — abstraction ready for API keys. |
 
 ### Subphase detail — Phase 2
 

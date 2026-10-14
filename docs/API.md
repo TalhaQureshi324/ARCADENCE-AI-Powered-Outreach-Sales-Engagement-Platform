@@ -114,7 +114,10 @@ Planned:
 - ✅ (3.2) `GET /imports` (history) · `GET /imports/{jobId}` (progress: processed/inserted/updated/skipped/invalid/duplicate totals)
 - ✅ (3.2) `GET /imports/{jobId}/errors.csv` — per-row error report (row_number, reason)
 - ✅ (3.2) `POST /imports/{jobId}/retry` (E+) — failed/completed only; idempotent: provenance UNIQUE (import_job_id, row_number) skips already-imported rows; startup marks interrupted `running` jobs failed for retry
-- ⬜ (3.3) verification + suppression APIs
+- ✅ (3.3) `POST /contacts/{id}/verify` (E+) — provider abstraction (stub in tests; syntax+MX default; licensed providers when configured); **invalid auto-suppresses** (reason=invalid, source=automatic, contact → bounced); syntax+MX alone NEVER yields verified
+- ✅ (3.3) `POST /contacts/verify-batch` `{contactIds}` ≤25 (E+)
+- ✅ (3.3) `GET|POST /suppressions` (view / E+) · `DELETE /suppressions/{id}` (**admin+ only**, audited; unsubscribe/complaint suppressions are PERMANENT and cannot be removed; removal reactivates the contact)
+- ✅ (3.3) import enforcement: suppressed emails are skipped at import (error report notes them)
 - ⬜ (3.4) segments, bulk ops, merge, export
 
 - ⬜ `GET|POST /api/v1/workspaces/{id}/contacts` · `GET|PATCH|DELETE .../contacts/{contactId}`
