@@ -10,6 +10,30 @@
 
 ---
 
+---
+
+## 2026-10-15 — Phase 3 / Subphase 3.1: Contacts and companies
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **Database (`20261015090000_contacts.sql`)**: `company`, `contact` (UNIQUE normalized-lowercase email per workspace + `email_display` original casing; names/title/website/phone/region/timezone/notes; `custom_fields` jsonb; verification columns ready for 3.3), `lead_list`, `list_membership` (idempotent pairs, actor recorded), `tag` + `contact_tag`, `custom_field` (typed definitions), `source_provenance` (append-only: manual/api/import/verification; `import_job_id` reserved for 3.2). Keyset index `(workspace_id, created_at desc, id)` + GIN on custom_fields (for 3.4). RLS member-select policies; writes via the audited API. Applied to local + staging.
+- **API (`ContactRoutes` + `LeadsRepos`)**: contact CRUD with normalization + 409 dedup; list with `q/state/verification/companyId/listId/tagId` filters, 4 sorts, **sort-aware keyset cursor pagination** (email sorts cursor on `(email, id)`; opaque base64url cursor, malformed → 422), `total` included; batch create (≤200, all-or-nothing email validation, per-item created/skipped); provenance; tags on contacts; companies CRUD; lead lists CRUD + idempotent membership add/remove + paged members; custom-fields CRUD. Reads = view permission; writes = edit_content. Unknown custom-field keys rejected at write time (must be defined first). Envelope errors map 1:1.
+- **Web**: `/app/leads` page with Contacts / Companies / Lists / Tags & Fields tabs — searchable + sortable + paginated contacts table with normalized-vs-display email, create dialog (dedup 409 surfaced), companies with contact counts, lists with member management dialogs, tags + typed custom field management. Sidebar "Leads" nav activated.
+- **Fixed (long-standing)**: `apiFetch` only parsed `json.error`; the Scala API returns the error envelope top-level (`{code,message}`) — business errors now surface their real messages app-wide (e.g. dedup 409s).
+
+### Tested (evidence)
+
+- Scala `Test/test` with `TEST_DATABASE_URL` → **163/163** (worker 2 · core 75 · api 86 incl. **LeadsIntegrationSpec 11**: custom-field validation, normalization + display casing + 409 dedup, viewer read-only + 403 writes, outsider 404, batch all-or-nothing validation + skip semantics, **cursor pagination no-overlap across email sort**, companies/lists/membership/tags/provenance round-trip, PATCH null-clear + delete, cross-tenant end state).
+- Web: vitest 25/25 · tsc clean · lint clean · build green (`/app/leads` registered).
+- **Playwright 10/10** — new leads spec: create contact (display + normalized emails shown), dedup 409 surfaced in dialog, search, tag create, list create + member add with toast.
+
+### Notes
+
+- Cursor keyset gotcha fixed during testing: email-sorted pages must cursor on `(email, id)` — created_at cursors silently overlap pages.
+- pg_trgm full-text search intentionally deferred to 3.4 (segment/search scale work).
+
 ## 2026-10-14 — Phase 2 / Subphase 2.4: SMTP/IMAP + completed email-account dashboard — PHASE 2 MILESTONE
 
 **Status:** ✅ Completed and pushed — **Phase 2 milestone (tag `phase-2`)**

@@ -112,6 +112,10 @@ Credentials are written only by the Scala server (AES-256-GCM envelope encryptio
 
 ### 6.3 Contacts & lists
 
+> Implemented in `20261015090000` (Phase 3.1): `company`, `contact` (normalized-lowercase `email` UNIQUE per workspace + `email_display` for the original casing; `custom_fields` jsonb validated against `custom_field` definitions; verification columns per §6.3 design), `lead_list` + `list_membership` (idempotent pairs), `tag` + `contact_tag`, `source_provenance` (append-only; `import_job_id` attaches in Phase 3.2). Keyset indexes: `(workspace_id, created_at desc, id)` for cursor pagination; GIN on `custom_fields` for Phase 3.4 segment queries. RLS: member-select policies; writes flow through the audited API.
+
+### 6.3 Contacts & lists
+
 ```mermaid
 erDiagram
     workspace ||--o{ company : has
