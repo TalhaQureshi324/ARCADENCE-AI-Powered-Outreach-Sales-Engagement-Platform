@@ -12,6 +12,31 @@
 
 ---
 
+---
+
+## 2026-10-15 — Phase 3 / Subphase 3.2: CSV import pipeline
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **Database (`20261015100000_imports.sql`)**: `import_job` (status created/queued/running/completed/failed/cancelled; duplicate strategy; column mapping + defaults jsonb; target list; per-outcome counters) + `import_error` (row-level report). `source_provenance` gains `row_number` with UNIQUE (import_job_id, row_number) — the idempotency marker. Applied local + staging.
+- **Pipeline (`ImportService`)**: batched processing (500 rows/batch, bounded memory) — bulk existence checks, bulk contact INSERT … ON CONFLICT DO NOTHING RETURNING, bulk provenance markers, company find-or-create BEFORE insert (UUID-typed), per-batch progress bump, finish/fail with error message. CSV: RFC 4180 state machine (quoted fields/delimiters/newlines, escaped quotes), delimiter sniffing (`,` `;` `	` `|`), UTF-8 BOM + ISO-8859-1 fallback. Duplicate strategies: skip / update-non-empty / reject(→error rows). Row classification: missing/invalid email → import_error; in-file duplicates per strategy. target list membership on import.
+- **API**: upload (octet-stream ≤25MB → headers + 5-row preview + job in `created`), start (mapping validation: email required, custom-field targets must exist), history, progress, errors.csv download, retry (failed/completed only; guarded transition; resume skips already-imported rows). Startup recovery marks interrupted `running` jobs failed → retryable.
+- **Web**: Imports tab on /app/leads — file upload, mapping UI (file column → contact field selects), duplicate-strategy + target-list selects, live progress polling (1.5s while queued/running), history table with totals + retry + error-report download.
+
+### Bugs found & fixed during 3.2
+
+1. **Partial unique index broke ON CONFLICT** — `UNIQUE (import_job_id, row_number) WHERE … NOT NULL` cannot be targeted by `ON CONFLICT (…)`; provenance markers silently never wrote (batch failed → job failed). Replaced with a plain unique index (NULLs never conflict).
+2. **Email regex missing caret** — hand-built `[\s@]` instead of `[^\s@]` in the final class rejected ALL valid emails (caught by 10k test inserted=0).
+3. foldLeftM accumulator semantics — per-batch deltas were returned as the new accumulator instead of sums (10k totals showed only the last batch).
+
+### Tested (evidence)
+
+- **ImportIntegrationSpec 7/7** incl. the plan's required **10,000-record import** (~9s, batched), duplicate skip/update strategies, malformed/empty CSV 422, error-report content, **idempotent retry** (forced reprocess → still exactly 1 contact), tenant isolation (outsider 404).
+- Web: tsc clean · lint 0 errors · vitest 25/25 · build green.
+- Full Scala suite re-run after merge (see 3.3 entry).
+
 ## 2026-10-15 — Phase 3 / Subphase 3.1: Contacts and companies
 
 **Status:** ✅ Completed and pushed

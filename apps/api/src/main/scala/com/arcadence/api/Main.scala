@@ -118,6 +118,27 @@ object Main extends IOApp:
                   authorizer = authorizer
                 )
 
+                // CSV import pipeline (Phase 3.2)
+                val leadsReposShared = new LeadsRepos(transactor)
+                val importRepos = new ImportRepos(transactor)
+                val importService = new ImportService(
+                  repos = importRepos,
+                  leadsRepos = leadsReposShared,
+                  transactor = transactor,
+                  spoolRoot = sys.env
+                    .get("IMPORT_SPOOL_DIR")
+                    .map(java.nio.file.Paths.get(_))
+                    .getOrElse(ImportService.defaultSpoolRoot),
+                  maxFileBytes = 25L * 1024 * 1024
+                )
+                val importRoutes = new ImportRoutes(
+                  authenticator = authenticator,
+                  repos = importRepos,
+                  leadsRepos = leadsReposShared,
+                  authorizer = authorizer,
+                  service = importService
+                )
+
                 val dbReady: IO[Boolean] =
                   sql"select 1"
                     .query[Int]
@@ -148,7 +169,7 @@ object Main extends IOApp:
                 val hardenedRoutes: HttpRoutes[IO] =
                   RateLimit(config.rateLimitPerMinute)(
                     SecurityHeaders(
-                      workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http <+> leadsRoutes.http
+                      workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http <+> leadsRoutes.http <+> importRoutes.http
                     )
                   )
 
@@ -172,6 +193,11 @@ object Main extends IOApp:
                 }
 
                 applyLogLevel *>
+                  importService.recoverAfterRestart.flatMap(n =>
+                    logger.info(
+                      s"import recovery: $n interrupted job(s) marked failed"
+                    )
+                  ) *>
                   logger.info(
                     s"arcadence-api ${BuildInfo.version} starting on port ${config.port}"
                   ) *>

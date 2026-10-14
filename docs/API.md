@@ -109,7 +109,11 @@ Implemented (3.1):
 
 Planned:
 
-- ⬜ (3.2) imports: `POST /imports` upload → header mapping → `POST /imports/{id}/start` with duplicate strategy; progress, history, error report download
+- ✅ (3.2) `POST /imports/upload?fileName=` (E+, octet-stream ≤25MB) — parses headers + 5-row preview, creates job (status `created`/mapping); 422 on malformed/empty CSV
+- ✅ (3.2) `POST /imports/{jobId}/start` `{mapping: {colIndex → field}, duplicateStrategy: skip|update|reject, defaults?, targetListId?}` (E+) — validates mapping (email required, custom fields must exist), enqueues the processing fiber
+- ✅ (3.2) `GET /imports` (history) · `GET /imports/{jobId}` (progress: processed/inserted/updated/skipped/invalid/duplicate totals)
+- ✅ (3.2) `GET /imports/{jobId}/errors.csv` — per-row error report (row_number, reason)
+- ✅ (3.2) `POST /imports/{jobId}/retry` (E+) — failed/completed only; idempotent: provenance UNIQUE (import_job_id, row_number) skips already-imported rows; startup marks interrupted `running` jobs failed for retry
 - ⬜ (3.3) verification + suppression APIs
 - ⬜ (3.4) segments, bulk ops, merge, export
 
