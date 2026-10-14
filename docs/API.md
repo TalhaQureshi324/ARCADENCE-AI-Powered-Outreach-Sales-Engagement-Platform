@@ -71,12 +71,28 @@ Legend: ✅ implemented · ⬜ designed. Roles: O=owner, A=admin, M=member, V=vi
 - ⬜ `PATCH|DELETE /api/v1/workspaces/{workspaceId}/members/{userId}` — O (role change/remove)
 - ⬜ `POST /api/v1/invitations/accept` — invited user
 
-### 3.3 Email connections — Phase 2
+### 3.3 Email accounts — Phase 2
 
-- ⬜ `GET|POST /api/v1/workspaces/{id}/email-connections`
-- ⬜ `GET /api/v1/email-connections/oauth/{provider}/start` → consent redirect; `GET .../callback` (state-validated)
-- ⬜ `PATCH|DELETE /api/v1/workspaces/{id}/email-connections/{connId}` (pause/resume/disconnect; A/M+)
-- ⬜ `POST .../{connId}/test-send` — verification email (M+)
+Implemented (2.1):
+
+- ✅ `GET /api/v1/email-providers` — capability matrix (authenticated); no secrets
+- ✅ `GET /api/v1/workspaces/{id}/email-accounts` (view) · `GET .../{accountId}` (view)
+- ✅ `PATCH .../{accountId}` — displayName / accountGroupId / dailySendCap (M+; absent = unchanged, explicit null = clear)
+- ✅ `POST .../{accountId}/pause` · `/resume` · `/disconnect` (M+; state-machine validated, audited, disconnect purges credentials)
+- ✅ `DELETE .../{accountId}` (M+; cascades credentials, health, sync state)
+- ✅ `GET .../{accountId}/health` (view) — recent account_health_events
+- ✅ `GET|POST /api/v1/workspaces/{id}/account-groups` (view / M+) · `PATCH|DELETE .../account-groups/{groupId}` (M+)
+
+Planned:
+
+- ✅ (2.2) `POST /api/v1/email-connections/oauth/google/start` `{workspaceId}` → `{authorizeUrl}` (M+; 503 `not_configured` without console credentials; state = HMAC-signed workspace+user+PKCE verifier, 10-min TTL)
+- ✅ (2.2) `GET /api/v1/email-connections/oauth/google/callback?code&state` — browser route (no bearer; state-validated, membership re-checked) → 303 to `/app/email-accounts?gmail=connected|reconnected|denied|invalid_state|expired|forbidden|not_configured|error`
+- ✅ (2.2) `POST /api/v1/workspaces/{id}/email-accounts/{accountId}/test` `{to}` (M+) — authorized test send; records `test_succeeded`/`test_failed`; provider failures surface as 502 `provider_error`
+- ✅ (2.2) disconnect now best-effort revokes the Google grant before purging credentials; capability matrix rows carry `configured`
+- ✅ (2.3) `POST /api/v1/email-connections/oauth/microsoft/start` `{workspaceId}` → `{authorizeUrl}` (M+; tenant-aware authority, same signed-state shape; 503 `not_configured` without an app registration)
+- ✅ (2.3) `GET /api/v1/email-connections/oauth/microsoft/callback?code&state` — browser route → 303 `/app/email-accounts?microsoft=connected|reconnected|denied|invalid_state|expired|forbidden|not_configured|error`
+- ✅ (2.3) test-send / disconnect / capability `configured` are provider-agnostic — the shared `/test` endpoint moved to the email-accounts routes and routes through the adapter registry
+- ✅ (2.4) `POST /api/v1/workspaces/{id}/email-accounts` `{emailAddress, displayName?, username, password, smtp{Host,Port,Security}, imap{Host,Port,Security}}` (M+) — credentials validated by real server sign-in before creation; 409 on duplicates; 502 `provider_error` (never echoes the password); `signature` now patchable on every account (explicit null clears); account payloads carry `signature` + inbox `syncStatus`/`syncError`
 
 ### 3.4 Leads & lists — Phase 3
 

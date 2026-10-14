@@ -33,6 +33,9 @@ object Permissions:
     case object ManageCampaigns extends Permission {
       val label = "manage_campaigns"
     }
+    case object ManageEmailAccounts extends Permission {
+      val label = "manage_email_accounts"
+    }
     case object ManageMembers extends Permission {
       val label = "manage_members"
     }
@@ -45,7 +48,7 @@ object Permissions:
   private val ViewerMapping: Set[Permission] = Set(ViewWorkspace)
   private val MemberMapping: Set[Permission] = ViewerMapping + EditContent
   private val CampaignManagerMapping: Set[Permission] =
-    MemberMapping + ManageCampaigns
+    MemberMapping + ManageCampaigns + ManageEmailAccounts
   private val AdminMapping: Set[Permission] =
     CampaignManagerMapping + ManageMembers
   private val OwnerMapping: Set[Permission] = AdminMapping + ManageWorkspace

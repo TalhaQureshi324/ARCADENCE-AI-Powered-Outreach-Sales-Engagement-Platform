@@ -9,7 +9,15 @@ final case class ApiConfig(
     jwtIssuer: String,
     jwtAudience: String,
     jwksUrl: String,
-    rateLimitPerMinute: Int
+    rateLimitPerMinute: Int,
+    credentialEncryptionKey: String,
+    googleOAuthClientId: Option[String],
+    googleOAuthClientSecret: Option[String],
+    googleOAuthRedirectUri: Option[String],
+    microsoftOAuthClientId: Option[String],
+    microsoftOAuthClientSecret: Option[String],
+    microsoftOAuthRedirectUri: Option[String],
+    microsoftOAuthTenant: Option[String]
 )
 
 object ApiConfig:
@@ -20,13 +28,32 @@ object ApiConfig:
     jwtIssuer = "",
     jwtAudience = "",
     jwksUrl = "",
-    rateLimitPerMinute = 120
+    rateLimitPerMinute = 120,
+    credentialEncryptionKey = "",
+    googleOAuthClientId = None,
+    googleOAuthClientSecret = None,
+    googleOAuthRedirectUri = None,
+    microsoftOAuthClientId = None,
+    microsoftOAuthClientSecret = None,
+    microsoftOAuthRedirectUri = None,
+    microsoftOAuthTenant = None
   )
 
+  /** True when the Google OAuth console credentials are provisioned — drives
+    * the capability endpoint's `configured` flag (honest connect UI).
+    */
+  def googleOAuthConfigured(config: ApiConfig): Boolean =
+    config.googleOAuthClientId.nonEmpty && config.googleOAuthClientSecret.nonEmpty
+
+  /** True when the Microsoft (Graph) OAuth app registration is provisioned. */
+  def microsoftOAuthConfigured(config: ApiConfig): Boolean =
+    config.microsoftOAuthClientId.nonEmpty && config.microsoftOAuthClientSecret.nonEmpty
+
   /** Reads the API process configuration from the process environment. The
-    * database and JWT-verification settings are required from Phase 1.2 on:
-    * business endpoints refuse to start without them (fail fast, aggregated
-    * error).
+    * database, JWT-verification and credential-encryption settings are required
+    * (fail fast, aggregated error): business endpoints refuse to start without
+    * them. Google OAuth credentials are optional — the Gmail connect flow
+    * reports "not configured" until they exist (Phase 2.2).
     */
   def fromEnv(env: Map[String, String]): Either[String, ApiConfig] =
     (
@@ -36,7 +63,15 @@ object ApiConfig:
       required(env, "SUPABASE_JWT_ISSUER"),
       required(env, "SUPABASE_JWT_AUDIENCE"),
       required(env, "SUPABASE_JWKS_URL"),
-      Parsers.port(env, "RATE_LIMIT_PER_MINUTE", 120)
+      Parsers.port(env, "RATE_LIMIT_PER_MINUTE", 120),
+      encryptionKey(env),
+      optional(env, "GOOGLE_OAUTH_CLIENT_ID"),
+      optional(env, "GOOGLE_OAUTH_CLIENT_SECRET"),
+      optional(env, "GOOGLE_OAUTH_REDIRECT_URI"),
+      optional(env, "MSFT_OAUTH_CLIENT_ID"),
+      optional(env, "MSFT_OAUTH_CLIENT_SECRET"),
+      optional(env, "MSFT_OAUTH_REDIRECT_URI"),
+      optional(env, "MSFT_OAUTH_TENANT")
     )
       .mapN(ApiConfig.apply)
       .toEither
@@ -51,4 +86,23 @@ object ApiConfig:
       case Some(value) => cats.data.Validated.validNel(value)
       case None        => cats.data.Validated.invalidNel(s"$name is required")
 
+  private def optional(
+      env: Map[String, String],
+      name: String
+  ): ValidatedOption =
+    cats.data.Validated.validNel(
+      env.get(name).map(_.trim).filter(_.nonEmpty)
+    )
+
+  /** EMAIL_ENCRYPTION_KEY must be base64 and decode to exactly 32 bytes
+    * (AES-256); validated at startup so a broken key never reaches runtime.
+    */
+  private def encryptionKey(env: Map[String, String]): ValidatedNelString =
+    required(env, "EMAIL_ENCRYPTION_KEY").andThen { raw =>
+      com.arcadence.core.crypto.CredentialEncryptor.decodeKey(raw) match
+        case Right(_)    => cats.data.Validated.validNel(raw)
+        case Left(error) => cats.data.Validated.invalidNel(error)
+    }
+
   private type ValidatedNelString = cats.data.ValidatedNel[String, String]
+  private type ValidatedOption = cats.data.ValidatedNel[String, Option[String]]

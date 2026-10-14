@@ -2,7 +2,7 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-10-12 (1.4 — Phase 1 complete)
+**Last updated:** 2026-10-14 (2.4 — Phase 2 complete)
 
 ---
 
@@ -10,6 +10,7 @@
 
 **Phase 0 — Foundation** · status: **complete** (promoted to `main`, tag `phase-0`)
 **Phase 1 — Auth, tenancy & UI foundation** · status: **complete** (promoted to `main`, tag `phase-1`)
+**Phase 2 — Email account connections** · status: **complete** (promoted to `main`, tag `phase-2`)
 
 ## Phase roadmap (provisional — ADR-0014)
 
@@ -19,7 +20,7 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | --- | --- | --- |
 | 0 | Foundation — repo, tooling, scaffolds, CI, skeleton services, health checks, deployment wiring | **in-progress** |
 | 1 | Authentication & workspaces — Supabase Auth SSR, multi-tenant model, RBAC, RLS | planned |
-| 2 | Email account connections — Gmail OAuth, Microsoft OAuth, SMTP/IMAP, credential storage | planned |
+| 2 | Email account connections — Gmail OAuth, Microsoft OAuth, SMTP/IMAP, credential storage | **complete** |
 | 3 | Lead management — leads, lists, import/export, verification hooks, suppression | planned |
 | 4 | Campaigns & sequences — builder, scheduling, personalization | planned |
 | 5 | Sending engine — durable send queue, provider submission, tracking, bounce handling | planned |
@@ -51,6 +52,15 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 1.2 | Organizations, workspaces & authorization (JWT middleware, RBAC, cross-tenant tests) | **tested** | Supabase JWTs verified via JWKS (ES256, iss/aud/exp); explicit permission model (owner/admin/campaign_manager/member/viewer); workspaces + members + invitations API with audit trail; 7/7 cross-tenant isolation tests. Staging migrations + RLS verified 15/15. |
 | 1.3 | Application shell & design system | **tested** | Token-based light/dark theme, 12 UI primitives (Radix dialog/dropdown/tabs, table, pagination, skeletons, badges, toasts, empty states, avatar, breadcrumbs), responsive sidebar shell with workspace selector (live API data), ⌘K command palette, profile/notifications menus; dashboard with real API data + honest empty/roadmap states; 7/7 Playwright e2e incl. workspace creation. |
 | 1.4 | Workspace administration & hardening | **tested** | Settings UI (members/invitations/profile tabs, permission-aware, live API data); invitation accept page; per-caller rate limiting; security headers (API + Next.js); session-expiry handling. 8/8 Playwright incl. two-organization cross-tenant lifecycle. |
+
+### Subphase detail — Phase 2
+
+| # | Subphase | Status | Notes |
+| --- | --- | --- | --- |
+| 2.1 | Email account architecture — 6 tables (email_accounts, account_credentials, sender_domains, account_groups, account_health_events, provider_sync_state), EmailProvider contract + capability matrix + account state machine, AES-256-GCM credential encryption (ADR-0020), email-accounts management UI (provider cards, groups CRUD, health trail) | **tested** | Migration `20261013090000` applied locally; Scala 85/85 (2 worker + 37 core + 46 api incl. 14 integration: capability matrix, group CRUD, permission gating, lifecycle transitions, credential purge, cross-tenant isolation); web unit 25/25, production build green; live API + Playwright run recorded in HANDOFF. Found + fixed real null-semantics bug (circe explicit-null PATCH decoding). |
+| 2.2 | Gmail integration — OAuth authorization-code + PKCE + offline refresh (ADR-0021), HMAC-signed state with callback-side permission re-check, GmailProvider adapter (send/reply/profile/inbox-list/revoke; stub-server-tested), authorized test send, reconnect via upsert, disconnect with best-effort Google revocation, configured-aware connect UI + test-send dialog + callback outcome banners | **tested** | Scala 117/117 (2 worker + 57 core incl. GmailProviderSpec 11 + GmailMimeSpec 5 + OAuthStateSignerSpec 4 + 58 api incl. GmailFlowIntegrationSpec 12: tamper/expiry/denial/expiry-of-permission paths, encrypted-credential round-trip, reconnection dedupe, test-send permission gating); live e2e covers the forged-state callback through the real API; MANUAL_SETUP 6a updated (redirect URI now the API callback). Google console credentials still pending (item 6a) — real-Google verification blocked on that. |
+| 2.3 | Microsoft 365 integration — tenant-aware Graph OAuth + PKCE (ADR-0022), same signed-state/callback security shape as Gmail, draft-then-send (captures provider message id), createReply replies, skip-token inbox listing with /delta + change-notification design headroom, revokeSignInSessions on disconnect, configured-aware UI + reconnect + shared test-send endpoint (moved to email-accounts routes, provider-agnostic) | **tested** | Scala 137/137 (2 worker + 67 core incl. GraphProviderSpec 11 — consent failure, missing permissions 403, throttling 429 with Retry-After, draft/send/reply flows, skiptoken cursor · 68 api incl. MicrosoftFlowIntegrationSpec 10: start URL + state verification, tamper/expiry/denial, encrypted-credential round-trip, reconnection dedupe, test-send gating, disconnect purge); real-Graph verification blocked on Entra app registration (item 7). |
+| 2.4 | SMTP/IMAP + completed dashboard — SmtpImapProvider (Jakarta Mail/angus, mandatory TLS, real server-side credential validation, draft/send/reply, UID-cursor inbox; GreenMail protocol-level tests), POST email-accounts connect endpoint (duplicate 409, password never echoed), signature PATCH on all accounts, sync status/error in list payloads, web connect form + signature editor + test-recipient history + sync column; Phase 2 milestone | **tested** | Scala 152/152 (2 worker + 75 core incl. SmtpImapProviderSpec 8 over real GreenMail TLS servers · 75 api incl. SmtpImapFlowIntegrationSpec 7: real validation, 409 duplicate, 502 password-error without echo, signature set/clear, real SMTP test-send delivery, disconnect purge); Playwright 9/9 incl. connect form rejecting a dead server; milestone tag `phase-2` pushed. |
 
 ## Completed milestones
 

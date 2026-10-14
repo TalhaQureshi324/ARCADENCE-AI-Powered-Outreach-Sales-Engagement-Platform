@@ -6,6 +6,118 @@
 
 ---
 
+---
+
+---
+
+## 2026-10-14 — Phase 2 / Subphase 2.4: SMTP/IMAP + completed email-account dashboard — PHASE 2 MILESTONE
+
+**Status:** ✅ Completed and pushed — **Phase 2 milestone (tag `phase-2`)**
+
+### Implemented
+
+- **SmtpImapProvider adapter (arcadence-core, `com.arcadence.core.email.smtpimap`)** — Jakarta Mail on angus behind the same 2.1 contract: shape validation (ports/hosts/TLS modes) before any network attempt, **mandatory TLS** (`ssl` implicit or `starttls.required` — no plaintext), real SMTP+IMAP sign-in validation, RFC 5322 submission (text/HTML alternative, In-Reply-To/References replies), IMAP INBOX retrieval newest-25 with the last seen UID as the durable cursor, typed error mapping (auth failure → InvalidCredentials; unknown host/refused → Unreachable; TLS handshake → security-mode guidance). OAuth-only operations return NotSupported values. System `mail.*` properties act as session defaults so deployments can pin trust anchors without code changes.
+- **Connect-by-credentials endpoint** — `POST /api/v1/workspaces/{id}/email-accounts`: permission-checked, shape-validated, credentials validated by REAL server sign-in before creation (failures → 502 `provider_error`, password never echoed anywhere), duplicates → 409 `conflict`, account + encrypted `password`-kind credentials + sync cursors + health + audit created on success.
+- **Dashboard completion** — signature is now settable/clearable on every account (PATCH explicit-null semantics, UI editor dialog); account payloads carry `signature` + inbox `syncStatus`/`syncError`; the accounts table shows a Sync column; the test-send dialog remembers recent test recipients per workspace (localStorage quick-picks); the SMTP/IMAP provider card offers a real connect form (host/port/security selects, app-password guidance) that surfaces server rejections honestly.
+- **Config** — no new required settings; the smtp_imap adapter is always registered (`configured=true`).
+
+### Tested (evidence)
+
+- Scala `Test/test` with `TEST_DATABASE_URL` → **152/152** (worker 2 · core 75 incl. **SmtpImapProviderSpec 8 over REAL GreenMail TLS servers**: dual login, wrong-password → InvalidCredentials without echo, unknown host → Unreachable, real message delivery, reply headers, UID cursor · api 75 incl. **SmtpImapFlowIntegrationSpec 7**: real-server validation before creation, duplicate 409, 502 provider error without password echo, signature set/clear, test send delivered through real SMTP, disconnect purge).
+- `scalafmtAll` success. Web: vitest 25/25 · lint clean · format clean · build green.
+- **Playwright 9/9** — incl. the SMTP/IMAP connect form rejecting a dead server (127.0.0.1:1) with a visible error, then cancelling; honest Google/Microsoft unconfigured cards; forged-state OAuth callback guard.
+
+### Notes / known issues
+
+- TLS behavior against production providers (Gmail/365 certificate chains) is verified by the first real connect per provider (docs/MANUAL_SETUP.md 8a); GreenMail covers protocol logic with its bundled self-signed cert, trusted only inside the test JVM and cleared afterwards.
+- GreenMail runs plain servers in some legacy examples — our suites use its TLS setups to match the adapter's mandatory-TLS posture.
+- Docker Desktop stopped mid-session again (Windows); restarted and the local stack recovered with no data loss.
+
+### Phase 2 milestone
+
+- `develop` merged to `main`, annotated tag **`phase-2`** pushed; CI green on both branches.
+
+## 2026-10-14 — Phase 2 / Subphase 2.3: Microsoft 365 integration
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **GraphProvider adapter (arcadence-core, `com.arcadence.core.email.microsoft`)** — Microsoft identity platform v2 + Graph behind the 2.1 contract: tenant-aware authorization-code + PKCE consent URL, token exchange with verifier, refresh grant, `/me` identity (mail/userPrincipalName/displayName/id), **draft-then-send submission** (POST /me/messages → POST /me/messages/{id}/send — captures the provider message id that `/me/sendMail` does not return), createReply + body patch + send for threaded replies, INBOX listing with `$orderby` + `@odata.nextLink` `$skiptoken` as the durable cursor, health probe, and `revokeSignInSessions` revocation. Typed error mapping: 400 consent family (invalid_grant/consent_required/interaction_required) + 401 → InvalidCredentials; 403 → PermissionDenied (tenant app-blocking surfaces here); 429 → RateLimited with Retry-After; 503/504 → Unreachable. Phase 6 headroom: same folder surface converts to `/delta` links and Graph change notifications without touching the account model (ADR-0022).
+- **Connect flow (api)** — `POST /api/v1/email-connections/oauth/microsoft/start` + `GET .../microsoft/callback`: identical HMAC-signed-state security shape to Gmail (workspace+user+PKCE verifier+nonce, 10-min TTL, callback-side permission re-check), account upsert (connected/reconnected), AES-GCM credentials (MicrosoftCredentials), sync cursors seeded, health + audit written, 303 back with `microsoft=…` outcome.
+- **Provider-agnostic hardening** — the authorized test-send endpoint MOVED from GmailRoutes to the email-accounts routes and routes through the adapter registry (no double-mounting now that two OAuth providers exist); registry credential load/store generalized over GmailCredentials | MicrosoftCredentials with provider-aware decryption.
+- **UI** — connect button, unconfigured notice (MSFT_OAUTH_* hint), callback outcome banners and the Reconnect action now work for BOTH Gmail and Microsoft; capability rows carry `configured`.
+- **Config** — optional `MSFT_OAUTH_CLIENT_ID/SECRET/REDIRECT_URI/TENANT` (default tenant `common`).
+
+### Tested (evidence)
+
+- Scala `Test/test` with `TEST_DATABASE_URL` → **137/137** (worker 2 · core 67 incl. **GraphProviderSpec 11** — consent failure, missing permissions 403, throttling 429 with Retry-After, draft/send/reply flows, skiptoken cursor, revocation · api 68 incl. **MicrosoftFlowIntegrationSpec 10** — capability `configured`, start URL + state verification, tamper/expiry/denial callbacks, encrypted-credential round-trip under the Microsoft decoder, reconnection dedupe, test-send permission gating, disconnect purge).
+- `scalafmtAll` success. Web: vitest 25/25 · lint clean · format clean · build green.
+- **Playwright 9/9** — honest Microsoft unconfigured card asserted; forged-state Gmail callback path re-verified through the live API.
+- Refactor regression: GmailFlowIntegrationSpec 12/12 still green after the test-send move.
+
+### Blocked (manual)
+
+- Real-Graph end-to-end waits on **item 7** (`docs/MANUAL_SETUP.md`): Entra app registration → `MSFT_OAUTH_CLIENT_ID/SECRET` in `apps/api/.env.local`, redirect `http://localhost:8080/api/v1/email-connections/oauth/microsoft/callback`. Tenant admin consent may be required depending on the tenant's app policy.
+
+## 2026-10-14 — Phase 2 / Subphase 2.2: Gmail integration
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **GmailProvider adapter (arcadence-core, `com.arcadence.core.email.gmail`)** — implements the Phase 2.1 `EmailProvider` contract over real Google endpoints: authorization-code + PKCE (S256) consent URL builder, token exchange with verifier, refresh-token grant, userinfo identity, Gmail profile validation, RFC 5322 MIME submission (text + multipart/alternative, RFC 2047 subjects, `raw` base64url), INBOX listing with page-token cursors, health check, grant revocation. Typed `ProviderError` mapping (400 invalid_grant/401 → InvalidCredentials; 403 rateLimitExceeded → RateLimited; insufficientPermissions → PermissionDenied; 5xx → Unreachable). Google endpoints injectable — tests run the full flows against a stub server. Access-token refreshes live in memory only (ADR-0021); the refresh token is the durable encrypted secret.
+- **OAuth flow (api)** — `POST /api/v1/email-connections/oauth/google/start` (permission-checked) returns a consent URL carrying an HMAC-SHA256-signed state (workspace + user + PKCE verifier + nonce, 10-minute expiry; key derived domain-separated from EMAIL_ENCRYPTION_KEY). `GET .../callback` (browser route, no bearer): signature + expiry + Google error params each land on distinct outcomes; membership re-checked at callback; account upserted (connected / reconnected), credentials encrypted via CredentialEncryptor and stored (kind oauth2, versioned), sync cursors seeded (inbox+sending), health event + audit written, 303 back to `/app/email-accounts?gmail=…`.
+- **Capabilities/UI** — capability matrix rows now carry `configured`; the Gmail card shows a real Connect button when configured, an honest "Google OAuth not configured on this server" notice otherwise. Accounts table adds Test send (dialog → authorized send via the adapter, `test_succeeded`/`test_failed` health) and Reconnect for reconnect_required/error Gmail accounts. Callback outcomes render as success/error banners and the URL is cleaned.
+- **Disconnect** now best-effort revokes the Google grant before purging local credentials.
+- **Config** — optional `GOOGLE_OAUTH_CLIENT_ID/SECRET/REDIRECT_URI`; absence → `configured=false` everywhere, `start` → 503 `not_configured` (never a dead button).
+
+### Notable fixes during 2.2
+
+1. GmailRoutes class-init order (endpoint val referenced before initialization → NPE in tests) — endpoint definitions moved above route assembly.
+2. CI-truth lesson from 2.1 applied: web files prettier-formatted before push; migration-free subphase so the Database job needed no change.
+
+### Tested (evidence)
+
+- Scala `Test/test` with `TEST_DATABASE_URL` → **117/117** (worker 2 · core 57 incl. GmailProviderSpec 11 — stub-server flows for exchange/PKCE form/transparent refresh/MIME submission/error mapping/revocation — + GmailMimeSpec 5 + OAuthStateSignerSpec 4 · api 58 incl. **GmailFlowIntegrationSpec 12**: capability `configured` flags, start URL state verification, tampered/expired/denied callbacks, full callback → account + encrypted-credential (decryptable) + health + audit + sync cursors, reconnection dedupe, test send, viewer/outsider gating, disconnect purge).
+- `scalafmtAll` success. Web: vitest 25/25 · lint 0 errors · format clean · build green.
+- **Playwright 9/9** — including a forged-state callback driven through the REAL API from the browser (lands on `/app/email-accounts?gmail=invalid_state`, banner shown, URL cleaned) and the honest unconfigured-Gmail card.
+- Live: API restarted with the 2.2 build; `/api/v1/email-providers` 401 envelope + security headers intact.
+
+### Blocked (manual)
+
+- Real-Google end-to-end (consent → real mailbox send) is **blocked on product-owner action 6a** (`docs/MANUAL_SETUP.md`): create the Google Cloud OAuth client (redirect URI `http://localhost:8080/api/v1/email-connections/oauth/google/callback`), then set `GOOGLE_OAUTH_CLIENT_ID/SECRET` in `apps/api/.env.local` and restart the API. Everything up to Google's consent screen is implemented and verified; restricted-scope verification remains a production-launch prerequisite (not required for test users).
+
+## 2026-10-13 — Phase 2 / Subphase 2.1: Email account architecture
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **Database (migration `20261013090000_email_accounts.sql`)**: `email_accounts`, `account_credentials`, `sender_domains`, `account_groups`, `account_health_events`, `provider_sync_state` per the Phase 2 plan (naming supersedes the provisional `email_connection`/`email_credential` — ADR-0019). `connection_status` enum takes the Phase 2 states (connected, reconnect_required, rate_limited, suspended, error, disconnected); new `account_health_event_type` enum. RLS mirrors tenancy tables; `account_credentials` is RLS-locked with **no policies** + revoked grants (PostgREST can never touch it). Functional unique indexes on `(workspace_id, lower(email_address))`, group names and domains.
+- **Core (arcadence-core)**: `EmailProvider` trait — the adapter contract for connection validation, submission, replies, cursor-based inbox sync, health checks, token refresh, revocation, with typed `ProviderError` values; `ProviderCapabilities` static capability matrix (single source for the API + dashboard cards); `EmailAccountStatus` state machine with explicit legal-transition matrix; `CredentialEncryptor` — AES-256-GCM (12-byte nonce ‖ ciphertext ‖ tag), key versioning, tamper→`DecryptFailed.Rejected` (ADR-0020). cats-effect added to core deps.
+- **Config**: `EMAIL_ENCRYPTION_KEY` (base64, 32 bytes) required at API startup — fail-fast with aggregated errors; local key generated into git-ignored `.env.local`; `.env.example`, compose and SETUP/MANUAL_SETUP docs updated.
+- **API**: `GET /api/v1/email-providers` (capability matrix); workspace-scoped email-accounts list/get/patch (absent=unchanged, explicit null=clear via null-aware circe decoder)/pause/resume/disconnect/delete + `/health` trail; account-groups CRUD with duplicate-name 409. New `manage_email_accounts` permission (campaign_manager+; viewers/members read-only). All transitions guarded-UPDATE race-safe, health-event + audit logged; disconnect purges credentials.
+- **Web**: `/app/email-accounts` — provider connection cards (capability lists, OAuth vs TLS badges, honest "setup arrives in subphase 2.2/2.3/2.4" availability), account groups manager (create/rename inline/two-step delete), accounts table (status dot+badge, provider badge, group assign select, daily cap, last sync, pause/resume/disconnect/remove actions, expandable health-events panel), permission-gated UI. Sidebar nav item + api client additions.
+
+### Bugs found and fixed during 2.1
+
+1. **circe explicit-null decoding** (caught by integration test): derived `Option[Option[T]]` decoders map JSON `null` to `None` — "null clears the value" silently never reached the repo. Fixed with a null-aware hand-written decoder on `UpdateAccountRequest`.
+2. Doobie `fragments.intercalate` does not exist in 1.0.0-RC12 — SET clauses built via fragment reduction.
+3. Local `supabase db reset` required after a partial migration run; expression-unique constraints converted to unique indexes (Postgres does not allow `unique (a, lower(b))` as a table constraint).
+
+### Tested (evidence)
+
+- Scala `Test/test` with `TEST_DATABASE_URL` → **85/85** (worker 2 · core 37 incl. CredentialEncryptorSpec 7 + EmailAccountStatusSpec 7 + ProviderCapabilitiesSpec 5 + ConfigSpec key-validation 2 · api 46 incl. EmailAccountIntegrationSpec 14: capability matrix, group CRUD + duplicate 409, viewer/member read-manage split, owner+viewer+outsider matrix, credential-field leak check, lifecycle pause/resume/disconnect + 409 on illegal transition, credential purge on disconnect, health trail, cascade delete, cross-tenant end-state).
+- `scalafmtAll` + `scalafmtCheckAll` → success. Web: Vitest **25/25**, lint clean (new files), `next build` green with `/app/email-accounts` registered.
+- **Playwright 9/9** (auth 6 · shell 1 · multi-org 1 · new email-accounts spec: signup → workspace → provider cards incl. honest availability badges → groups create/rename/delete → empty state). One strict-mode locator fix during the run (getByLabel substring matched two inputs).
+- Live: API restarted with new config; `GET /api/v1/email-providers` unauthenticated → 401 envelope with all five security headers + request id.
+
+### Notes
+
+- Local Supabase stack was `db reset` during development — local e2e users/workspace rows were recreated fresh by the suites; no data of record is kept locally.
+- Docker Desktop stopped mid-session (Windows shell crash); restarted, stack recovered.
+
 ## 2026-10-12 — Phase 1 / Subphase 1.4: Workspace administration & hardening
 
 **Status:** ✅ Completed and pushed — **Phase 1 milestone**

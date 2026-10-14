@@ -51,6 +51,14 @@ flowchart LR
 - **Supabase Realtime** subscribes the browser directly to customer-facing live updates (inbox, campaign progress) where suitable.
 - Every feature ships loading, success, empty, validation, error, and permission-denied states.
 
+### 2.1b Provider adapter layer (Phase 2, in `arcadence-core`)
+
+- **`EmailProvider` trait** — the single contract every provider adapter implements: authorization completion, connection validation, message submission, threaded replies, inbox synchronization (cursor-based), health checks, token refresh, and access revocation. Adapters return typed `ProviderError` values (invalid credentials / permission denied / rate limited / throttled / unreachable) — never exceptions across the boundary.
+- **Capability matrix** (`ProviderCapabilities`) — what each provider supports (send, inbox sync, replies, token refresh, health checks) declared separately from the adapter; the API capability endpoint and the dashboard connect cards render from this matrix, never from hardcoded UI assumptions.
+- **Account state machine** (`EmailAccountStatus`) — `connected / reconnect_required / rate_limited / suspended / error / disconnected` with an explicit legal-transition matrix enforced API-side; transitions write `account_health_events` (the dashboard health trail) and are audited.
+- **Credential encryption** (`CredentialEncryptor`, ADR-0020) — AES-256-GCM; adapters persist secrets only through the caller-provided store callback, so adapter code never touches ciphertext or keys.
+- Status: contract, matrix, state machine and encryptor (Phase 2.1), the **Gmail adapter** (2.2, ADR-0021) and the **Microsoft Graph adapter** (`com.arcadence.core.email.microsoft.GraphProvider` — tenant-aware OAuth + PKCE, draft-then-send so provider message ids are captured, skip-token inbox listing with a `/delta` + change-notification path designed in, `revokeSignInSessions` revocation; ADR-0022) are implemented and tested against stub provider servers (all endpoints injectable — full flow tests run without network). and the **SMTP/IMAP adapter** (`com.arcadence.core.email.smtpimap.SmtpImapProvider` — Jakarta Mail/angus, mandatory ssl/starttls, server-side credential validation, UID-cursor inbox; ADR-0023, GreenMail-verified) complete the matrix (Phase 2).
+
 ### 2.2 Supabase (platform of record)
 
 | Capability | Usage |

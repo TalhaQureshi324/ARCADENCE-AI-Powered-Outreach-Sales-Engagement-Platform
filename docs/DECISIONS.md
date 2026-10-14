@@ -159,3 +159,60 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
   - **Connections:** Scala services use direct (5432) or session-pooled connections appropriate to persistent workers; transaction pooling (6543) only for short-lived request paths with prepared statements disabled (`prepareThreshold=0`) and no cross-transaction session assumptions.
 - **Consequences:** Deterministic, reviewable schema evolution; one migration set applies identically from laptop to CI; no dashboard drift.
 - **Refinement (2026-10-11, Phase 0.3):** current Supabase projects expose the **direct connection IPv6-only**; on IPv4-only networks/services use the **session pooler** (`aws-<n>-<region>.pooler.supabase.com:5432`, user `postgres.<project-ref>`) — session mode preserves JDBC prepared statements, so the transaction-pooling caveats don't apply. Verified live against staging (`aws-0-ap-northeast-1`). Production host selection (direct vs pooler) re-evaluated at deployment with this constraint.
+
+## ADR-0019 — Email account naming: email_accounts / account_credentials (supersedes provisional email_connection / email_credential)
+
+- **Date:** 2026-10-13 · **Status:** Accepted (Phase 2.1)
+- **Context:** The Phase 0 ERD provisionally named the sending-identity tables `email_connection` / `email_credential`. The product owner's Phase 2 plan explicitly specifies `email_accounts`, `account_credentials`, `sender_domains`, `account_groups`, `account_health_events`, `provider_sync_state`. Per AGENTS.md §1 the owner's written plan wins; no dependent tables exist yet (campaign assignments, conversations and messages arrive in Phases 4–6), so the rename is free today and expensive later.
+- **Decision:** Implement the Phase 2 names. Later phases FK to `email_accounts.id`. The account state enum also takes the Phase 2 values (`connected`, `reconnect_required`, `rate_limited`, `suspended`, `error`, `disconnected`), replacing the provisional `connection_status` values before any consumer existed (migration `20261013090000`).
+- **Consequences:** docs/DATABASE.md §6.2 and docs/API.md §3.3 track the new names; provider-facing code speaks "email account", not "connection". "email_connections" survives only as the OAuth route prefix planned for 2.2/2.3.
+
+## ADR-0020 — Credential encryption: AES-256-GCM with a single managed key, versioned ciphertexts, RLS-locked storage
+
+- **Date:** 2026-10-13 · **Status:** Accepted (Phase 2.1)
+- **Context:** Provider credentials (OAuth refresh tokens, SMTP/IMAP passwords) must never reach the browser, logs, or PostgREST. The Scala service is the only trusted writer; Supabase Vault is not used because credentials are read exclusively by the API/worker service connection, not by SQL clients.
+- **Decision:**
+  - Algorithm: AES-256-GCM (`CredentialEncryptor` in `arcadence-core`). Ciphertext layout: 12-byte random nonce ‖ ciphertext ‖ 16-byte GCM tag. Authentication failures (wrong key, tampering) are indistinguishable by design and surfaced as `DecryptFailed.Rejected`, never exceptions.
+  - Key management: exactly one 32-byte key provisioned out-of-band as `EMAIL_ENCRYPTION_KEY` (base64), validated at API startup (fail-fast; wrong length or non-base64 refuses boot). `account_credentials.encryption_key_version` (currently 1) tags ciphertexts so a future rotation re-encrypts lazily without a flag day.
+  - Storage: `account_credentials` carries RLS enabled with **no policies** and revoked grants for `anon`/`authenticated` — PostgREST can never read or write it; only the service connection (which bypasses RLS) touches the table.
+  - Hygiene: disconnecting an account purges its credentials row; deleting an account cascades credentials. No API response shape includes credential fields (enforced by integration test).
+- **Consequences:** Key loss is unrecoverable by design — generation and backup are product-owner manual-setup steps (`docs/MANUAL_SETUP.md`). Key rotation requires a lazy re-encrypt pass (planned with the first rotation need, not before).
+
+## ADR-0021 — Gmail integration: authorization-code + PKCE, minimum scopes, HMAC state, in-memory access refresh
+
+- **Date:** 2026-10-13 · **Status:** Accepted (Phase 2.2)
+- **Context:** The Gmail adapter (`GmailProvider`, arcadence-core) must connect mailboxes via real Google OAuth with no secrets in the browser, while supporting an unverified testing app during development.
+- **Decision:**
+  - **Flow:** authorization-code with PKCE (S256) and `access_type=offline&prompt=consent` for a refresh token. The web app asks the API (`POST /api/v1/email-connections/oauth/google/start`, permission-checked) for a consent URL and navigates the browser; Google returns to the **Scala API callback**, which validates the state, completes the exchange server-side, persists encrypted credentials, and 303-redirects back to `/app/email-accounts?gmail=…`.
+  - **State:** stateless HMAC-SHA256-signed payload (workspace + user + PKCE verifier + nonce + 10-minute expiry), keyed by a domain-separated derivation of `EMAIL_ENCRYPTION_KEY`. Tamper/expiry/consent-denial each land on distinct, user-visible outcomes.
+  - **Authorization re-check at callback:** the state's user must still hold `manage_email_accounts` on the state's workspace — a role change between start and callback cannot complete a connection.
+  - **Scopes (minimum necessary):** `gmail.send` + `gmail.readonly` + `userinfo.email`. `gmail.send`/`gmail.readonly` are **restricted** scopes: production use requires Google OAuth verification including a CASA security assessment; an unverified testing app with explicit test users is **not production approval** (documented in MANUAL_SETUP 6a).
+  - **Tokens:** the refresh token is the durable secret (AES-256-GCM at rest, ADR-0020); refreshed access tokens live in memory only (Google allows multiple outstanding access tokens, so re-refreshing is safe and no partial-write state exists). Disconnect purges the stored credentials AND best-effort revokes the grant at Google before the purge.
+  - **Placement:** the adapter lives in arcadence-core (http4s-client + circe added) so the worker can drive sync/reply flows in later phases without an API dependency; Google endpoints are injectable for stub-server tests.
+- **Consequences:** connect is honest about configuration state (`configured=false` surfaces "not configured" UI, `POST start` → 503 `not_configured`); Gmail message/thread ids and sync cursors persist via `provider_sync_state` (full incremental sync arrives in Phase 6); revocation is best-effort (Google may already have revoked).
+
+## ADR-0022 — Microsoft 365 integration: Graph over delegated Mail.Send/Mail.Read, draft-then-send, skip-token inbox, revokeSignInSessions
+
+- **Date:** 2026-10-14 · **Status:** Accepted (Phase 2.3)
+- **Context:** The Microsoft adapter (`GraphProvider`, arcadence-core) must mirror the Gmail flow's security shape (ADR-0021) while respecting Graph specifics: no message id from `sendMail`, OData cursors, tenant-scoped authorities, and tenant-level app blocking.
+- **Decision:**
+  - **Flow:** authorization-code + PKCE (S256) against `login.microsoftonline.com/{tenant}/oauth2/v2.0` with `response_mode=query`; the same HMAC-signed state (ADR-0021) and callback-side permission re-check. Tenant is configurable (`MSFT_OAUTH_TENANT`, default `common`) and recorded.
+  - **Scopes (delegated, minimum):** `Mail.Send`, `Mail.Read`, `User.Read`, `offline_access` (+openid/email). Tenant admins can block the app — consent failures (`invalid_grant`/`consent_required`/`interaction_required`) surface as typed `InvalidCredentials`/`PermissionDenied`, never as silent retries.
+  - **Send:** draft-then-send (`POST /me/messages` → `POST /me/messages/{id}/send`) so the provider message id is captured — `POST /me/sendMail` returns only 202 with no id. Replies use `createReply` (thread context) + body patch + send.
+  - **Inbox:** folder listing with `$orderby=receivedDateTime desc` and the `@odata.nextLink` `$skiptoken` as durable cursor. **Phase 6 design headroom:** the same folder surface converts to `/delta` links, and Graph change notifications (subscriptions/webhooks) can replace polling without touching the account model — `provider_sync_state.cursor` already stores opaque tokens.
+  - **Revocation:** Graph has no per-app token revoke; disconnect calls `POST /me/revokeSignInSessions` (invalidates this app's refresh tokens) best-effort before the local credential purge.
+  - **Error mapping:** 400 consent-family → InvalidCredentials; 401 → InvalidCredentials; 403 → PermissionDenied (tenant blocking surfaces here); 429 → RateLimited with Retry-After; 503/504 → Unreachable. Provider codes/messages are preserved in the (secret-free) detail.
+- **Consequences:** the dashboard treats Gmail and Microsoft identically (`configured` flag, connect button, reconnect, test send); account selection (`login_hint`) is wired at the authorize URL for future multi-account flows; real-Google/real-Microsoft verification both wait on the respective console credentials (MANUAL_SETUP 6a/7).
+
+## ADR-0023 — SMTP/IMAP adapter: Jakarta Mail (angus), mandatory TLS, server-side credential validation, UID cursors
+
+- **Date:** 2026-10-14 · **Status:** Accepted (Phase 2.4)
+- **Context:** The third provider path (configurable SMTP submission + IMAP retrieval) must complete the capability matrix without weakening security: no plaintext, no "disable two-factor" advice, and credentials that never leak through errors, logs, or responses.
+- **Decision:**
+  - **Library:** Jakarta Mail on the angus-mail implementation (`angus-mail` + `jakarta.mail-api`), blocking calls wrapped in `IO.blocking`. GreenMail (`greenmail`, test scope) provides REAL SMTP/IMAP servers for protocol-level tests, run in implicit-TLS mode with test-scoped JVM trust properties (cleared after the suite; production defaults always validate certificates).
+  - **Security modes:** `ssl` (implicit TLS) or `starttls` (`starttls.required=true` — the upgrade is mandatory, never opportunistic). Plaintext is rejected during shape validation, before any network attempt. Deployments may pin socket factories / trust anchors globally via the standard `mail.*` system properties, which the adapter exposes as session-level defaults (never overriding explicit settings).
+  - **Validation:** the connect endpoint validates credentials by REALLY signing in to both servers before creating the account; failures map to typed errors (auth failure → 400-family InvalidCredentials surfaced as 502 `provider_error`; unknown host / refused → Unreachable; TLS handshake → guidance to check the security mode). Passwords are never echoed in any detail, response, or log.
+  - **Duplicates:** same workspace + lower(email) → 409 `conflict` without a second server round-trip.
+  - **Cursors:** inbox sync pages newest-25 with the last seen IMAP UID as cursor (`jakarta.mail.UIDFolder`); CONDSTORE/QRESYNC and the unified sync engine arrive in Phase 6.
+  - **OAuth-only operations** (`completeAuthorization`, `refresh`, `revokeAccess`) return `NotSupported` values; disconnect simply purges the local encrypted credentials.
+- **Consequences:** all three providers now expose consistent capabilities through one registry; the connect form collects app-password-style credentials with explicit provider guidance (Google App Passwords / Entra app passwords / provider-specific permission notes in MANUAL_SETUP); TLS behavior against real production servers remains a provider-console verification item, noted in MANUAL_SETUP.
