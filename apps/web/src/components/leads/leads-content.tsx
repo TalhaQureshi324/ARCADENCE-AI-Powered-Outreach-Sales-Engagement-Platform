@@ -25,19 +25,23 @@ import { TBody, TD, TH, THead, TR, Table } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
 import { ImportsTab } from "@/components/leads/imports-tab";
+import { SegmentsTab } from "@/components/leads/segments-tab";
 import { useWorkspaces } from "@/components/shell/workspace-context";
 import {
   ApiError,
   companiesApi,
+  type ContactDto,
   contactsApi,
   customFieldsApi,
   leadListsApi,
   verificationApi,
+  segmentsApi,
   tagsApi,
   type CompanyDto,
   type ContactPage,
   type CustomFieldDto,
   type LeadListDto,
+  type MergeContactResultDto,
   type TagDto,
 } from "@/lib/api/client";
 
@@ -64,7 +68,7 @@ const STATE_META: Record<string, { label: string; tone: BadgeTone }> = {
 };
 
 const VERIFICATION_META: Record<string, { label: string; tone: BadgeTone }> = {
-  verified: { label: "Verified", tone: "success" },
+  valid: { label: "Valid", tone: "success" },
   invalid: { label: "Invalid", tone: "danger" },
   risky: { label: "Risky", tone: "warning" },
   unknown: { label: "Unknown", tone: "neutral" },
@@ -105,6 +109,7 @@ export function LeadsContent() {
       <Tabs defaultValue="contacts">
         <TabsList>
           <TabsTrigger value="contacts">Contacts</TabsTrigger>
+          <TabsTrigger value="segments">Segments</TabsTrigger>
           <TabsTrigger value="imports">Import</TabsTrigger>
           <TabsTrigger value="companies">Companies</TabsTrigger>
           <TabsTrigger value="lists">Lists</TabsTrigger>
@@ -112,6 +117,9 @@ export function LeadsContent() {
         </TabsList>
         <TabsContent value="contacts">
           <ContactsTab workspaceId={selected.id} myRole={selected.role} />
+        </TabsContent>
+        <TabsContent value="segments">
+          <SegmentsTab workspaceId={selected.id} myRole={selected.role} />
         </TabsContent>
         <TabsContent value="imports">
           <ImportsTab workspaceId={selected.id} myRole={selected.role} />
@@ -143,6 +151,7 @@ function ContactsTab({ workspaceId, myRole }: { workspaceId: string; myRole: str
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const [currentCursor, setCurrentCursor] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [mergeSource, setMergeSource] = useState<ContactDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -369,6 +378,13 @@ function ContactsTab({ workspaceId, myRole }: { workspaceId: string; myRole: str
                               </Button>
                               <Button
                                 variant="ghost"
+                                aria-label={`Merge ${c.email}`}
+                                onClick={() => setMergeSource(c)}
+                              >
+                                Merge
+                              </Button>
+                              <Button
+                                variant="ghost"
                                 aria-label={`Delete ${c.email}`}
                                 onClick={() => remove(c.id)}
                               >
@@ -425,7 +441,111 @@ function ContactsTab({ workspaceId, myRole }: { workspaceId: string; myRole: str
           load(currentCursor, appliedQuery, sort);
         }}
       />
+      <MergeContactDialog
+        workspaceId={workspaceId}
+        source={mergeSource}
+        candidates={data?.items ?? []}
+        onClose={() => setMergeSource(null)}
+        onMerged={(result) => {
+          toast(
+            "success",
+            `Merged. ${result.filledFields} field(s) filled, ${result.movedTags} tag(s) and ${result.movedListMemberships} list membership(s) moved.`,
+          );
+          setMergeSource(null);
+          setPage({ kind: "loading" });
+          load(currentCursor, appliedQuery, sort);
+        }}
+      />
     </Card>
+  );
+}
+
+function MergeContactDialog({
+  workspaceId,
+  source,
+  candidates,
+  onClose,
+  onMerged,
+}: {
+  workspaceId: string;
+  source: ContactDto | null;
+  candidates: ContactDto[];
+  onClose: () => void;
+  onMerged: (result: MergeContactResultDto) => void;
+}) {
+  const router = useRouter();
+  const [keptId, setKeptId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const options = candidates.filter((c) => c.id !== source?.id);
+
+  async function submit() {
+    if (!source || !keptId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await segmentsApi.merge(workspaceId, keptId, source.id);
+      onMerged(result);
+    } catch (e) {
+      if (isUnauthorized(e)) {
+        const { createClient } = await import("@/lib/supabase/client");
+        await createClient().auth.signOut();
+        router.push("/login?expired=1");
+        return;
+      }
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open={source !== null}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={source ? `Merge · ${source.emailDisplay || source.email}` : "Merge contacts"}
+      description="Pick the contact to KEEP. Empty fields on it are filled from the one being merged; its tags, list memberships and history move over. This cannot be undone."
+    >
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (keptId && !busy) void submit();
+        }}
+      >
+        <select
+          aria-label="Contact to keep"
+          value={keptId}
+          onChange={(e) => setKeptId(e.target.value)}
+          className="border-border bg-surface text-foreground w-full rounded-lg border px-2 py-2 text-sm"
+        >
+          <option value="">Choose the contact to keep…</option>
+          {options.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.emailDisplay || c.email}
+              {c.firstName || c.lastName ? ` — ${[c.firstName, c.lastName].filter(Boolean).join(" ")}` : ""}
+            </option>
+          ))}
+        </select>
+        {options.length === 0 && (
+          <Alert variant="info">
+            Load more contacts first — the merge target must be on the current page.
+          </Alert>
+        )}
+        {error && <Alert variant="error">{error}</Alert>}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={!keptId || busy || options.length === 0}>
+            {busy ? "Merging…" : "Merge"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 

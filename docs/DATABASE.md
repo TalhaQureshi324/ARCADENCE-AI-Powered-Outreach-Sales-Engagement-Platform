@@ -312,3 +312,9 @@ Canonical state machines live in `docs/ARCHITECTURE.md` §7. Schema mapping:
 3. Indexes match the query patterns of the subphase that needs them.
 4. Cross-tenant isolation test added/updated and passing.
 5. This file and `docs/HANDOFF.md` updated.
+
+## Phase 3.4 — segments & search (`20261015210000`)
+
+- `public.segment`: `workspace_id` FK (cascade), `name` (1–120 chars, UNIQUE per workspace on `lower(name)` via expression index), `filters` jsonb (typed AND/OR tree validated by the API, never trusted by SQL), `created_by`, `set_updated_at` trigger. RLS enabled with member-select policy; writes flow through the audited API only.
+- `pg_trgm` extension + GIN indexes `contact_email_trgm_idx` and `contact_name_trgm_idx` (on `coalesce(first_name,'') || ' ' || coalesce(last_name,'')`) back substring search at database scale.
+- Note: expression unique indexes (`lower(name)`) are created via `create unique index`, not table constraints; partial unique indexes cannot be ON CONFLICT targets (see the `20261015100000` provenance note in `docs/HANDOFF.md`).
