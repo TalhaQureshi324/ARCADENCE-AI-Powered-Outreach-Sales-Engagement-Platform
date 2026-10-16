@@ -232,3 +232,58 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
 - Contact merge is one `ConnectionIO` transaction: fill empty kept fields from the source, move tags/list memberships (`INSERT … ON CONFLICT DO NOTHING RETURNING`, returning UUIDs — the row count of actually-moved rows), repoint `source_provenance`, delete the source; audited with the per-field counts.
 
 **Consequences.** Segment previews/exports/bulk actions are injection-safe by construction and case-insensitive by default; adding a filterable field is a one-line whitelist change plus a column mapping; the mount-order constraint is documented in `docs/API.md` to protect future route additions.
+
+## ADR-0025 — Campaign lifecycle: six states, draft-only structural authority, versioned definitions (Phase 4.1)
+
+**Date:** 2026-10-16 · **Status:** accepted
+
+**Context.** Campaigns acquire enrollments when active; mutating what those enrollments must execute (steps, variants, audience, mailboxes) mid-flight corrupts their meaning, and changing scheduling identity (name, timezone) breaks in-progress timing and audit trails.
+
+**Decision.**
+- Lifecycle: `draft → active`, `active ⇄ paused`, `active → completed | cancelled`, `paused → cancelled`, `draft | completed | cancelled → archived` (terminal). Enforced in Scala via an explicit transition table and applied with a status-conditional `UPDATE`, so concurrent mutations lose safely (409 with a reload hint).
+- Activation requires ≥1 step, ≥1 audience, ≥1 mailbox; deeper preflight checks (contacts, domain authentication, suppressions) arrive in Phase 4.4 and will gate the same endpoint.
+- Structural authority is draft-only. Active/paused campaigns accept `description`, `tags`, `daily_cap` edits only; terminal states are fully read-only (duplicate to iterate). Rejections name the active-enrollment count when one exists.
+- Every structural save snapshots the step/variant definition into `campaign_version` (append-only), so any enrollment's executed definition stays reconstructable.
+- Request DTOs use `Option` fields with defaults applied in the route layer — circe's derived decoders do not honour Scala default values, and missing JSON keys otherwise fail the whole body with an opaque 400 (found and fixed during the 4.1 integration tests).
+- Sending-account and audience references are existence-checked against the workspace BEFORE any mutation, mapping failures to 422 validation errors instead of 500s.
+
+**Consequences.** Enrollment semantics stay trustworthy from the first send (Phase 5); the UI can present precise state-dependent controls; Phase 4.3 branch step types extend the `step_type` enum without touching lifecycle logic.
+
+## ADR-0026 — Composer: quoteReplacement token rendering, allowlist sanitization, self-addressed test sends (Phase 4.2)
+
+**Date:** 2026-10-16 · **Status:** accepted
+
+**Decision.**
+- Personalization tokens (`{{field}}`, `{{field|fallback}}`, `{{custom.x}}`) render through a regex replacement whose values pass through `Regex.quoteReplacement` — Scala's function-form `replaceAllIn` still routes results through `Matcher.appendReplacement`, so unescaped lead data like `$&` would otherwise act as replacement syntax (found by the unit suite).
+- Missing variables render as empty and are reported in the response (`missing`); they are never silently fabricated, and preflight (4.4) treats them as blockers. Fallbacks are counted separately (`fellBack`).
+- All campaign HTML (bodies, signatures, blocks, variant writes) is sanitized with a jsoup allowlist (scripts, event handlers, iframes, styles removed; `mailto:` links allowed) at WRITE time, so stored content is already safe and the preview shows exactly what a send contains. Plaintext alternatives derive from the sanitized HTML when the text body is left empty.
+- Preview renders against a REAL workspace contact chosen in the UI; there is no synthetic sample contact.
+- Test sends render for the chosen sample contact but always deliver to the authenticated user's own address (never to the contact), through one of the campaign's assigned mailboxes, tagged `X-Arcadence-Test`.
+- Variant content has a dedicated PUT (draft-only, no version snapshot) so editor autosave does not churn `campaign_version` history.
+
+**Consequences.** Send-time rendering (Phase 5) reuses the same engine; sanitization is centralized; template/block content is safe by construction.
+
+## ADR-0027 — Sequence graphs: client-keyed steps, merge-free validation, stored-graph activation gating (Phase 4.3)
+
+**Date:** 2026-10-16 · **Status:** accepted
+
+**Decision.**
+- The editor owns stable client keys; the server maps key → existing step UUID on every save, so step identity (and future enrollment step references) survives edits. Keys are unique per campaign (the first globally-unique index collided across campaigns — caught by the integration suite).
+- Validation rules: exactly one root, every other step exactly one incoming edge (merges rejected — execution must be deterministic), branch steps need exactly two outgoing edges labeled `yes`/`no` plus a whitelisted condition, other steps at most one outgoing edge, full reachability from the root. With in-degree ≤ 1, reachability implies acyclicity. Legacy linear campaigns (no edges) validate as position-ordered chains.
+- Graph saves bypass the Phase 4.1 linear validator (which only knows email/wait) and run `SequenceGraph.validate` before any mutation; activation re-validates the STORED graph and refuses to activate invalid sequences.
+- Branch conditions reuse the segment operator whitelist over contact fields resolvable in Scala (`custom.*` included); they are evaluated per contact by the simulator (4.4) and the scheduler (Phase 5).
+- The visual builder (React Flow / @xyflow/react) is view-state only; the backend graph is the single source of truth (node positions are auto-layered, not persisted).
+
+**Consequences.** Phase 5's scheduler executes a validated DAG deterministically; new step types extend one enum + one validator.
+
+## ADR-0028 — Preflight gates activation; simulation requires a real contact (Phase 4.4)
+
+**Date:** 2026-10-16 · **Status:** accepted
+
+**Decision.**
+- `preflightFor` computes blockers + warnings once; the transition endpoint runs it on `activate` and refuses with every blocker message (409). The standalone `POST preflight` endpoint exposes the same result for the UI.
+- Blockers: missing/invalid sequence graph, unknown personalization tokens, no audience, no mailbox, no CONNECTED mailbox. Warnings: empty lead lists, suppressed contacts in the audience, unverified sending domain (advisory until deliverability enforcement, Phase 8).
+- Simulation (`Schedule.simulate`) walks the stored graph for a REAL contact — branch conditions resolve with the same field resolution as personalization, so there is no synthetic contact and no fabricated data. Planned send moments land inside the campaign's window/timezone with weekend skipping.
+- Scheduling fields (window, business-days-only) are draft-only edits for the same reason as timezone.
+
+**Consequences.** Only valid campaigns activate; pausing/resuming preserves enrollment state (structural locks unchanged); Phase 5's scheduler reuses `Schedule` for due-time computation.

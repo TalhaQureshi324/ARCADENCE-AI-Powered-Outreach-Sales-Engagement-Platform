@@ -318,3 +318,26 @@ Canonical state machines live in `docs/ARCHITECTURE.md` §7. Schema mapping:
 - `public.segment`: `workspace_id` FK (cascade), `name` (1–120 chars, UNIQUE per workspace on `lower(name)` via expression index), `filters` jsonb (typed AND/OR tree validated by the API, never trusted by SQL), `created_by`, `set_updated_at` trigger. RLS enabled with member-select policy; writes flow through the audited API only.
 - `pg_trgm` extension + GIN indexes `contact_email_trgm_idx` and `contact_name_trgm_idx` (on `coalesce(first_name,'') || ' ' || coalesce(last_name,'')`) back substring search at database scale.
 - Note: expression unique indexes (`lower(name)`) are created via `create unique index`, not table constraints; partial unique indexes cannot be ON CONFLICT targets (see the `20261015100000` provenance note in `docs/HANDOFF.md`).
+
+## Phase 4.1 — campaign domain (`20261017090000`)
+
+- `public.campaign`: workspace-scoped, `name` unique per workspace on `lower(name)` (expression index), `status campaign_status` (six values — `cancelled` added via `ALTER TYPE`), `timezone`, `daily_cap` (1–10 000), tracking flags, `activated_at`/`archived_at`. Transitions are validated in Scala and applied with status-conditional updates.
+- `public.campaign_step` (`position` 1–100 unique per campaign; `step_shape` check ties `wait_days` to `type='wait'`) + `public.step_variant` (`variant_key` in {A, Z}, unique per step).
+- `public.campaign_mailbox` (FK → `public.email_accounts`, priority), `public.campaign_audience` (exactly one of `lead_list_id`/`segment_id` via a `num_nonnulls` check), `public.campaign_enrollment` (unique per (campaign, contact); due-scan partial index `(status, next_action_at) where status='active'`), `public.campaign_version` (append-only snapshots, unique per (campaign, version)).
+- All seven tables carry RLS member-select policies; writes flow through the audited API.
+
+## Phase 4.2 — composer & personalization (`20261018090000`)
+
+- `public.email_template` and `public.reusable_block`: workspace-scoped, name unique per workspace on `lower(name)`, sanitized HTML stored (sanitization happens in the API; the DB stores what it is given). RLS member-select.
+- `step_variant.signature` (HTML, appended at send time) and `campaign.thread_mode` (follow-up steps send as replies in the same provider thread once the sending engine wires it, Phase 5).
+
+## Phase 4.3 — sequence graph (`20261019090000`–`20261019090002`)
+
+- `step_type` gains `branch | task | add_tag`; `step_shape` widened in a SECOND migration (`ALTER TYPE ... ADD VALUE` cannot be used in the same transaction — PG 55P04).
+- `campaign_step`: `client_key` (stable editor identity; UNIQUE per (campaign, client_key) — the first cut was globally unique and collided across campaigns), `condition` jsonb (branch), `tag_id` (add_tag), `task_due_days` (task), `business_days` (wait).
+- `campaign_edge`: `from_step_id`/`to_step_id` (cascade), `branch_key` ('yes'/'no' on branch outputs), UNIQUE (from_step_id, branch_key), self-loop check. RLS member-select.
+- `campaign.stop_on_reply` — enforcement arrives with reply detection (Phase 6).
+
+## Phase 4.4 — scheduling rules (`20261020090000`)
+
+- `campaign.send_window_start` / `send_window_end` (time, default 09:00/17:00, midnight-spanning allowed) and `business_days_only` (default true). Draft-only edits — changing scheduling identity mid-flight is rejected like structural changes.

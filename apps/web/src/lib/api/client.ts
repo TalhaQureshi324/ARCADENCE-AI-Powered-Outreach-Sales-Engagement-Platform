@@ -717,3 +717,236 @@ export const segmentsApi = {
     URL.revokeObjectURL(url);
   },
 };
+
+// -- Campaigns (Phase 4.1) -----------------------------------------------------
+
+export interface CampaignVariantDto {
+  variantKey: string;
+  subject: string;
+  preheader: string;
+  bodyHtml: string;
+  bodyText: string;
+  signature: string;
+}
+
+export interface CampaignStepDto {
+  id: string;
+  position: number;
+  type: string;
+  name: string;
+  waitDays: number | null;
+  key: string | null;
+  condition: Record<string, unknown> | null;
+  tagId: string | null;
+  taskDueDays: number | null;
+  businessDays: boolean;
+  variants: CampaignVariantDto[];
+}
+
+export interface CampaignEdgeDto {
+  from: string;
+  to: string;
+  branchKey: string | null;
+}
+
+export interface CampaignAudienceDto {
+  id: string;
+  leadListId: string | null;
+  segmentId: string | null;
+}
+
+export interface CampaignDto {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description: string;
+  tags: string[];
+  status: "draft" | "active" | "paused" | "completed" | "cancelled" | "archived";
+  timezone: string;
+  dailyCap: number;
+  openTracking: boolean;
+  clickTracking: boolean;
+  stepCount: number;
+  activatedAt: string | null;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CampaignDetailDto {
+  campaign: CampaignDto;
+  steps: CampaignStepDto[];
+  edges: CampaignEdgeDto[];
+  mailboxIds: string[];
+  audiences: CampaignAudienceDto[];
+}
+
+export interface EdgeInput {
+  from: string;
+  to: string;
+  branchKey?: string;
+}
+
+export interface CampaignStepInput {
+  type: string;
+  name?: string;
+  waitDays?: number;
+  key?: string;
+  condition?: Record<string, unknown>;
+  tagId?: string;
+  taskDueDays?: number;
+  businessDays?: boolean;
+  variants?: {
+    variantKey: string;
+    subject?: string;
+    preheader?: string;
+    bodyHtml?: string;
+    bodyText?: string;
+  }[];
+}
+
+export const campaignsApi = {
+  list: (workspaceId: string, status?: string) =>
+    apiFetch<CampaignDto[]>(
+      `/api/v1/workspaces/${workspaceId}/campaigns${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+    ),
+  create: (workspaceId: string, input: { name: string; description?: string }) =>
+    apiFetch<CampaignDto>(`/api/v1/workspaces/${workspaceId}/campaigns`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  get: (workspaceId: string, campaignId: string) =>
+    apiFetch<CampaignDetailDto>(`/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}`),
+  update: (workspaceId: string, campaignId: string, patch: Record<string, unknown>) =>
+    apiFetch<CampaignDetailDto>(`/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  remove: (workspaceId: string, campaignId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}`, {
+      method: "DELETE",
+    }),
+  duplicate: (workspaceId: string, campaignId: string) =>
+    apiFetch<CampaignDetailDto>(
+      `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/duplicate`,
+      { method: "POST" },
+    ),
+  transition: (workspaceId: string, campaignId: string, action: string) =>
+    apiFetch<{ status: string }>(
+      `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/transition`,
+      { method: "POST", body: JSON.stringify({ action }) },
+    ),
+  enroll: (workspaceId: string, campaignId: string, contactIds: string[]) =>
+    apiFetch<{ enrolled: number }>(
+      `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/enroll`,
+      { method: "POST", body: JSON.stringify({ contactIds }) },
+    ),
+  versions: (workspaceId: string, campaignId: string) =>
+    apiFetch<{ id: string; version: number; definition: unknown; createdAt: string }[]>(
+      `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/versions`,
+    ),
+};
+
+// -- Composer (Phase 4.2) ------------------------------------------------------
+
+export interface VariantValidationDto {
+  tokens: { field: string; fallback: string | null }[];
+  unknown: string[];
+}
+
+export interface PreviewReportDto {
+  resolved: Record<string, string>;
+  fellBack: string[];
+  missing: string[];
+  sanitized: boolean;
+}
+
+export interface PreviewResponseDto {
+  subject: string;
+  html: string;
+  text: string;
+  report: PreviewReportDto;
+}
+
+export interface EmailTemplateDto {
+  id: string;
+  name: string;
+  subject: string;
+  preheader: string;
+  bodyHtml: string;
+  bodyText: string;
+}
+
+export interface ReusableBlockDto {
+  id: string;
+  name: string;
+  bodyHtml: string;
+  bodyText: string;
+}
+
+export const composerApi = {
+  saveVariant: (
+    workspaceId: string,
+    campaignId: string,
+    stepId: string,
+    variantKey: string,
+    content: {
+      subject: string;
+      preheader: string;
+      bodyHtml: string;
+      bodyText: string;
+      signature: string;
+    },
+  ) =>
+    apiFetch<{ variant: CampaignVariantDto; validation: VariantValidationDto }>(
+      `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/steps/${stepId}/variants/${variantKey}`,
+      { method: "PUT", body: JSON.stringify(content) },
+    ),
+  preview: (
+    workspaceId: string,
+    campaignId: string,
+    input: { stepId: string; variantKey: string; contactId: string },
+  ) =>
+    apiFetch<PreviewResponseDto>(
+      `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/preview`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    ),
+  testSend: (
+    workspaceId: string,
+    campaignId: string,
+    input: { stepId: string; variantKey: string; contactId: string; emailAccountId?: string },
+  ) =>
+    apiFetch<{ from: string; to: string; subject: string; providerMessageId: string }>(
+      `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/test-send`,
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+  templates: {
+    list: (workspaceId: string) =>
+      apiFetch<EmailTemplateDto[]>(`/api/v1/workspaces/${workspaceId}/email-templates`),
+    create: (workspaceId: string, input: Omit<EmailTemplateDto, "id">) =>
+      apiFetch<EmailTemplateDto>(`/api/v1/workspaces/${workspaceId}/email-templates`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    remove: (workspaceId: string, templateId: string) =>
+      apiFetch<void>(`/api/v1/workspaces/${workspaceId}/email-templates/${templateId}`, {
+        method: "DELETE",
+      }),
+  },
+  blocks: {
+    list: (workspaceId: string) =>
+      apiFetch<ReusableBlockDto[]>(`/api/v1/workspaces/${workspaceId}/reusable-blocks`),
+    create: (workspaceId: string, input: Omit<ReusableBlockDto, "id">) =>
+      apiFetch<ReusableBlockDto>(`/api/v1/workspaces/${workspaceId}/reusable-blocks`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    remove: (workspaceId: string, blockId: string) =>
+      apiFetch<void>(`/api/v1/workspaces/${workspaceId}/reusable-blocks/${blockId}`, {
+        method: "DELETE",
+      }),
+  },
+};

@@ -72,7 +72,9 @@ lazy val core = (project in file("modules/core"))
       "io.circe"       %% "circe-parser"        % V.circe,
       // SMTP/IMAP adapter (Phase 2.4)
       "org.eclipse.angus" % "angus-mail"        % V.angusMail,
-      "jakarta.mail"      % "jakarta.mail-api"  % V.jakartaMail
+      "jakarta.mail"      % "jakarta.mail-api"  % V.jakartaMail,
+      // HTML sanitization + plaintext derivation for the composer (Phase 4.2)
+      "org.jsoup" % "jsoup" % "1.18.3"
     ),
     libraryDependencies ++= Seq(
       "org.http4s" %% "http4s-dsl" % V.http4s % Test,

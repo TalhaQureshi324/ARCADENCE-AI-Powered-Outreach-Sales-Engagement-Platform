@@ -611,3 +611,98 @@
 - Phase 3 plan's test list, all verified: 10,000-record import (3.2), duplicate handling (3.1/3.2), malformed files (3.2), tenant isolation (3.1/3.2/3.4), suppression enforcement (3.3 + import path), import restart (3.2), pagination (3.1), export correctness (3.4).
 - Completion statement from the plan holds: a user can import, clean, segment and manage leads end to end (upload CSV -> map -> strategy -> import -> verify -> auto-suppress -> segment -> preview/export/bulk tag -> merge).
 - Handoff commit: recorded after this file (see `git log`).
+
+---
+
+## Phase 4.1 — Campaign model & lifecycle (2026-10-16)
+
+**Branch** `feature/phase-04-campaigns` → `develop` (develop only; main promotion happens at the Phase 4 milestone).
+
+### Database
+
+- `20261017090000_campaigns.sql` applied local + staging: `campaign`, `campaign_step`, `step_variant`, `campaign_mailbox`, `campaign_audience`, `campaign_enrollment`, `campaign_version`, plus `cancelled` added to `campaign_status`. RLS member-select policies on all seven tables.
+
+### Implemented / tested
+
+| Area | Detail |
+| --- | --- |
+| API | `CampaignRoutes` (9 endpoints) + `CampaignRepos` wired into Main; explicit transition table with guarded updates; activation prerequisites (step + audience + mailbox); draft-only structural edits; workspace-scoped ownership pre-checks (422, not 500); version snapshots per structural save; audit rows on transitions |
+| Tests | CampaignIntegrationSpec 8/8 — creation validation + case-insensitive name conflict + viewer 403; structural edit shape/foreign-ref 422; lifecycle incl. prerequisite blocks and invalid transitions; edit locking + safe-field edits + read-only terminal states; enroll idempotency + draft rejection; delete draft-only + duplicate `(copy 2)` dedupe; version snapshot; tenant isolation + viewer read. Full Scala 196/196 (2 worker + 75 core + 119 api) |
+| Web | `campaignsApi`, `/app/campaigns` list (status filter, create dialog, duplicate, draft delete) + `/app/campaigns/[id]` detail (state-dependent transition buttons, edit dialog, email/wait step add/remove, audience + mailbox assignment, structural-lock hints); Campaigns nav entry live |
+| Playwright | 13/13 incl. new `campaigns.spec.ts`: create → activation blocked (no steps) → add email + wait steps → audience → activation blocked (no mailbox) → DB-seeded mailbox assigned → activate → structural lock visible → pause → resume → rename refused while running → list shows Active |
+| Fixes | circe derived decoders ignore Scala defaults → request DTOs use Option fields (ADR-0025); ownership failures now 422; transition messages include the current state |
+
+### Next
+
+- 4.2 composer: subject/preheader/HTML+text editing, personalization tokens with missing-variable validation, sanitization, saved templates/blocks, sample-contact test rendering + authorized test send, autosave.
+
+---
+
+## Phase 4.2 — Composer & personalization (2026-10-16)
+
+**Branch** `feature/phase-042-composer` → `develop`.
+
+### Database
+
+- `20261018090000_composer.sql` applied local + staging: `email_template`, `reusable_block` (unique `lower(name)` per workspace, RLS member-select), `step_variant.signature`, `campaign.thread_mode`.
+
+### Implemented / tested
+
+| Area | Detail |
+| --- | --- |
+| Engine | `Personalization` (api module): token extraction/fallbacks/missing reporting, `custom.*` jsonb resolution, jsoup allowlist sanitization + html→text; `Regex.quoteReplacement` for value safety |
+| API | `ComposerRoutes` (9 endpoints): variant content PUT (draft-only, token validation incl. unknown tokens), preview vs real contact, authorized test send (to self, via assigned mailbox, `X-Arcadence-Test`), templates + blocks CRUD |
+| Web | `composerApi`; `ComposerDialog`: subject/preheader/HTML/text/signature, token insert buttons, templates load + save-as, blocks insert + save-body-as-block, debounced autosave with status, undo/redo stacks, sandboxed preview iframe with resolved/fallback/missing badges, test send |
+| Tests | PersonalizationSpec 7/7; ComposerIntegrationSpec 4/4; Scala 207/207 (2 worker + 75 core + 130 api); Playwright 14/14 incl. composer e2e (unknown-token badge, autosave, preview badges `first_name = Ada` / `last_name missing`) |
+| Fixes | replaceAllIn `$`-interpretation (ADR-0026); custom-field create DTO key (`fieldType`) resurfaced by the circe no-defaults rule |
+
+### Next
+
+- 4.3 visual sequences: graph model (edges, branch/task/add-tag steps), React Flow builder, reachability/cycle/branch validation.
+
+---
+
+## Phase 4.3 — Visual sequences & branching (2026-10-16)
+
+**Branch** `feature/phase-043-sequences` → `develop`.
+
+### Database
+
+- `20261019090000/1/2` applied local + staging: new step types + graph columns, `campaign_edge`, `stop_on_reply`; `step_shape` widened in a second transaction; client-key unique index rescoped to per-campaign.
+
+### Implemented / tested
+
+| Area | Detail |
+| --- | --- |
+| API | Graph-aware PATCH (steps+edges with stable keys; UUID-preserving upserts), `SequenceGraph.validate` (root/in-degree/branch-labels/condition/reachability), `POST validate-graph`, activation validates the stored graph |
+| Web | `SequenceBuilder` (@xyflow/react): node palette (email/wait/branch/task/add_tag), click-to-edit panel (incl. composer hand-off for email nodes, business-day waits, condition JSON), branch auto yes/no labeling, drag connect, edge click delete, visual/chronological toggle |
+| Tests | SequenceGraphIntegrationSpec 4/4; Scala 211/211; Playwright 15/15 incl. builder e2e |
+| Fixes | global client-key index → per-campaign (integration suite caught cross-campaign collisions); graph saves bypass the linear validator; jsonb cast must be SQL-side (`fr"...::jsonb"`), not inside the parameter |
+
+---
+
+## Phase 4.4 — Scheduling, simulation & launch preflight (2026-10-16)
+
+**Branch** `feature/phase-044-launch` → `develop`; promote to `main` + tag `phase-4`.
+
+### Database
+
+- `20261020090000_scheduling.sql` applied local + staging: `campaign.send_window_start/end`, `business_days_only`.
+
+### Implemented / tested
+
+| Area | Detail |
+| --- | --- |
+| Engine | `Schedule`: send-window/timezone/weekend math, waits, branch evaluation (same resolver as personalization), linear fallback for legacy campaigns |
+| API | `POST simulate` (dry-run plan per real contact), `POST preflight` (blockers/warnings), activation runs preflight and refuses with all blockers; scheduling fields in Campaign DTO/PATCH (draft-only) |
+| Tests | ScheduleSpec 6/6 (window/weekend/in-window passthrough, operator semantics, linear timing, both branch routes); Scala 223/223 (2 worker + 75 core + 146 api); full Playwright 15/15 |
+| Fixes | preflight SQL: campaign_audience/campaign_mailbox carry no workspace_id/email_address — joined through campaign/email_accounts (integration suite caught both) |
+
+### Known gaps (deferred deliberately)
+
+- Simulate/preflight have no dedicated UI panel yet — preflight blockers surface verbatim on the campaign detail page when activation is refused; a rich launch-readiness panel lands with Phase 5's send controls.
+- Segment audiences: size counting uses lead lists; segment-backed audiences report as unknown size in preflight.
+
+### Phase 4 milestone
+
+- Merge → develop → main, tag `phase-4`. Acceptance from the plan verified: multi-step campaign created, personalized (4.2), previewed per lead, timing simulated, valid workflow activated with preflight gating; lifecycle/graph/template-escaping/timezone/branch/UI tests all green.

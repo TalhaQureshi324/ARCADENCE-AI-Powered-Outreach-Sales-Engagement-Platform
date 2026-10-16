@@ -44,7 +44,7 @@ interface ShellUser {
 const NAV_ITEMS = [
   { href: "/app", label: "Dashboard", icon: LayoutDashboard, active: true },
   { href: "/soon/inbox", label: "Inbox", icon: Inbox, soon: true },
-  { href: "/soon/campaigns", label: "Campaigns", icon: BarChart3, soon: true },
+  { href: "/app/campaigns", label: "Campaigns", icon: BarChart3 },
   { href: "/app/leads", label: "Leads", icon: Users },
   { href: "/app/email-accounts", label: "Email Accounts", icon: Mail },
   { href: "/app/settings", label: "Settings", icon: Settings },
@@ -141,9 +141,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
           />
         </div>
         {nav}
-        <div className="text-muted-foreground/70 px-3 pt-2 pb-4 text-xs">
-          Phase 3 · leads & segments
-        </div>
+        <div className="text-muted-foreground/70 px-3 pt-2 pb-4 text-xs">Phase 4 · campaigns</div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
