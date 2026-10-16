@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Copy, Pencil, Plus, Rocket, Trash2 } from "lucide-react";
 import { ComposerDialog, type ComposerTarget } from "@/components/campaigns/composer-dialog";
+import { SequenceBuilder } from "@/components/campaigns/sequence-builder";
 
 import { Alert } from "@/components/ui/alert";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
@@ -370,6 +371,7 @@ export function CampaignDetailContent({ campaignId }: { campaignId: string }) {
   const [addAudienceOpen, setAddAudienceOpen] = useState(false);
   const [addMailboxOpen, setAddMailboxOpen] = useState(false);
   const [composeTarget, setComposeTarget] = useState<ComposerTarget | null>(null);
+  const [builderView, setBuilderView] = useState<"visual" | "list">("visual");
 
   const load = useCallback(() => {
     if (!workspaceId) return;
@@ -552,103 +554,136 @@ export function CampaignDetailContent({ campaignId }: { campaignId: string }) {
           title="Steps"
           subtitle={
             structuralHint ??
-            "Emails and waits execute top to bottom. Reordering and branching arrive with the visual builder."
+            "Drag cards to build the flow. Emails personalize per lead; waits schedule; branches route on lead data."
           }
         />
-        {detail.steps.length === 0 ? (
-          <div className="px-6 pb-6">
-            <EmptyState
-              icon={<Rocket size={20} />}
-              title="No steps yet"
-              description="Add an email step to start the sequence — waits go between emails."
-            />
-          </div>
-        ) : (
-          <div className="px-6 pb-6">
-            <Table>
-              <THead>
-                <TR>
-                  <TH>#</TH>
-                  <TH>Type</TH>
-                  <TH>Name</TH>
-                  <TH>Wait</TH>
-                  <TH>Variants</TH>
-                  <TH>
-                    <span className="sr-only">Actions</span>
-                  </TH>
-                </TR>
-              </THead>
-              <TBody>
-                {detail.steps.map((s) => (
-                  <TR key={s.id}>
-                    <TD>{s.position}</TD>
-                    <TD>
-                      <Badge tone={s.type === "email" ? "primary" : "neutral"}>{s.type}</Badge>
-                    </TD>
-                    <TD>{s.name || "—"}</TD>
-                    <TD>{s.waitDays !== null ? `${s.waitDays} day(s)` : "—"}</TD>
-                    <TD>
-                      <span className="text-muted-foreground text-sm">
-                        {s.variants
-                          .map((v) => `${v.variantKey}: ${v.subject || "(no subject)"}`)
-                          .join(" · ") || "—"}
-                      </span>
-                    </TD>
-                    <TD>
-                      {manageable && editable && s.type === "email" && (
-                        <Button
-                          variant="ghost"
-                          aria-label={`Compose step ${s.position}`}
-                          onClick={() => {
-                            const variant = s.variants[0];
-                            if (variant)
-                              setComposeTarget({
-                                stepId: s.id,
-                                stepName: s.name || `Step ${s.position}`,
-                                variantKey: variant.variantKey,
-                                variant,
-                              });
-                          }}
-                        >
-                          <Pencil size={14} /> Compose
-                        </Button>
-                      )}
-                      {manageable && editable && (
-                        <Button
-                          variant="ghost"
-                          aria-label={`Remove step ${s.position}`}
-                          onClick={() =>
-                            run(async () => {
-                              await campaignsApi.update(workspaceId, campaignId, {
-                                steps: detail.steps
-                                  .filter((x) => x.id !== s.id)
-                                  .map((x) => ({
-                                    type: x.type,
-                                    name: x.name,
-                                    waitDays: x.waitDays ?? undefined,
-                                    variants: x.variants,
-                                  })),
-                              });
-                              toast("success", "Step removed.");
-                            })
-                          }
-                        >
-                          <Trash2 size={14} />
-                        </Button>
-                      )}
-                    </TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          </div>
-        )}
         {manageable && editable && (
-          <div className="px-6 pb-6">
-            <Button onClick={() => setAddStepOpen(true)}>
-              <Plus size={14} /> Add step
+          <div className="flex gap-1 px-6 pb-2">
+            <Button
+              variant={builderView === "visual" ? "primary" : "ghost"}
+              onClick={() => setBuilderView("visual")}
+            >
+              Visual
+            </Button>
+            <Button
+              variant={builderView === "list" ? "primary" : "ghost"}
+              onClick={() => setBuilderView("list")}
+            >
+              Chronological
             </Button>
           </div>
+        )}
+        {manageable && editable && builderView === "visual" && (
+          <div className="px-6 pb-6">
+            <SequenceBuilder
+              workspaceId={workspaceId}
+              campaignId={campaignId}
+              detail={detail}
+              onSaved={() => {
+                toast("success", "Sequence saved.");
+                load();
+              }}
+            />
+          </div>
+        )}
+        {!(manageable && editable && builderView === "visual") && (
+          <>
+            {detail.steps.length === 0 ? (
+              <div className="px-6 pb-6">
+                <EmptyState
+                  icon={<Rocket size={20} />}
+                  title="No steps yet"
+                  description="Add an email step to start the sequence — waits go between emails."
+                />
+              </div>
+            ) : (
+              <div className="px-6 pb-6">
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>#</TH>
+                      <TH>Type</TH>
+                      <TH>Name</TH>
+                      <TH>Wait</TH>
+                      <TH>Variants</TH>
+                      <TH>
+                        <span className="sr-only">Actions</span>
+                      </TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {detail.steps.map((s) => (
+                      <TR key={s.id}>
+                        <TD>{s.position}</TD>
+                        <TD>
+                          <Badge tone={s.type === "email" ? "primary" : "neutral"}>{s.type}</Badge>
+                        </TD>
+                        <TD>{s.name || "—"}</TD>
+                        <TD>{s.waitDays !== null ? `${s.waitDays} day(s)` : "—"}</TD>
+                        <TD>
+                          <span className="text-muted-foreground text-sm">
+                            {s.variants
+                              .map((v) => `${v.variantKey}: ${v.subject || "(no subject)"}`)
+                              .join(" · ") || "—"}
+                          </span>
+                        </TD>
+                        <TD>
+                          {manageable && editable && s.type === "email" && (
+                            <Button
+                              variant="ghost"
+                              aria-label={`Compose step ${s.position}`}
+                              onClick={() => {
+                                const variant = s.variants[0];
+                                if (variant)
+                                  setComposeTarget({
+                                    stepId: s.id,
+                                    stepName: s.name || `Step ${s.position}`,
+                                    variantKey: variant.variantKey,
+                                    variant,
+                                  });
+                              }}
+                            >
+                              <Pencil size={14} /> Compose
+                            </Button>
+                          )}
+                          {manageable && editable && (
+                            <Button
+                              variant="ghost"
+                              aria-label={`Remove step ${s.position}`}
+                              onClick={() =>
+                                run(async () => {
+                                  await campaignsApi.update(workspaceId, campaignId, {
+                                    steps: detail.steps
+                                      .filter((x) => x.id !== s.id)
+                                      .map((x) => ({
+                                        type: x.type,
+                                        name: x.name,
+                                        waitDays: x.waitDays ?? undefined,
+                                        variants: x.variants,
+                                      })),
+                                  });
+                                  toast("success", "Step removed.");
+                                })
+                              }
+                            >
+                              <Trash2 size={14} />
+                            </Button>
+                          )}
+                        </TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+              </div>
+            )}
+            {manageable && editable && (
+              <div className="px-6 pb-6">
+                <Button onClick={() => setAddStepOpen(true)}>
+                  <Plus size={14} /> Add step
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </Card>
 

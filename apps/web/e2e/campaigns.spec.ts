@@ -51,7 +51,8 @@ test.describe("campaigns module", () => {
     await page.getByRole("button", { name: "Activate campaign" }).click();
     await expect(page.getByText(/Cannot activate/)).toBeVisible();
 
-    // Add an email step and a wait step.
+    // Add an email step and a wait step (chronological editor).
+    await page.getByRole("button", { name: "Chronological" }).click();
     await page.getByRole("button", { name: "Add step" }).click();
     await page.getByLabel("Step name").fill("Intro");
     await page.getByLabel("Subject").fill("Welcome aboard");
@@ -153,6 +154,7 @@ test.describe("campaigns module", () => {
     await page.getByRole("button", { name: "New campaign" }).first().click();
     await page.getByLabel("Campaign name").fill("Composer flow");
     await page.getByRole("button", { name: "Create campaign" }).click();
+    await page.getByRole("button", { name: "Chronological" }).click();
     await expect(page.getByRole("button", { name: "Add step" })).toBeVisible();
     await page.getByRole("button", { name: "Add step" }).click();
     await page.getByLabel("Subject").fill("Welcome {{first_name}}");
@@ -178,5 +180,43 @@ test.describe("campaigns module", () => {
     await expect(dialog.getByText("last_name missing")).toBeVisible();
     await expect(dialog.getByText("Subject:")).toContainText("Hey Ada");
     await dialog.getByRole("button", { name: "Close" }).click();
+  });
+
+  test("sequence builder: visual canvas shows steps and saves the graph", async ({ page }) => {
+    test.setTimeout(180_000);
+    const email = testEmail("builder");
+
+    await page.goto("/signup");
+    await page.getByLabel("Your name").fill("Builder User");
+    await page.getByLabel("Work email").fill(email);
+    await page.getByLabel("Password", { exact: true }).fill(STRONG_PASSWORD);
+    await page.getByLabel("Confirm password").fill(STRONG_PASSWORD);
+    await page.getByRole("button", { name: "Create account" }).click();
+    const link = await latestEmailLink(email, VERIFY_LINK, /confirm/i);
+    await page.goto(link);
+    await page.getByLabel("Display name").fill("Builder User");
+    await page.getByRole("button", { name: "Continue" }).click();
+
+    await page.getByRole("button", { name: "New workspace" }).first().click();
+    await page.getByLabel("Workspace name").fill("Builder WS");
+    await page.getByRole("button", { name: "Create workspace" }).click();
+    await expect(page.getByText("Builder WS").first()).toBeVisible();
+
+    await page.getByRole("link", { name: "Campaigns" }).click();
+    await page.getByRole("button", { name: "New campaign" }).first().click();
+    await page.getByLabel("Campaign name").fill("Builder flow");
+    await page.getByRole("button", { name: "Create campaign" }).click();
+    await expect(page.getByRole("button", { name: "email", exact: true })).toBeVisible();
+
+    // Add nodes on the visual canvas and save.
+    await page.getByRole("button", { name: "email", exact: true }).click();
+    await page.getByRole("button", { name: "wait", exact: true }).click();
+    await expect(page.getByText("Wait 1 day(s)").first()).toBeVisible();
+    await page.getByRole("button", { name: "Save sequence" }).click();
+    await expect(page.getByText("Sequence saved.")).toBeVisible();
+
+    // Both steps survive the reload (server truth from the header summary).
+    await page.reload();
+    await expect(page.getByText("2 steps").first()).toBeVisible({ timeout: 15000 });
   });
 });

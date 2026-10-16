@@ -40,8 +40,19 @@ object CampaignDtos:
       `type`: String,
       name: String,
       waitDays: Option[Int],
+      key: Option[String],
+      condition: Option[Json],
+      tagId: Option[UUID],
+      taskDueDays: Option[Int],
+      businessDays: Boolean,
       variants: List[VariantDto]
   )
+
+  final case class EdgeDto(from: UUID, to: UUID, branchKey: Option[String])
+  object EdgeDto:
+    given Encoder[EdgeDto] = deriveEncoder
+    given Decoder[EdgeDto] = deriveDecoder
+    given Schema[EdgeDto] = Schema.derived
   object StepDto:
     given Encoder[StepDto] = deriveEncoder
     given Decoder[StepDto] = deriveDecoder
@@ -83,9 +94,25 @@ object CampaignDtos:
   final case class CampaignDetailDto(
       campaign: CampaignDto,
       steps: List[StepDto],
+      edges: List[EdgeDto],
       mailboxIds: List[UUID],
       audiences: List[AudienceDto]
   )
+
+  final case class ValidateGraphRequest(
+      steps: List[StepInput],
+      edges: List[EdgeInput]
+  )
+  object ValidateGraphRequest:
+    given Encoder[ValidateGraphRequest] = deriveEncoder
+    given Decoder[ValidateGraphRequest] = deriveDecoder
+    given Schema[ValidateGraphRequest] = Schema.derived
+
+  final case class GraphValidationDto(valid: Boolean, errors: List[String])
+  object GraphValidationDto:
+    given Encoder[GraphValidationDto] = deriveEncoder
+    given Decoder[GraphValidationDto] = deriveDecoder
+    given Schema[GraphValidationDto] = Schema.derived
   object CampaignDetailDto:
     given Encoder[CampaignDetailDto] = deriveEncoder
     given Decoder[CampaignDetailDto] = deriveDecoder
@@ -108,7 +135,8 @@ object CampaignDtos:
       subject: Option[String] = None,
       preheader: Option[String] = None,
       bodyHtml: Option[String] = None,
-      bodyText: Option[String] = None
+      bodyText: Option[String] = None,
+      signature: Option[String] = None
   )
   object VariantInput:
     given Encoder[VariantInput] = deriveEncoder
@@ -119,8 +147,23 @@ object CampaignDtos:
       `type`: String,
       name: Option[String] = None,
       waitDays: Option[Int] = None,
+      key: Option[String] = None,
+      condition: Option[Json] = None,
+      tagId: Option[UUID] = None,
+      taskDueDays: Option[Int] = None,
+      businessDays: Option[Boolean] = None,
       variants: Option[List[VariantInput]] = None
   )
+
+  final case class EdgeInput(
+      from: String,
+      to: String,
+      branchKey: Option[String] = None
+  )
+  object EdgeInput:
+    given Encoder[EdgeInput] = deriveEncoder
+    given Decoder[EdgeInput] = deriveDecoder
+    given Schema[EdgeInput] = Schema.derived
   object StepInput:
     given Encoder[StepInput] = deriveEncoder
     given Decoder[StepInput] = deriveDecoder
@@ -143,6 +186,7 @@ object CampaignDtos:
       dailyCap: Option[Int] = None,
       threadMode: Option[Boolean] = None,
       steps: Option[List[StepInput]] = None,
+      edges: Option[List[EdgeInput]] = None,
       mailboxIds: Option[List[UUID]] = None,
       audiences: Option[List[AudienceInput]] = None
   )
@@ -292,6 +336,17 @@ final class CampaignRoutes(
     .out(jsonBody[EnrollResult])
     .errorOut(errorOut)
 
+  private val validateGraph = endpoint.post
+    .in(
+      "api" / "v1" / "workspaces" / path[UUID](
+        "workspaceId"
+      ) / "campaigns" / path[UUID]("campaignId") / "validate-graph"
+    )
+    .in(header[Option[String]]("Authorization"))
+    .in(jsonBody[ValidateGraphRequest])
+    .out(jsonBody[GraphValidationDto])
+    .errorOut(errorOut)
+
   private val listVersions = endpoint.get
     .in(base / path[UUID]("campaignId") / "versions")
     .in(header[Option[String]]("Authorization"))
@@ -324,9 +379,12 @@ final class CampaignRoutes(
       c: repos.CampaignRow,
       steps: List[repos.StepRow],
       variants: List[repos.VariantRow],
+      edges: List[repos.EdgeRow],
       mailboxIds: List[UUID],
       audiences: List[repos.AudienceRow]
   ): CampaignDetailDto =
+    val detailEdges =
+      edges.map(e => EdgeDto(e.fromStepId, e.toStepId, e.branchKey))
     val byStep = variants.groupBy(_.stepId)
     CampaignDetailDto(
       campaign = campaignDto(c, steps.size),
@@ -337,6 +395,11 @@ final class CampaignRoutes(
           `type` = s.`type`,
           name = s.name,
           waitDays = s.waitDays,
+          key = s.clientKey,
+          condition = s.condition,
+          tagId = s.tagId,
+          taskDueDays = s.taskDueDays,
+          businessDays = s.businessDays,
           variants = byStep
             .getOrElse(s.id, Nil)
             .map(v =>
@@ -351,6 +414,7 @@ final class CampaignRoutes(
             )
         )
       ),
+      edges = detailEdges,
       mailboxIds = mailboxIds,
       audiences =
         audiences.map(a => AudienceDto(a.id, a.leadListId, a.segmentId))
@@ -366,14 +430,85 @@ final class CampaignRoutes(
         (
           repos.stepsFor(c.id),
           repos.variantsFor(c.id),
+          repos.edgesFor(c.id),
           repos.mailboxIdsFor(c.id),
-          repos.audiencesFor(
-            c.id
-          )
-        ).parMapN { (steps, variants, mailboxes, audiences) =>
-          Some(detail(c, steps, variants, mailboxes, audiences))
+          repos.audiencesFor(c.id)
+        ).parMapN { (steps, variants, edges, mailboxes, audiences) =>
+          Some(detail(c, steps, variants, edges, mailboxes, audiences))
         }
     }
+
+  private def toGStep(si: StepInput, key: String): SequenceGraph.GStep =
+    SequenceGraph.GStep(
+      key = key,
+      stepType = si.`type`,
+      waitDays = si.waitDays,
+      condition = si.condition,
+      tagId = si.tagId,
+      taskDueDays = si.taskDueDays,
+      variantCount = si.variants.getOrElse(Nil).size
+    )
+
+  private def toGStepRow(sr: repos.StepRow): SequenceGraph.GStep =
+    SequenceGraph.GStep(
+      key = sr.clientKey.getOrElse(sr.position.toString),
+      stepType = sr.`type`,
+      waitDays = sr.waitDays,
+      condition = sr.condition,
+      tagId = sr.tagId,
+      taskDueDays = sr.taskDueDays,
+      variantCount = 1 // variant shape is enforced at save time
+    )
+
+  /** Validates the submitted graph and maps it to repo input (editor keys
+    * preserved). Legacy linear saves keep using replaceSteps.
+    */
+  private def prepareGraph(
+      stepsIn: List[StepInput],
+      edgesIn: List[EdgeInput]
+  ): Either[List[String], (List[repos.GraphStepIn], List[repos.GraphEdgeIn])] =
+    val gSteps = stepsIn.zipWithIndex.map((si, idx) =>
+      toGStep(si, si.key.getOrElse(s"s${idx + 1}"))
+    )
+    val gEdges =
+      edgesIn.map(e => SequenceGraph.GEdge(e.from, e.to, e.branchKey))
+    val errors = SequenceGraph.validate(gSteps, gEdges)
+    if errors.nonEmpty then Left(errors)
+    else
+      val inputs = stepsIn.zipWithIndex.map { (si, idx) =>
+        val key = si.key.getOrElse(s"s${idx + 1}")
+        val variantsIn: List[VariantInput] = si.`type` match
+          case "email" =>
+            si.variants.getOrElse(Nil) match
+              case Nil => List(VariantInput("A"))
+              case vs  => vs
+          case _ => Nil
+        repos.GraphStepIn(
+          key = key,
+          position = idx + 1,
+          stepType = si.`type`,
+          name = si.name.getOrElse("").trim,
+          waitDays = si.waitDays,
+          businessDays = si.businessDays.getOrElse(false),
+          condition = si.condition,
+          tagId = si.tagId,
+          taskDueDays = si.taskDueDays,
+          variants = variantsIn.map(v =>
+            repos.VariantRow(
+              UUID.randomUUID(),
+              v.variantKey,
+              v.subject.getOrElse(""),
+              v.preheader.getOrElse(""),
+              v.bodyHtml.getOrElse(""),
+              v.bodyText.getOrElse(""),
+              v.signature.getOrElse("")
+            )
+          )
+        )
+      }
+      Right(
+        (inputs, edgesIn.map(e => repos.GraphEdgeIn(e.from, e.to, e.branchKey)))
+      )
 
   private val StepTypes = Set("email", "wait")
 
@@ -627,9 +762,14 @@ final class CampaignRoutes(
                   )
                 }
               else
+                val graphMode = req.edges.isDefined
                 val parsed =
                   if status != "draft" then
                     Right(None) // structural already rejected
+                  else if graphMode then
+                    Right(
+                      None
+                    ) // graph saves are validated by SequenceGraph below
                   else req.steps.traverse(validateSteps)
                 parsed match
                   case Left(error) =>
@@ -643,67 +783,130 @@ final class CampaignRoutes(
                       case Left(error) =>
                         IO.pure(Left(failed(ApiError.Invalid(error))))
                       case Right(()) =>
-                        refsCheck(workspaceId, req).flatMap {
-                          case Left(error) =>
-                            IO.pure(Left(failed(ApiError.Invalid(error))))
-                          case Right(()) =>
-                            for
-                              fieldResult <- repos.updateCampaignFields(
-                                workspaceId,
-                                campaignId,
-                                req.name.map(_.trim),
-                                req.description.map(_.trim),
-                                req.tags.map(
-                                  _.map(_.trim).filter(_.nonEmpty).distinct
+                        val graphErrors: List[String] =
+                          (req.edges, req.steps) match
+                            case (Some(edgesIn), Some(stepsIn)) =>
+                              SequenceGraph.validate(
+                                stepsIn.zipWithIndex.map((si, idx) =>
+                                  toGStep(si, si.key.getOrElse(s"s${idx + 1}"))
                                 ),
-                                req.timezone,
-                                req.dailyCap,
-                                req.threadMode
-                              )
-                              conflicted = fieldResult == -1
-                              _ <-
-                                if conflicted then IO.pure(())
-                                else
-                                  (req.steps, parsed) match
-                                    case (Some(_), Right(Some(validated))) =>
-                                      repos.replaceSteps(
-                                        campaignId,
-                                        user.id,
-                                        validated
-                                      )
-                                    case _ => IO.unit
-                              _ <-
-                                if conflicted then IO.pure(())
-                                else
-                                  req.mailboxIds.traverse_(ids =>
-                                    repos.replaceMailboxes(
-                                      campaignId,
-                                      ids.distinct
-                                    )
-                                  )
-                              _ <-
-                                if conflicted then IO.pure(())
-                                else
-                                  req.audiences.traverse_(as =>
-                                    repos.replaceAudiences(
-                                      campaignId,
-                                      as.map(a => (a.leadListId, a.segmentId))
-                                    )
-                                  )
-                              detailOpt <-
-                                if conflicted then IO.pure(None)
-                                else loadDetail(workspaceId, campaignId)
-                            yield
-                              if conflicted then
-                                Left(
-                                  failed(
-                                    ApiError.Conflict(
-                                      "A campaign with this name already exists."
-                                    )
-                                  )
+                                edgesIn.map(e =>
+                                  SequenceGraph.GEdge(e.from, e.to, e.branchKey)
                                 )
-                              else Right(detailOpt.get)
-                        }
+                              )
+                            case _ => Nil
+                        if graphErrors.nonEmpty then
+                          IO.pure(
+                            Left(
+                              failed(
+                                ApiError.Invalid(graphErrors.mkString(" "))
+                              )
+                            )
+                          )
+                        else
+                          refsCheck(workspaceId, req).flatMap {
+                            case Left(error) =>
+                              IO.pure(Left(failed(ApiError.Invalid(error))))
+                            case Right(()) =>
+                              for
+                                fieldResult <- repos.updateCampaignFields(
+                                  workspaceId,
+                                  campaignId,
+                                  req.name.map(_.trim),
+                                  req.description.map(_.trim),
+                                  req.tags.map(
+                                    _.map(_.trim).filter(_.nonEmpty).distinct
+                                  ),
+                                  req.timezone,
+                                  req.dailyCap,
+                                  req.threadMode
+                                )
+                                conflicted = fieldResult == -1
+                                _ <-
+                                  if conflicted then IO.pure(())
+                                  else
+                                    (req.steps, parsed) match
+                                      case (Some(stepsIn), _) if graphMode =>
+                                        prepareGraph(
+                                          stepsIn,
+                                          req.edges.getOrElse(Nil)
+                                        ) match
+                                          case Left(errors) =>
+                                            IO.raiseError(
+                                              new IllegalArgumentException(
+                                                errors.mkString(" ")
+                                              )
+                                            )
+                                          case Right(
+                                                (graphSteps, graphEdges)
+                                              ) =>
+                                            repos.replaceGraph(
+                                              campaignId,
+                                              user.id,
+                                              graphSteps,
+                                              graphEdges
+                                            )
+                                      case (Some(_), Right(Some(validated))) =>
+                                        repos.replaceSteps(
+                                          campaignId,
+                                          user.id,
+                                          validated
+                                        )
+                                      case _ => IO.unit
+                                _ <-
+                                  if conflicted then IO.pure(())
+                                  else
+                                    req.mailboxIds.traverse_(ids =>
+                                      repos.replaceMailboxes(
+                                        campaignId,
+                                        ids.distinct
+                                      )
+                                    )
+                                _ <-
+                                  if conflicted then IO.pure(())
+                                  else
+                                    req.audiences.traverse_(as =>
+                                      repos.replaceAudiences(
+                                        campaignId,
+                                        as.map(a => (a.leadListId, a.segmentId))
+                                      )
+                                    )
+                                detailOpt <-
+                                  if conflicted then IO.pure(None)
+                                  else loadDetail(workspaceId, campaignId)
+                              yield
+                                if conflicted then
+                                  Left(
+                                    failed(
+                                      ApiError.Conflict(
+                                        "A campaign with this name already exists."
+                                      )
+                                    )
+                                  )
+                                else Right(detailOpt.get)
+                          }
+          }
+      }
+
+  private def validateGraphLogic(
+      authorization: Option[String],
+      workspaceId: UUID,
+      campaignId: UUID,
+      req: ValidateGraphRequest
+  ): IO[Either[(SttpStatus, Envelope), GraphValidationDto]] =
+    requirePermission(authorization, workspaceId, Permission.ViewWorkspace)
+      .flatMap {
+        case Left(envelope) => IO.pure(Left(envelope))
+        case Right(_)       =>
+          repos.findCampaign(workspaceId, campaignId).flatMap {
+            case None    => IO.pure(Left(failed(ApiError.NotFound("campaign"))))
+            case Some(_) =>
+              val gSteps = req.steps.zipWithIndex
+                .map((si, idx) => toGStep(si, si.key.getOrElse(s"s${idx + 1}")))
+              val gEdges = req.edges
+                .map(e => SequenceGraph.GEdge(e.from, e.to, e.branchKey))
+              val errors = SequenceGraph.validate(gSteps, gEdges)
+              IO.pure(Right(GraphValidationDto(errors.isEmpty, errors)))
           }
       }
 
@@ -827,8 +1030,9 @@ final class CampaignRoutes(
                       (
                         repos.stepsFor(c.id),
                         repos.audiencesFor(c.id),
-                        repos.mailboxIdsFor(c.id)
-                      ).parMapN { (steps, audiences, mailboxes) =>
+                        repos.mailboxIdsFor(c.id),
+                        repos.edgesFor(c.id)
+                      ).parMapN { (steps, audiences, mailboxes, edges) =>
                         val missing = List(
                           if steps.isEmpty then Some("at least one step")
                           else None,
@@ -839,8 +1043,32 @@ final class CampaignRoutes(
                             Some("at least one sending mailbox")
                           else None
                         ).flatten
-                        if missing.isEmpty then None
-                        else Some(missing.mkString(", "))
+                        val graphErrors: List[String] =
+                          if steps.isEmpty then Nil
+                          else
+                            val gSteps = steps.map(toGStepRow)
+                            if edges.isEmpty then
+                              SequenceGraph.validateLinear(gSteps)
+                            else
+                              val keyById =
+                                steps
+                                  .flatMap(st =>
+                                    st.clientKey.map(k => st.id -> k)
+                                  )
+                                  .toMap
+                              SequenceGraph.validate(
+                                gSteps,
+                                edges.flatMap(e =>
+                                  for
+                                    from <- keyById.get(e.fromStepId)
+                                    to <- keyById.get(e.toStepId)
+                                  yield SequenceGraph
+                                    .GEdge(from, to, e.branchKey)
+                                )
+                              )
+                        val all = missing ++ graphErrors
+                        if all.isEmpty then None
+                        else Some(all.mkString("; "))
                       }
                   prerequisites.flatMap {
                     case Some(missing) =>
@@ -974,6 +1202,9 @@ final class CampaignRoutes(
       ),
       enrollContacts.serverLogic((workspaceId, campaignId, auth, req) =>
         enrollLogic(auth, workspaceId, campaignId, req)
+      ),
+      validateGraph.serverLogic((workspaceId, campaignId, auth, req) =>
+        validateGraphLogic(auth, workspaceId, campaignId, req)
       ),
       listVersions.serverLogic((workspaceId, campaignId, auth) =>
         versionsLogic(auth, workspaceId, campaignId)

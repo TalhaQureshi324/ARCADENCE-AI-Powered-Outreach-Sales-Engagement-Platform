@@ -659,3 +659,22 @@
 ### Next
 
 - 4.3 visual sequences: graph model (edges, branch/task/add-tag steps), React Flow builder, reachability/cycle/branch validation.
+
+---
+
+## Phase 4.3 — Visual sequences & branching (2026-10-16)
+
+**Branch** `feature/phase-043-sequences` → `develop`.
+
+### Database
+
+- `20261019090000/1/2` applied local + staging: new step types + graph columns, `campaign_edge`, `stop_on_reply`; `step_shape` widened in a second transaction; client-key unique index rescoped to per-campaign.
+
+### Implemented / tested
+
+| Area | Detail |
+| --- | --- |
+| API | Graph-aware PATCH (steps+edges with stable keys; UUID-preserving upserts), `SequenceGraph.validate` (root/in-degree/branch-labels/condition/reachability), `POST validate-graph`, activation validates the stored graph |
+| Web | `SequenceBuilder` (@xyflow/react): node palette (email/wait/branch/task/add_tag), click-to-edit panel (incl. composer hand-off for email nodes, business-day waits, condition JSON), branch auto yes/no labeling, drag connect, edge click delete, visual/chronological toggle |
+| Tests | SequenceGraphIntegrationSpec 4/4; Scala 211/211; Playwright 15/15 incl. builder e2e |
+| Fixes | global client-key index → per-campaign (integration suite caught cross-campaign collisions); graph saves bypass the linear validator; jsonb cast must be SQL-side (`fr"...::jsonb"`), not inside the parameter |

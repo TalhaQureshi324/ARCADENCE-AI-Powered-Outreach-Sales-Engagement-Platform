@@ -735,7 +735,18 @@ export interface CampaignStepDto {
   type: string;
   name: string;
   waitDays: number | null;
+  key: string | null;
+  condition: Record<string, unknown> | null;
+  tagId: string | null;
+  taskDueDays: number | null;
+  businessDays: boolean;
   variants: CampaignVariantDto[];
+}
+
+export interface CampaignEdgeDto {
+  from: string;
+  to: string;
+  branchKey: string | null;
 }
 
 export interface CampaignAudienceDto {
@@ -765,14 +776,26 @@ export interface CampaignDto {
 export interface CampaignDetailDto {
   campaign: CampaignDto;
   steps: CampaignStepDto[];
+  edges: CampaignEdgeDto[];
   mailboxIds: string[];
   audiences: CampaignAudienceDto[];
+}
+
+export interface EdgeInput {
+  from: string;
+  to: string;
+  branchKey?: string;
 }
 
 export interface CampaignStepInput {
   type: string;
   name?: string;
   waitDays?: number;
+  key?: string;
+  condition?: Record<string, unknown>;
+  tagId?: string;
+  taskDueDays?: number;
+  businessDays?: boolean;
   variants?: {
     variantKey: string;
     subject?: string;
