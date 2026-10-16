@@ -26,7 +26,8 @@ object CampaignDtos:
       subject: String = "",
       preheader: String = "",
       bodyHtml: String = "",
-      bodyText: String = ""
+      bodyText: String = "",
+      signature: String = ""
   )
   object VariantDto:
     given Encoder[VariantDto] = deriveEncoder
@@ -67,6 +68,7 @@ object CampaignDtos:
       dailyCap: Int,
       openTracking: Boolean,
       clickTracking: Boolean,
+      threadMode: Boolean,
       stepCount: Int,
       activatedAt: Option[OffsetDateTime],
       archivedAt: Option[OffsetDateTime],
@@ -139,6 +141,7 @@ object CampaignDtos:
       tags: Option[List[String]] = None,
       timezone: Option[String] = None,
       dailyCap: Option[Int] = None,
+      threadMode: Option[Boolean] = None,
       steps: Option[List[StepInput]] = None,
       mailboxIds: Option[List[UUID]] = None,
       audiences: Option[List[AudienceInput]] = None
@@ -309,6 +312,7 @@ final class CampaignRoutes(
       dailyCap = c.dailyCap,
       openTracking = c.openTracking,
       clickTracking = c.clickTracking,
+      threadMode = c.threadMode,
       stepCount = stepCount,
       activatedAt = c.activatedAt,
       archivedAt = c.archivedAt,
@@ -341,7 +345,8 @@ final class CampaignRoutes(
                 v.subject,
                 v.preheader,
                 v.bodyHtml,
-                v.bodyText
+                v.bodyText,
+                v.signature
               )
             )
         )
@@ -412,7 +417,8 @@ final class CampaignRoutes(
                     v.subject.getOrElse(""),
                     v.preheader.getOrElse(""),
                     v.bodyHtml.getOrElse(""),
-                    v.bodyText.getOrElse("")
+                    v.bodyText.getOrElse(""),
+                    ""
                   )
                 )
               )
@@ -580,7 +586,7 @@ final class CampaignRoutes(
             case Some(c) =>
               val status = c.status
               val structural =
-                req.steps.isDefined || req.mailboxIds.isDefined || req.audiences.isDefined
+                req.steps.isDefined || req.mailboxIds.isDefined || req.audiences.isDefined || req.threadMode.isDefined
               val identity = req.name.isDefined || req.timezone.isDefined
               val locked = status == "active" || status == "paused"
               val frozen =
@@ -651,7 +657,8 @@ final class CampaignRoutes(
                                   _.map(_.trim).filter(_.nonEmpty).distinct
                                 ),
                                 req.timezone,
-                                req.dailyCap
+                                req.dailyCap,
+                                req.threadMode
                               )
                               conflicted = fieldResult == -1
                               _ <-

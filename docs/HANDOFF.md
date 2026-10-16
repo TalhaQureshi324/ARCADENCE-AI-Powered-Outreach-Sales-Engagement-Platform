@@ -635,3 +635,27 @@
 ### Next
 
 - 4.2 composer: subject/preheader/HTML+text editing, personalization tokens with missing-variable validation, sanitization, saved templates/blocks, sample-contact test rendering + authorized test send, autosave.
+
+---
+
+## Phase 4.2 — Composer & personalization (2026-10-16)
+
+**Branch** `feature/phase-042-composer` → `develop`.
+
+### Database
+
+- `20261018090000_composer.sql` applied local + staging: `email_template`, `reusable_block` (unique `lower(name)` per workspace, RLS member-select), `step_variant.signature`, `campaign.thread_mode`.
+
+### Implemented / tested
+
+| Area | Detail |
+| --- | --- |
+| Engine | `Personalization` (api module): token extraction/fallbacks/missing reporting, `custom.*` jsonb resolution, jsoup allowlist sanitization + html→text; `Regex.quoteReplacement` for value safety |
+| API | `ComposerRoutes` (9 endpoints): variant content PUT (draft-only, token validation incl. unknown tokens), preview vs real contact, authorized test send (to self, via assigned mailbox, `X-Arcadence-Test`), templates + blocks CRUD |
+| Web | `composerApi`; `ComposerDialog`: subject/preheader/HTML/text/signature, token insert buttons, templates load + save-as, blocks insert + save-body-as-block, debounced autosave with status, undo/redo stacks, sandboxed preview iframe with resolved/fallback/missing badges, test send |
+| Tests | PersonalizationSpec 7/7; ComposerIntegrationSpec 4/4; Scala 207/207 (2 worker + 75 core + 130 api); Playwright 14/14 incl. composer e2e (unknown-token badge, autosave, preview badges `first_name = Ada` / `last_name missing`) |
+| Fixes | replaceAllIn `$`-interpretation (ADR-0026); custom-field create DTO key (`fieldType`) resurfaced by the circe no-defaults rule |
+
+### Next
+
+- 4.3 visual sequences: graph model (edges, branch/task/add-tag steps), React Flow builder, reachability/cycle/branch validation.

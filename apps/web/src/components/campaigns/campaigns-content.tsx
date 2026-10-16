@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Copy, Plus, Rocket, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, Pencil, Plus, Rocket, Trash2 } from "lucide-react";
+import { ComposerDialog, type ComposerTarget } from "@/components/campaigns/composer-dialog";
 
 import { Alert } from "@/components/ui/alert";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
@@ -368,6 +369,7 @@ export function CampaignDetailContent({ campaignId }: { campaignId: string }) {
   const [addStepOpen, setAddStepOpen] = useState(false);
   const [addAudienceOpen, setAddAudienceOpen] = useState(false);
   const [addMailboxOpen, setAddMailboxOpen] = useState(false);
+  const [composeTarget, setComposeTarget] = useState<ComposerTarget | null>(null);
 
   const load = useCallback(() => {
     if (!workspaceId) return;
@@ -593,6 +595,24 @@ export function CampaignDetailContent({ campaignId }: { campaignId: string }) {
                       </span>
                     </TD>
                     <TD>
+                      {manageable && editable && s.type === "email" && (
+                        <Button
+                          variant="ghost"
+                          aria-label={`Compose step ${s.position}`}
+                          onClick={() => {
+                            const variant = s.variants[0];
+                            if (variant)
+                              setComposeTarget({
+                                stepId: s.id,
+                                stepName: s.name || `Step ${s.position}`,
+                                variantKey: variant.variantKey,
+                                variant,
+                              });
+                          }}
+                        >
+                          <Pencil size={14} /> Compose
+                        </Button>
+                      )}
                       {manageable && editable && (
                         <Button
                           variant="ghost"
@@ -773,6 +793,14 @@ export function CampaignDetailContent({ campaignId }: { campaignId: string }) {
             toast("success", "Audience added.");
           })
         }
+      />
+
+      <ComposerDialog
+        open={composeTarget !== null}
+        workspaceId={workspaceId}
+        campaignId={campaignId}
+        target={composeTarget}
+        onClose={() => setComposeTarget(null)}
       />
 
       <AddMailboxDialog

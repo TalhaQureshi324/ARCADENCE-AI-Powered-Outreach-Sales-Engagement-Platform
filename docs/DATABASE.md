@@ -325,3 +325,8 @@ Canonical state machines live in `docs/ARCHITECTURE.md` §7. Schema mapping:
 - `public.campaign_step` (`position` 1–100 unique per campaign; `step_shape` check ties `wait_days` to `type='wait'`) + `public.step_variant` (`variant_key` in {A, Z}, unique per step).
 - `public.campaign_mailbox` (FK → `public.email_accounts`, priority), `public.campaign_audience` (exactly one of `lead_list_id`/`segment_id` via a `num_nonnulls` check), `public.campaign_enrollment` (unique per (campaign, contact); due-scan partial index `(status, next_action_at) where status='active'`), `public.campaign_version` (append-only snapshots, unique per (campaign, version)).
 - All seven tables carry RLS member-select policies; writes flow through the audited API.
+
+## Phase 4.2 — composer & personalization (`20261018090000`)
+
+- `public.email_template` and `public.reusable_block`: workspace-scoped, name unique per workspace on `lower(name)`, sanitized HTML stored (sanitization happens in the API; the DB stores what it is given). RLS member-select.
+- `step_variant.signature` (HTML, appended at send time) and `campaign.thread_mode` (follow-up steps send as replies in the same provider thread once the sending engine wires it, Phase 5).
