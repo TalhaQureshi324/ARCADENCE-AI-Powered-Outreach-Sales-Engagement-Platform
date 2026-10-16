@@ -60,6 +60,8 @@ final class CampaignIntegrationSpec extends CatsEffectSuite:
     new CampaignRoutes(
       authenticator = fakeAuth,
       repos = repos,
+      leadsRepos = leadsRepos,
+      emailAccounts = new EmailAccountRepos(xa),
       authorizer = new Authorizer(xa)
     ).http
       <+> new ContactRoutes(
@@ -195,8 +197,8 @@ final class CampaignIntegrationSpec extends CatsEffectSuite:
         values ($wsA, $userB, 'viewer')
       """.update.run.void.transact(xa)
       _ <- sql"""
-        insert into public.email_accounts (workspace_id, provider, email_address, display_name)
-        values ($wsA, 'smtp_imap', ${s"sender-$wsA@arcadence.test"}, 'Sender')
+        insert into public.email_accounts (workspace_id, provider, email_address, display_name, status)
+        values ($wsA, 'smtp_imap', ${s"sender-$wsA@arcadence.test"}, 'Sender', 'connected')
       """.update.run.void.transact(xa)
       _ <- sql"select id from public.email_accounts where workspace_id = $wsA"
         .query[UUID]

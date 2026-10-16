@@ -81,8 +81,8 @@ test.describe("campaigns module", () => {
     void wsId;
     execSync(
       `docker exec supabase_db_arcadence psql -U postgres -d postgres -t -A -c ` +
-        `"insert into public.email_accounts (workspace_id, provider, email_address) ` +
-        `select id, 'smtp_imap', 'sender-4-1@arcadence.test' from public.workspace order by created_at desc limit 1 ` +
+        `"insert into public.email_accounts (workspace_id, provider, email_address, status) ` +
+        `select id, 'smtp_imap', 'sender-4-1@arcadence.test', 'connected' from public.workspace order by created_at desc limit 1 ` +
         `returning id"`,
       { stdio: "pipe" },
     );

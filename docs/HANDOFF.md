@@ -678,3 +678,31 @@
 | Web | `SequenceBuilder` (@xyflow/react): node palette (email/wait/branch/task/add_tag), click-to-edit panel (incl. composer hand-off for email nodes, business-day waits, condition JSON), branch auto yes/no labeling, drag connect, edge click delete, visual/chronological toggle |
 | Tests | SequenceGraphIntegrationSpec 4/4; Scala 211/211; Playwright 15/15 incl. builder e2e |
 | Fixes | global client-key index → per-campaign (integration suite caught cross-campaign collisions); graph saves bypass the linear validator; jsonb cast must be SQL-side (`fr"...::jsonb"`), not inside the parameter |
+
+---
+
+## Phase 4.4 — Scheduling, simulation & launch preflight (2026-10-16)
+
+**Branch** `feature/phase-044-launch` → `develop`; promote to `main` + tag `phase-4`.
+
+### Database
+
+- `20261020090000_scheduling.sql` applied local + staging: `campaign.send_window_start/end`, `business_days_only`.
+
+### Implemented / tested
+
+| Area | Detail |
+| --- | --- |
+| Engine | `Schedule`: send-window/timezone/weekend math, waits, branch evaluation (same resolver as personalization), linear fallback for legacy campaigns |
+| API | `POST simulate` (dry-run plan per real contact), `POST preflight` (blockers/warnings), activation runs preflight and refuses with all blockers; scheduling fields in Campaign DTO/PATCH (draft-only) |
+| Tests | ScheduleSpec 6/6 (window/weekend/in-window passthrough, operator semantics, linear timing, both branch routes); Scala 223/223 (2 worker + 75 core + 146 api); full Playwright 15/15 |
+| Fixes | preflight SQL: campaign_audience/campaign_mailbox carry no workspace_id/email_address — joined through campaign/email_accounts (integration suite caught both) |
+
+### Known gaps (deferred deliberately)
+
+- Simulate/preflight have no dedicated UI panel yet — preflight blockers surface verbatim on the campaign detail page when activation is refused; a rich launch-readiness panel lands with Phase 5's send controls.
+- Segment audiences: size counting uses lead lists; segment-backed audiences report as unknown size in preflight.
+
+### Phase 4 milestone
+
+- Merge → develop → main, tag `phase-4`. Acceptance from the plan verified: multi-step campaign created, personalized (4.2), previewed per lead, timing simulated, valid workflow activated with preflight gating; lifecycle/graph/template-escaping/timezone/branch/UI tests all green.
