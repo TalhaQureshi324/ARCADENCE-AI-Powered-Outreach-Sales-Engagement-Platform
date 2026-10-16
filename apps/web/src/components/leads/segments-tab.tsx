@@ -220,57 +220,57 @@ export function SegmentsTab({ workspaceId, myRole }: { workspaceId: string; myRo
                       <div className="flex items-center justify-end gap-1">
                         <>
                           <Button
-                              variant="ghost"
-                              aria-label={`Preview ${s.name}`}
-                              onClick={() =>
-                                handle(async () => {
-                                  const result = await segmentsApi.preview(workspaceId, s.id);
-                                  setPreview({ segment: s, result });
-                                })
-                              }
-                            >
-                              Preview
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              aria-label={`Export ${s.name}`}
-                              onClick={() =>
-                                handle(async () => {
-                                  await segmentsApi.exportCsv(
-                                    workspaceId,
-                                    s.id,
-                                    `${s.name.replace(/[^a-z0-9-]+/gi, "-").toLowerCase()}.csv`,
-                                  );
-                                  toast("success", "Export downloaded.");
-                                })
-                              }
-                            >
-                              <Download size={14} />
-                            </Button>
-                            {editable && (
-                              <>
-                                <Button
-                                  variant="ghost"
-                                  aria-label={`Tag members of ${s.name}`}
-                                  onClick={() => setTagPicker(s)}
-                                >
-                                  <Tags size={14} />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  aria-label={`Delete ${s.name}`}
-                                  onClick={() =>
-                                    handle(async () => {
-                                      await segmentsApi.remove(workspaceId, s.id);
-                                      toast("success", "Segment deleted.");
-                                      load();
-                                    })
-                                  }
-                                >
-                                  <Trash2 size={14} />
-                                </Button>
-                              </>
-                            )}
+                            variant="ghost"
+                            aria-label={`Preview ${s.name}`}
+                            onClick={() =>
+                              handle(async () => {
+                                const result = await segmentsApi.preview(workspaceId, s.id);
+                                setPreview({ segment: s, result });
+                              })
+                            }
+                          >
+                            Preview
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            aria-label={`Export ${s.name}`}
+                            onClick={() =>
+                              handle(async () => {
+                                await segmentsApi.exportCsv(
+                                  workspaceId,
+                                  s.id,
+                                  `${s.name.replace(/[^a-z0-9-]+/gi, "-").toLowerCase()}.csv`,
+                                );
+                                toast("success", "Export downloaded.");
+                              })
+                            }
+                          >
+                            <Download size={14} />
+                          </Button>
+                          {editable && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                aria-label={`Tag members of ${s.name}`}
+                                onClick={() => setTagPicker(s)}
+                              >
+                                <Tags size={14} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                aria-label={`Delete ${s.name}`}
+                                onClick={() =>
+                                  handle(async () => {
+                                    await segmentsApi.remove(workspaceId, s.id);
+                                    toast("success", "Segment deleted.");
+                                    load();
+                                  })
+                                }
+                              >
+                                <Trash2 size={14} />
+                              </Button>
+                            </>
+                          )}
                         </>
                       </div>
                     </TD>
@@ -298,9 +298,7 @@ export function SegmentsTab({ workspaceId, myRole }: { workspaceId: string; myRo
           if (!next) setPreview(null);
         }}
         title={preview ? `Preview · ${preview.segment.name}` : ""}
-        description={
-          preview ? `${preview.result.count} contact(s) match these rules.` : undefined
-        }
+        description={preview ? `${preview.result.count} contact(s) match these rules.` : undefined}
       >
         {preview && (
           <div className="max-h-80 overflow-auto">
@@ -395,10 +393,7 @@ function SegmentRules({ filters }: { filters: SegmentFilterGroup }) {
 }
 
 function countLeaves(group: SegmentFilterGroup): number {
-  return group.conditions.reduce(
-    (n, c) => n + ("conditions" in c ? countLeaves(c) : 1),
-    0,
-  );
+  return group.conditions.reduce((n, c) => n + ("conditions" in c ? countLeaves(c) : 1), 0);
 }
 
 function SegmentCreateDialog({
@@ -641,8 +636,8 @@ function BulkTagDialog({
     <Dialog
       open={segment !== null}
       onOpenChange={(next) => {
-          if (!next) onClose();
-        }}
+        if (!next) onClose();
+      }}
       title={segment ? `Tag members · ${segment.name}` : ""}
       description="Adds the tag to every matching contact. Contacts that already have it are skipped."
     >
@@ -656,9 +651,7 @@ function BulkTagDialog({
         {tags === null ? (
           <Skeleton className="h-10" />
         ) : tags.length === 0 ? (
-          <Alert variant="info">
-            No tags yet — create one on the Tags &amp; Fields tab first.
-          </Alert>
+          <Alert variant="info">No tags yet — create one on the Tags &amp; Fields tab first.</Alert>
         ) : (
           <select
             aria-label="Tag to apply"

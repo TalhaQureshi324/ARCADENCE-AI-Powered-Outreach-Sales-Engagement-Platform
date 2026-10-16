@@ -526,7 +526,9 @@ function MergeContactDialog({
           {options.map((c) => (
             <option key={c.id} value={c.id}>
               {c.emailDisplay || c.email}
-              {c.firstName || c.lastName ? ` — ${[c.firstName, c.lastName].filter(Boolean).join(" ")}` : ""}
+              {c.firstName || c.lastName
+                ? ` — ${[c.firstName, c.lastName].filter(Boolean).join(" ")}`
+                : ""}
             </option>
           ))}
         </select>
