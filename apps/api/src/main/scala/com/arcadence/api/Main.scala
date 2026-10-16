@@ -140,7 +140,8 @@ object Main extends IOApp:
                 )
 
                 // Saved segments, exports, bulk actions, merge (Phase 3.4)
-                val segmentRepos = new SegmentRepos(transactor, leadsReposShared)
+                val segmentRepos =
+                  new SegmentRepos(transactor, leadsReposShared)
                 val segmentRoutes = new SegmentRoutes(
                   authenticator = authenticator,
                   repos = segmentRepos,
@@ -179,7 +180,7 @@ object Main extends IOApp:
                   RateLimit(config.rateLimitPerMinute)(
                     SecurityHeaders(
                       workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http
-                      <+> segmentRoutes.http <+> leadsRoutes.http <+> importRoutes.http
+                        <+> segmentRoutes.http <+> leadsRoutes.http <+> importRoutes.http
                     )
                   )
 
