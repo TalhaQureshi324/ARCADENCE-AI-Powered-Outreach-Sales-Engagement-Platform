@@ -139,6 +139,15 @@ object Main extends IOApp:
                   service = importService
                 )
 
+                // Saved segments, exports, bulk actions, merge (Phase 3.4)
+                val segmentRepos = new SegmentRepos(transactor, leadsReposShared)
+                val segmentRoutes = new SegmentRoutes(
+                  authenticator = authenticator,
+                  repos = segmentRepos,
+                  leadsRepos = leadsReposShared,
+                  authorizer = authorizer
+                )
+
                 val dbReady: IO[Boolean] =
                   sql"select 1"
                     .query[Int]
@@ -169,7 +178,8 @@ object Main extends IOApp:
                 val hardenedRoutes: HttpRoutes[IO] =
                   RateLimit(config.rateLimitPerMinute)(
                     SecurityHeaders(
-                      workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http <+> leadsRoutes.http <+> importRoutes.http
+                      workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http
+                      <+> segmentRoutes.http <+> leadsRoutes.http <+> importRoutes.http
                     )
                   )
 

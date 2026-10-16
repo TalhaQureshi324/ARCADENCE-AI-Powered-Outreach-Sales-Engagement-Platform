@@ -576,3 +576,38 @@
 ### Next
 
 - Product owner supplies the detailed **Phase 0 implementation plan**; agent executes it subphase-by-subphase (expected: build scaffolds, pinned toolchain, CI, skeleton API/worker/frontend, health checks, first deployment wiring).
+
+---
+
+## Phase 3.4 — Segments & complete lead UI (2026-10-16)
+
+**Branch** `feature/phase-03-segments` -> `develop`. Segment CRUD + whitelist-compiled AND/OR filters, preview, CSV export, idempotent bulk tag, atomic contact merge, data-quality rollup, pg_trgm search indexes; web Segments tab (rollup cards, condition builder, preview dialog, CSV download, bulk tag) + Merge dialog in Contacts.
+
+### Database
+
+- `20261015210000_segments_search.sql` — `public.segment` (unique `lower(name)` per workspace, updated_at trigger, RLS member-select), `pg_trgm` + GIN trigram indexes on contact email/name. Applied local + staging.
+
+### Implemented / tested
+
+| Area | Detail |
+| --- | --- |
+| API | SegmentRoutes (10 endpoints) wired into Main **before** ContactRoutes (see ADR-0024 mount-order note); SegmentRepos with `buildFilter` whitelist compiler; LeadsRepos additions: `dataQuality`, `bulkTagByFragment`, `mergeContacts` (single transaction) |
+| Tests (Scala) | SegmentIntegrationSpec 10/10 — CRUD lifecycle, AND/OR preview counts + sample, whitelist 422, bulk-tag idempotency, merge (fill/move/delete + self-merge 422), export correctness incl. no cross-member leak, data quality, tenant isolation (outsider 404, viewer 403) |
+| Tests (full) | Scala 188/188 across worker/core/api; web vitest 25/25; `tsc --noEmit` clean; lint clean for new files; production build green |
+| Playwright | 12/12 including new `segments.spec.ts`: signup -> workspace -> 3 contacts -> AND segment -> preview dialog -> CSV download (filename + content asserted) -> bulk tag toast -> merge -> source row gone |
+| Web | `segmentsApi` in client (CSV export via blob download), `SegmentsTab` component, `MergeContactDialog` in ContactsTab, `valid` badge vocabulary fix, "Segments" tab in Leads nav |
+
+### Bugs found and fixed during 3.4
+
+1. Segment `eq/neq/in/not_in` bound raw values against `lower()` columns -> segments matched nothing. Values now lowered symmetrically.
+2. Merge `INSERT ... RETURNING tag_id/list_id` decoded as `Int` -> PSQLException 500. Decoded as `UUID`.
+3. `GET /contacts/data-quality` returned Tapir's 400 decode-failure from the earlier `/contacts/{contactId}` capture -> SegmentRoutes mounted before ContactRoutes (ADR-0024).
+4. Data-quality SQL used enum label `verified`, which does not exist (`contact_verification` labels are `unknown|valid|risky|invalid`) -> 500. Renamed SQL literal + JSON/DTO vocabulary to `valid` (ADR-0024).
+5. `bulkTagByFragment` unused `actor` param removed; audit written at the route layer.
+
+### Phase 3 checkpoint
+
+- Merge `feature/phase-03-segments` -> `develop`; promote `develop` -> `main`; tag `phase-3`.
+- Phase 3 plan's test list, all verified: 10,000-record import (3.2), duplicate handling (3.1/3.2), malformed files (3.2), tenant isolation (3.1/3.2/3.4), suppression enforcement (3.3 + import path), import restart (3.2), pagination (3.1), export correctness (3.4).
+- Completion statement from the plan holds: a user can import, clean, segment and manage leads end to end (upload CSV -> map -> strategy -> import -> verify -> auto-suppress -> segment -> preview/export/bulk tag -> merge).
+- Handoff commit: recorded after this file (see `git log`).

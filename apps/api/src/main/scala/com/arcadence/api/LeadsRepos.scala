@@ -3,6 +3,7 @@ package com.arcadence.api
 import cats.effect.IO
 import cats.syntax.all.*
 import doobie.*
+import doobie.free.FC
 import doobie.implicits.*
 import doobie.postgres.implicits.*
 import doobie.util.transactor.Transactor
@@ -744,6 +745,120 @@ final class LeadsRepos(val transactor: Transactor[IO]):
       update public.contact set state = ${state}::public.contact_state
       where workspace_id = $workspaceId and id = $contactId
     """.update.run.void.transact(transactor)
+
+  /** Data-quality dashboard counters (Phase 3.4). */
+  def dataQuality(workspaceId: UUID): IO[Json] =
+    sql"""
+      select
+        count(*)::bigint,
+        count(*) filter (where verification_status = 'valid')::bigint,
+        count(*) filter (where verification_status = 'risky')::bigint,
+        count(*) filter (where verification_status = 'invalid')::bigint,
+        count(*) filter (where verification_status = 'unknown')::bigint,
+        count(*) filter (where state = 'active')::bigint,
+        count(*) filter (where state = 'unsubscribed')::bigint,
+        count(*) filter (where state = 'bounced')::bigint,
+        count(*) filter (where state = 'complained')::bigint,
+        count(*) filter (where first_name is null and last_name is null)::bigint,
+        count(*) filter (where company_id is null)::bigint
+      from public.contact
+      where workspace_id = $workspaceId
+    """.query[(Long, Long, Long, Long, Long, Long, Long, Long, Long, Long, Long)].unique
+      .transact(transactor)
+      .map { t =>
+        Json.obj(
+          "total" -> Json.fromLong(t._1),
+          "valid" -> Json.fromLong(t._2),
+          "risky" -> Json.fromLong(t._3),
+          "invalid" -> Json.fromLong(t._4),
+          "unknown" -> Json.fromLong(t._5),
+          "active" -> Json.fromLong(t._6),
+          "unsubscribed" -> Json.fromLong(t._7),
+          "bounced" -> Json.fromLong(t._8),
+          "complained" -> Json.fromLong(t._9),
+          "missingName" -> Json.fromLong(t._10),
+          "missingCompany" -> Json.fromLong(t._11)
+        )
+      }
+
+  /** Bulk tag for a segment's member set (fragment-based WHERE). */
+  def bulkTagByFragment(workspaceId: UUID, tagId: UUID, where: Fragment): IO[Int] =
+    (fr"""
+      insert into public.contact_tag (contact_id, tag_id)
+      select c.id, $tagId
+      from public.contact c
+      left join public.company co on co.id = c.company_id
+      where c.workspace_id = $workspaceId and """ ++ where ++
+      fr"on conflict (contact_id, tag_id) do nothing")
+      .update
+      .run
+      .transact(transactor)
+
+  /** Merges source into kept: fills empty kept fields from source, moves
+    * tags + list memberships + provenance, deletes the source contact.
+    * Returns (filledFields, movedTags, movedListMemberships).
+    */
+  def mergeContacts(workspaceId: UUID, keptId: UUID, sourceId: UUID): IO[(Int, Int, Int)] =
+    (for
+      keptOpt <- (contactSelect ++ fr"where c.workspace_id = $workspaceId and c.id = $keptId")
+        .query[ContactView]
+        .option
+      kept <- keptOpt match
+        case None       => FC.raiseError(new IllegalStateException("kept contact missing"))
+        case Some(view) => FC.pure(view)
+      srcFields <- sql"""
+        select first_name, last_name, job_title, phone, region, timezone, website, notes, company_id
+        from public.contact
+        where workspace_id = $workspaceId and id = $sourceId
+      """.query[(Option[String], Option[String], Option[String], Option[String], Option[String], Option[String], Option[String], Option[String], Option[UUID])]
+        .option
+      filled <- srcFields match
+        case None => FC.pure(0)
+        case Some(src) =>
+          val pairs = List(
+            ("first_name", src._1, kept.firstName),
+            ("last_name", src._2, kept.lastName),
+            ("job_title", src._3, kept.jobTitle),
+            ("phone", src._4, kept.phone),
+            ("region", src._5, kept.region),
+            ("timezone", src._6, kept.timezone),
+            ("website", src._7, kept.website),
+            ("notes", src._8, kept.notes)
+          )
+          val fills = pairs.collect { case (col, srcVal, None) if srcVal.nonEmpty =>
+            Fragment.const(s"$col = ") ++ fr"$srcVal"
+          }
+          val companyFill: List[Fragment] =
+            (kept.companyId, src._9) match
+              case (None, Some(companyId)) => List(fr"company_id = $companyId")
+              case _                       => Nil
+          val allFills = fills ++ companyFill
+          if allFills.isEmpty then FC.pure(0)
+          else
+            val clause = allFills.reduce((a, b) => a ++ fr", " ++ b)
+            (fr"update public.contact set " ++ clause ++ fr"where workspace_id = $workspaceId and id = $keptId").update.run
+              .map(n => if n > 0 then allFills.size else 0)
+      movedTags <-
+        sql"""
+          insert into public.contact_tag (contact_id, tag_id)
+          select $keptId, ct.tag_id from public.contact_tag ct where ct.contact_id = $sourceId
+          on conflict (contact_id, tag_id) do nothing
+          returning tag_id
+        """.query[UUID].to[List].map(_.size)
+      _ <- sql"delete from public.contact_tag where contact_id = $sourceId".update.run
+      movedLists <-
+        sql"""
+          insert into public.list_membership (list_id, contact_id, added_at)
+          select lm.list_id, $keptId, lm.added_at from public.list_membership lm where lm.contact_id = $sourceId
+          on conflict (list_id, contact_id) do nothing
+          returning list_id
+        """.query[UUID].to[List].map(_.size)
+      _ <- sql"delete from public.list_membership where contact_id = $sourceId".update.run
+      _ <- sql"""
+        update public.source_provenance set contact_id = $keptId where contact_id = $sourceId
+      """.update.run
+      _ <- sql"delete from public.contact where workspace_id = $workspaceId and id = $sourceId".update.run
+    yield (filled, movedTags, movedLists)).transact(transactor)
 
   def audit(
       workspaceId: UUID,

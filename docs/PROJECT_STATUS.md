@@ -2,7 +2,7 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-10-15 (3.1 — Phase 3 started)
+**Last updated:** 2026-10-16 (3.4 — Phase 3 complete)
 
 ---
 
@@ -11,7 +11,7 @@
 **Phase 0 — Foundation** · status: **complete** (promoted to `main`, tag `phase-0`)
 **Phase 1 — Auth, tenancy & UI foundation** · status: **complete** (promoted to `main`, tag `phase-1`)
 **Phase 2 — Email account connections** · status: **complete** (promoted to `main`, tag `phase-2`)
-**Phase 3 — Lead management engine** · status: **in-progress** (3.1–3.3 done)
+**Phase 3 — Lead management engine** · status: **complete** (promoted to `main`, tag `phase-3`)
 
 ## Phase roadmap (provisional — ADR-0014)
 
@@ -19,11 +19,11 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 
 | Phase | Title | Status |
 | --- | --- | --- |
-| 0 | Foundation — repo, tooling, scaffolds, CI, skeleton services, health checks, deployment wiring | **in-progress** |
-| 1 | Authentication & workspaces — Supabase Auth SSR, multi-tenant model, RBAC, RLS | planned |
-| 2 | Email account connections — Gmail OAuth, Microsoft OAuth, SMTP/IMAP, credential storage | **complete** |
-| 3 | Lead management — leads, lists, import/export, verification hooks, suppression | in-progress |
-| 4 | Campaigns & sequences — builder, scheduling, personalization | planned |
+| 0 | Foundation — repo, tooling, scaffolds, CI, skeleton services, health checks, deployment wiring | **complete** (`phase-0`) |
+| 1 | Authentication & workspaces — Supabase Auth SSR, multi-tenant model, RBAC, RLS | **complete** (`phase-1`) |
+| 2 | Email account connections — Gmail OAuth, Microsoft OAuth, SMTP/IMAP, credential storage | **complete** (`phase-2`) |
+| 3 | Lead management — leads, lists, import/export, verification hooks, suppression | **complete** (`phase-3`) |
+| 4 | Campaigns & sequences — builder, scheduling, personalization | planned (next) |
 | 5 | Sending engine — durable send queue, provider submission, tracking, bounce handling | planned |
 | 6 | Unified inbox — two-way sync, threading, realtime updates | planned |
 | 7 | CRM — accounts, contacts, deals, pipelines, activity timeline | planned |
@@ -61,6 +61,7 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 3.1 | Contacts & companies — 8 tables (company, contact, lead_list, list_membership, tag, contact_tag, custom_field, source_provenance) with normalized-email dedup, display-casing retention, provenance trail; CRUD + filter/sort/cursor-pagination + batch + companies/lists/tags/custom-fields APIs (permission-gated, sort-aware keyset cursors); /app/leads UI (Contacts/Companies/Lists/Tags & Fields tabs, create dialogs, member management) | **tested** | Migration `20261015090000` applied locally + staging; Scala 163/163 (2 worker + 75 core + 86 api incl. LeadsIntegrationSpec 11: dedup 409, normalization + display casing, custom-field validation, batch all-or-nothing validation, cursor stability (sort-aware), tenant isolation, provenance); Playwright 10/10 incl. leads CRUD/dedup/search/tags/lists; fixed long-standing web envelope parsing (top-level code/message now surfaces real API errors). |
 | 3.2 | CSV import pipeline — durable import_job/import_error tables; upload → header/preview → column mapping → duplicate strategy (skip/update/reject); batched processing (500/batch, bounded memory) with per-batch progress; idempotent retries via UNIQUE (job, row) provenance; restart marks interrupted jobs failed→retryable; downloadable error report; Imports tab (upload, mapping UI, strategy, target list, live progress, retry, error download) | **tested** | Migration `20261015100000` applied locally + staging; ImportIntegrationSpec 7/7 incl. the plan's 10,000-record import (batched: ~9s), duplicate skip/update semantics, malformed/empty CSV 422, error report content, idempotent retry (no dup contacts), tenant isolation; real bug found+fixed (partial unique index broke ON CONFLICT → provenance markers never wrote); restart-recovery endpoint verified by marking running→failed. |
 | 3.3 | Verification & suppression — EmailVerificationProvider abstraction (SyntaxMxProvider default: syntax + MX via JNDI; syntax+MX never yields verified, per plan), manual + batch verification with provenance, invalid auto-suppression, suppression table + CRUD with reactivation guard (delete = admin+ only, audited; unsubscribe/complaint permanent), import enforcement (suppressed emails skipped) | **tested** | Migration `20261015200000` applied locally + staging; VerificationSuppressionSpec 8/8 (risky-not-verified, invalid auto-suppress + bounced state, manual suppression + dedupe, viewer 403, unsubscribe permanent 409, admin removal + reactivation + audit, import skips suppressed); external licensed providers remain a MANUAL_SETUP item (12a) — abstraction ready for API keys. |
+| 3.4 | Segments & complete lead UI — `segment` table (per-workspace unique name, RLS member-select), whitelist-compiled AND/OR filter trees (fields: state/verification_status/company/tag/region/job_title/email; operators eq/neq/contains/not_contains/in/not_in; tag via EXISTS; parameters only — never interpolated), preview (count + sample), CSV export (50k cap), idempotent bulk tag, contact merge (fill-empty + move tags/lists/provenance + delete source, atomic), data-quality rollup, pg_trgm indexes for name/email search; Segments tab (quality rollup, condition builder, preview dialog, CSV download, bulk tag) + per-row Merge dialog in Contacts | **tested** | Migration `20261015210000` applied locally + staging; SegmentIntegrationSpec 10/10 (CRUD lifecycle, AND/OR preview counts, whitelist 422, bulk-tag idempotency, merge semantics incl. self-merge 422, export header+rows+no-leak, data quality, outsider 404/viewer 403); full suite Scala 188/188; Playwright 12/12 incl. new segments e2e (signup→contacts→AND segment→preview→CSV download→bulk tag→merge→source gone). Real bugs found+fixed: segment `eq` bound raw values against `lower()` columns (never matched), merge `RETURNING` UUIDs decoded as Int (500), `/contacts/data-quality` shadowed by the contact `path[UUID]` capture's 400 decode handler (SegmentRoutes now mounted before ContactRoutes), and data-quality SQL used non-existent enum label `verified` (actual label: `valid`). |
 
 ### Subphase detail — Phase 2
 
@@ -81,6 +82,7 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 2026-10-11 | Subphase 0.3 — Supabase configured, local env verified | Local stack healthy; 4 migrations applied; 15/15 DB specs vs local; staging connectivity via session pooler; JWKS (ES256) live-verified |
 | 2026-10-11 | Subphase 0.4 — CI/CD & DX | GitHub Actions 3-job CI, request-ID/error-envelope middleware, Docker images + compose, reproducible scripts |
 | 2026-10-11 | **Phase 0 complete** — promoted to `main` | Tag `phase-0`; see `docs/HANDOFF.md` for hashes |
+| 2026-10-16 | **Phase 3 complete** — promoted to `main` | Tag `phase-3`; Scala 188/188, Playwright 12/12; see `docs/HANDOFF.md` |
 
 ## Known blockers
 
@@ -88,4 +90,4 @@ None.
 
 ## Manual setup queue
 
-See [`docs/MANUAL_SETUP.md`](MANUAL_SETUP.md) — no items currently block Phase 0. Branch protection (#3) remains recommended before PR-based subphases.
+See [`docs/MANUAL_SETUP.md`](MANUAL_SETUP.md) — no items block Phase 3; carried items (Google OAuth client 6a, Entra app 7, EMAIL_ENCRYPTION_KEY backup, branch protection #3, staging DB password rotation) remain pending on the product owner.

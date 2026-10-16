@@ -142,7 +142,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
         </div>
         {nav}
         <div className="text-muted-foreground/70 px-3 pt-2 pb-4 text-xs">
-          Phase 2 · provider connections
+          Phase 3 · leads & segments
         </div>
       </aside>
 

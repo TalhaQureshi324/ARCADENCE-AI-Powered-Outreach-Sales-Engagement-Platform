@@ -600,3 +600,121 @@ export const emailAccountsApi = {
       { method: "POST", body: JSON.stringify({ to }) },
     ),
 };
+
+// -- Segments (Phase 3.4) ------------------------------------------------------
+
+export interface SegmentDto {
+  id: string;
+  name: string;
+  filters: SegmentFilterGroup;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SegmentCondition {
+  field: "state" | "verification_status" | "company" | "tag" | "region" | "job_title" | "email";
+  operator: "eq" | "neq" | "contains" | "not_contains" | "in" | "not_in";
+  value?: string;
+  values?: string[];
+}
+
+export interface SegmentFilterGroup {
+  op: "and" | "or";
+  conditions: (SegmentCondition | SegmentFilterGroup)[];
+}
+
+export interface SegmentPreviewDto {
+  count: number;
+  sample: ContactDto[];
+}
+
+export interface DataQualityDto {
+  total: number;
+  valid: number;
+  risky: number;
+  invalid: number;
+  unknown: number;
+  active: number;
+  unsubscribed: number;
+  bounced: number;
+  complained: number;
+  missingName: number;
+  missingCompany: number;
+}
+
+export interface MergeContactResultDto {
+  mergedId: string;
+  keptId: string;
+  filledFields: number;
+  movedTags: number;
+  movedListMemberships: number;
+}
+
+export const segmentsApi = {
+  list: (workspaceId: string) =>
+    apiFetch<SegmentDto[]>(`/api/v1/workspaces/${workspaceId}/segments`),
+  create: (workspaceId: string, input: { name: string; filters: SegmentFilterGroup }) =>
+    apiFetch<SegmentDto>(`/api/v1/workspaces/${workspaceId}/segments`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  update: (
+    workspaceId: string,
+    segmentId: string,
+    patch: { name?: string; filters?: SegmentFilterGroup },
+  ) =>
+    apiFetch<SegmentDto>(`/api/v1/workspaces/${workspaceId}/segments/${segmentId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  remove: (workspaceId: string, segmentId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/segments/${segmentId}`, {
+      method: "DELETE",
+    }),
+  preview: (workspaceId: string, segmentId: string) =>
+    apiFetch<SegmentPreviewDto>(
+      `/api/v1/workspaces/${workspaceId}/segments/${segmentId}/preview`,
+      { method: "POST" },
+    ),
+  bulkTag: (workspaceId: string, segmentId: string, tagId: string) =>
+    apiFetch<{ tagged: number }>(
+      `/api/v1/workspaces/${workspaceId}/segments/${segmentId}/bulk-tag`,
+      { method: "POST", body: JSON.stringify({ segmentId, tagId }) },
+    ),
+  dataQuality: (workspaceId: string) =>
+    apiFetch<DataQualityDto>(`/api/v1/workspaces/${workspaceId}/contacts/data-quality`),
+  merge: (workspaceId: string, keptContactId: string, sourceContactId: string) =>
+    apiFetch<MergeContactResultDto>(
+      `/api/v1/workspaces/${workspaceId}/contacts/${keptContactId}/merge`,
+      { method: "POST", body: JSON.stringify({ sourceContactId }) },
+    ),
+  /** Segment export is CSV text, not JSON — stream it through a blob download. */
+  exportCsv: async (workspaceId: string, segmentId: string, fileName: string) => {
+    const token = await accessToken();
+    const res = await fetch(
+      `${API_BASE_URL}/api/v1/workspaces/${workspaceId}/segments/${segmentId}/export`,
+      { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {} },
+    );
+    if (!res.ok) {
+      let code = "request_failed";
+      let message = `Export failed with HTTP ${res.status}.`;
+      try {
+        const body = await res.json();
+        if (body?.code) code = body.code;
+        if (body?.message) message = body.message;
+      } catch {
+        // non-JSON error body — keep defaults
+      }
+      throw new ApiError(code, message, res.status);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  },
+};
