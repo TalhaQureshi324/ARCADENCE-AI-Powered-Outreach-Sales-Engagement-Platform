@@ -248,3 +248,17 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
 - Sending-account and audience references are existence-checked against the workspace BEFORE any mutation, mapping failures to 422 validation errors instead of 500s.
 
 **Consequences.** Enrollment semantics stay trustworthy from the first send (Phase 5); the UI can present precise state-dependent controls; Phase 4.3 branch step types extend the `step_type` enum without touching lifecycle logic.
+
+## ADR-0026 — Composer: quoteReplacement token rendering, allowlist sanitization, self-addressed test sends (Phase 4.2)
+
+**Date:** 2026-10-16 · **Status:** accepted
+
+**Decision.**
+- Personalization tokens (`{{field}}`, `{{field|fallback}}`, `{{custom.x}}`) render through a regex replacement whose values pass through `Regex.quoteReplacement` — Scala's function-form `replaceAllIn` still routes results through `Matcher.appendReplacement`, so unescaped lead data like `$&` would otherwise act as replacement syntax (found by the unit suite).
+- Missing variables render as empty and are reported in the response (`missing`); they are never silently fabricated, and preflight (4.4) treats them as blockers. Fallbacks are counted separately (`fellBack`).
+- All campaign HTML (bodies, signatures, blocks, variant writes) is sanitized with a jsoup allowlist (scripts, event handlers, iframes, styles removed; `mailto:` links allowed) at WRITE time, so stored content is already safe and the preview shows exactly what a send contains. Plaintext alternatives derive from the sanitized HTML when the text body is left empty.
+- Preview renders against a REAL workspace contact chosen in the UI; there is no synthetic sample contact.
+- Test sends render for the chosen sample contact but always deliver to the authenticated user's own address (never to the contact), through one of the campaign's assigned mailboxes, tagged `X-Arcadence-Test`.
+- Variant content has a dedicated PUT (draft-only, no version snapshot) so editor autosave does not churn `campaign_version` history.
+
+**Consequences.** Send-time rendering (Phase 5) reuses the same engine; sanitization is centralized; template/block content is safe by construction.

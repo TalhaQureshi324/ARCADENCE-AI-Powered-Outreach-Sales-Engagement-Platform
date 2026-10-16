@@ -117,4 +117,66 @@ test.describe("campaigns module", () => {
     await expect(page.getByText("Q4 Launch")).toBeVisible();
     await expect(page.getByText("Active").first()).toBeVisible();
   });
+
+  test("composer: tokens, autosave, validation and preview against a real contact", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const email = testEmail("composer");
+
+    await page.goto("/signup");
+    await page.getByLabel("Your name").fill("Composer User");
+    await page.getByLabel("Work email").fill(email);
+    await page.getByLabel("Password", { exact: true }).fill(STRONG_PASSWORD);
+    await page.getByLabel("Confirm password").fill(STRONG_PASSWORD);
+    await page.getByRole("button", { name: "Create account" }).click();
+    const link = await latestEmailLink(email, VERIFY_LINK, /confirm/i);
+    await page.goto(link);
+    await page.getByLabel("Display name").fill("Composer User");
+    await page.getByRole("button", { name: "Continue" }).click();
+
+    await page.getByRole("button", { name: "New workspace" }).first().click();
+    await page.getByLabel("Workspace name").fill("Composer WS");
+    await page.getByRole("button", { name: "Create workspace" }).click();
+    await expect(page.getByText("Composer WS").first()).toBeVisible();
+
+    // A sample contact for preview (with a first name to resolve).
+    await page.getByRole("link", { name: "Leads" }).click();
+    await page.getByRole("button", { name: "New contact" }).first().click();
+    await page.getByLabel("Email", { exact: true }).fill("ada@composer.test");
+    await page.getByLabel("First name").fill("Ada");
+    await page.getByRole("button", { name: "Create contact" }).click();
+    await expect(page.getByText("ada@composer.test")).toBeVisible();
+
+    // Campaign with one email step.
+    await page.getByRole("link", { name: "Campaigns" }).click();
+    await page.getByRole("button", { name: "New campaign" }).first().click();
+    await page.getByLabel("Campaign name").fill("Composer flow");
+    await page.getByRole("button", { name: "Create campaign" }).click();
+    await expect(page.getByRole("button", { name: "Add step" })).toBeVisible();
+    await page.getByRole("button", { name: "Add step" }).click();
+    await page.getByLabel("Subject").fill("Welcome {{first_name}}");
+    await page.getByLabel("Body text").fill("Hello {{first_name|there}}, {{last_name}}!");
+    await page.getByRole("button", { name: "Add step" }).last().click();
+    await expect(page.getByText("Welcome {{first_name}}").first()).toBeVisible();
+
+    // Open the composer on the step's variant A.
+    await page.getByRole("button", { name: "Compose step 1" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByLabel("Subject")).toHaveValue("Welcome {{first_name}}");
+
+    // Edit + autosave; the unknown-token badge flags the typo.
+    await dialog.getByLabel("Subject").fill("Hey {{first_name|there}} {{comapny}}");
+    await expect(dialog.getByText("Unknown: comapny")).toBeVisible({ timeout: 15000 });
+    await expect(dialog.getByText("All changes saved")).toBeVisible();
+    await expect(dialog.getByText("Unknown: comapny")).toBeVisible();
+
+    // Preview against the real contact: first_name resolves, last_name missing.
+    await dialog.getByLabel("Sample contact").selectOption({ label: "ada@composer.test" });
+    await dialog.getByRole("button", { name: "Render preview" }).click();
+    await expect(dialog.getByText("first_name = Ada")).toBeVisible();
+    await expect(dialog.getByText("last_name missing")).toBeVisible();
+    await expect(dialog.getByText("Subject:")).toContainText("Hey Ada");
+    await dialog.getByRole("button", { name: "Close" }).click();
+  });
 });

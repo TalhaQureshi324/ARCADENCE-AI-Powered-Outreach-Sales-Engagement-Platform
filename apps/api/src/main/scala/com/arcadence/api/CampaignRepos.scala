@@ -34,6 +34,7 @@ final class CampaignRepos(val transactor: Transactor[IO]):
       dailyCap: Int,
       openTracking: Boolean,
       clickTracking: Boolean,
+      threadMode: Boolean,
       activatedAt: Option[OffsetDateTime],
       archivedAt: Option[OffsetDateTime],
       createdAt: OffsetDateTime,
@@ -54,7 +55,8 @@ final class CampaignRepos(val transactor: Transactor[IO]):
       subject: String,
       preheader: String,
       bodyHtml: String,
-      bodyText: String
+      bodyText: String,
+      signature: String
   )
 
   final case class AudienceRow(
@@ -72,7 +74,7 @@ final class CampaignRepos(val transactor: Transactor[IO]):
 
   private val campaignSelect = fr"""
       select id, workspace_id, name, description, tags, status::text, timezone,
-             daily_cap, open_tracking, click_tracking,
+             daily_cap, open_tracking, click_tracking, thread_mode,
              activated_at, archived_at, created_at, updated_at
       from public.campaign
     """
@@ -87,6 +89,7 @@ final class CampaignRepos(val transactor: Transactor[IO]):
         String,
         String,
         Int,
+        Boolean,
         Boolean,
         Boolean,
         Option[OffsetDateTime],
@@ -109,7 +112,8 @@ final class CampaignRepos(val transactor: Transactor[IO]):
       t._11,
       t._12,
       t._13,
-      t._14
+      t._14,
+      t._15
     )
   }
 
@@ -153,7 +157,7 @@ final class CampaignRepos(val transactor: Transactor[IO]):
 
   def variantsFor(campaignId: UUID): IO[List[VariantRow]] =
     sql"""
-      select v.step_id, v.variant_key, v.subject, v.preheader, v.body_html, v.body_text
+      select v.step_id, v.variant_key, v.subject, v.preheader, v.body_html, v.body_text, v.signature
       from public.step_variant v
       join public.campaign_step s on s.id = v.step_id
       where s.campaign_id = $campaignId
@@ -260,7 +264,8 @@ final class CampaignRepos(val transactor: Transactor[IO]):
       description: Option[String],
       tags: Option[List[String]],
       timezone: Option[String],
-      dailyCap: Option[Int]
+      dailyCap: Option[Int],
+      threadMode: Option[Boolean]
   ): IO[Int] =
     val sets = List.newBuilder[Fragment]
     name.foreach(v => sets += fr"name = $v")
@@ -268,6 +273,7 @@ final class CampaignRepos(val transactor: Transactor[IO]):
     tags.foreach(v => sets += fr"tags = $v")
     timezone.foreach(v => sets += fr"timezone = $v")
     dailyCap.foreach(v => sets += fr"daily_cap = $v")
+    threadMode.foreach(v => sets += fr"thread_mode = $v")
     val assignments = sets.result()
     if assignments.isEmpty then IO.pure(0)
     else
@@ -303,8 +309,8 @@ final class CampaignRepos(val transactor: Transactor[IO]):
         """.query[UUID].unique.flatMap { stepId =>
             variants.traverse(v =>
               sql"""
-              insert into public.step_variant (step_id, variant_key, subject, preheader, body_html, body_text)
-              values ($stepId, ${v.variantKey}, ${v.subject}, ${v.preheader}, ${v.bodyHtml}, ${v.bodyText})
+              insert into public.step_variant (step_id, variant_key, subject, preheader, body_html, body_text, signature)
+              values ($stepId, ${v.variantKey}, ${v.subject}, ${v.preheader}, ${v.bodyHtml}, ${v.bodyText}, ${v.signature})
             """.update.run.void
             )
           }
@@ -396,8 +402,8 @@ final class CampaignRepos(val transactor: Transactor[IO]):
         case None    => FC.pure(None: Option[UUID])
         case Some(c) =>
           sql"""
-            insert into public.campaign (workspace_id, created_by, name, description, tags, timezone, daily_cap, open_tracking, click_tracking)
-            values ($workspaceId, $actor, $newName, ${c.description}, ${c.tags}, ${c.timezone}, ${c.dailyCap}, ${c.openTracking}, ${c.clickTracking})
+            insert into public.campaign (workspace_id, created_by, name, description, tags, timezone, daily_cap, open_tracking, click_tracking, thread_mode)
+            values ($workspaceId, $actor, $newName, ${c.description}, ${c.tags}, ${c.timezone}, ${c.dailyCap}, ${c.openTracking}, ${c.clickTracking}, ${c.threadMode})
             on conflict do nothing
             returning id
           """.query[UUID].option
@@ -417,16 +423,16 @@ final class CampaignRepos(val transactor: Transactor[IO]):
             }
             .map(_.toMap)
           variants <- sql"""
-            select v.step_id, v.variant_key, v.subject, v.preheader, v.body_html, v.body_text
+            select v.step_id, v.variant_key, v.subject, v.preheader, v.body_html, v.body_text, v.signature
             from public.step_variant v join public.campaign_step s on s.id = v.step_id
             where s.campaign_id = $sourceId order by s.position, v.variant_key
           """.query[VariantRow].to[List]
           _ <- variants.traverse(v =>
             sql"""
-              insert into public.step_variant (step_id, variant_key, subject, preheader, body_html, body_text)
+              insert into public.step_variant (step_id, variant_key, subject, preheader, body_html, body_text, signature)
               values (${stepMap(
                 v.stepId
-              )}, ${v.variantKey}, ${v.subject}, ${v.preheader}, ${v.bodyHtml}, ${v.bodyText})
+              )}, ${v.variantKey}, ${v.subject}, ${v.preheader}, ${v.bodyHtml}, ${v.bodyText}, ${v.signature})
             """.update.run.void
           )
           _ <- sql"""
@@ -459,6 +465,110 @@ final class CampaignRepos(val transactor: Transactor[IO]):
         contactIds.map(id => fr"$id").reduce((a, b) => a ++ fr", " ++ b) ++
         fr") on conflict (campaign_id, contact_id) do nothing").update.run
         .transact(transactor)
+
+  // -- Composer (Phase 4.2) -------------------------------------------------------
+
+  def findVariant(
+      workspaceId: UUID,
+      campaignId: UUID,
+      stepId: UUID,
+      variantKey: String
+  ): IO[Option[VariantRow]] =
+    sql"""
+      select v.step_id, v.variant_key, v.subject, v.preheader, v.body_html, v.body_text, v.signature
+      from public.step_variant v
+      join public.campaign_step s on s.id = v.step_id
+      join public.campaign c on c.id = s.campaign_id
+      where c.workspace_id = $workspaceId and c.id = $campaignId
+        and s.id = $stepId and v.variant_key = $variantKey
+    """
+      .query[VariantRow]
+      .option
+      .transact(transactor)
+
+  /** Content-only variant update; DRAFT campaigns only (false when the campaign
+    * is not a draft or the variant does not belong to it).
+    */
+  def updateVariantContent(
+      workspaceId: UUID,
+      campaignId: UUID,
+      stepId: UUID,
+      variantKey: String,
+      subject: String,
+      preheader: String,
+      bodyHtml: String,
+      bodyText: String,
+      signature: String
+  ): IO[Boolean] =
+    sql"""
+      update public.step_variant v
+      set subject = $subject, preheader = $preheader, body_html = $bodyHtml,
+          body_text = $bodyText, signature = $signature
+      from public.campaign_step s
+      join public.campaign c on c.id = s.campaign_id
+      where v.step_id = s.id and c.workspace_id = $workspaceId and c.id = $campaignId
+        and s.id = $stepId and v.variant_key = $variantKey and c.status = 'draft'
+    """.update.run
+      .map(_ > 0)
+      .transact(transactor)
+
+  def listTemplates(
+      workspaceId: UUID
+  ): IO[List[(UUID, String, String, String, String, String, OffsetDateTime)]] =
+    sql"""select id, name, subject, preheader, body_html, body_text, created_at
+          from public.email_template where workspace_id = $workspaceId order by created_at desc"""
+      .query[(UUID, String, String, String, String, String, OffsetDateTime)]
+      .to[List]
+      .transact(transactor)
+
+  def createTemplate(
+      workspaceId: UUID,
+      actor: UUID,
+      name: String,
+      subject: String,
+      preheader: String,
+      bodyHtml: String,
+      bodyText: String
+  ): IO[Option[UUID]] =
+    sql"""
+      insert into public.email_template (workspace_id, created_by, name, subject, preheader, body_html, body_text)
+      values ($workspaceId, $actor, $name, $subject, $preheader, $bodyHtml, $bodyText)
+      on conflict do nothing
+      returning id
+    """.query[UUID].option.transact(transactor)
+
+  def deleteTemplate(workspaceId: UUID, templateId: UUID): IO[Boolean] =
+    sql"delete from public.email_template where workspace_id = $workspaceId and id = $templateId".update.run
+      .map(_ > 0)
+      .transact(transactor)
+
+  def listBlocks(
+      workspaceId: UUID
+  ): IO[List[(UUID, String, String, String, OffsetDateTime)]] =
+    sql"""select id, name, body_html, body_text, created_at
+          from public.reusable_block where workspace_id = $workspaceId order by created_at desc"""
+      .query[(UUID, String, String, String, OffsetDateTime)]
+      .to[List]
+      .transact(transactor)
+
+  def createBlock(
+      workspaceId: UUID,
+      actor: UUID,
+      name: String,
+      bodyHtml: String,
+      bodyText: String
+  ): IO[Option[UUID]] =
+    sql"""
+      insert into public.reusable_block (workspace_id, created_by, name, body_html, body_text)
+      values ($workspaceId, $actor, $name, $bodyHtml, $bodyText)
+      on conflict do nothing
+      returning id
+    """.query[UUID].option.transact(transactor)
+
+  def deleteBlock(workspaceId: UUID, blockId: UUID): IO[Boolean] =
+    sql"delete from public.reusable_block where workspace_id = $workspaceId and id = $blockId".update.run
+      .map(_ > 0)
+      .transact(transactor)
 
   def audit(
       workspaceId: UUID,
@@ -509,7 +619,7 @@ final class CampaignRepos(val transactor: Transactor[IO]):
       campaignId: UUID
   ): ConnectionIO[List[VariantRow]] =
     sql"""
-      select v.step_id, v.variant_key, v.subject, v.preheader, v.body_html, v.body_text
+      select v.step_id, v.variant_key, v.subject, v.preheader, v.body_html, v.body_text, v.signature
       from public.step_variant v
       join public.campaign_step s on s.id = v.step_id
       where s.campaign_id = $campaignId

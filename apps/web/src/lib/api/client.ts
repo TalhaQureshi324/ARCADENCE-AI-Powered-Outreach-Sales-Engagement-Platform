@@ -726,6 +726,7 @@ export interface CampaignVariantDto {
   preheader: string;
   bodyHtml: string;
   bodyText: string;
+  signature: string;
 }
 
 export interface CampaignStepDto {
@@ -821,4 +822,108 @@ export const campaignsApi = {
     apiFetch<{ id: string; version: number; definition: unknown; createdAt: string }[]>(
       `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/versions`,
     ),
+};
+
+// -- Composer (Phase 4.2) ------------------------------------------------------
+
+export interface VariantValidationDto {
+  tokens: { field: string; fallback: string | null }[];
+  unknown: string[];
+}
+
+export interface PreviewReportDto {
+  resolved: Record<string, string>;
+  fellBack: string[];
+  missing: string[];
+  sanitized: boolean;
+}
+
+export interface PreviewResponseDto {
+  subject: string;
+  html: string;
+  text: string;
+  report: PreviewReportDto;
+}
+
+export interface EmailTemplateDto {
+  id: string;
+  name: string;
+  subject: string;
+  preheader: string;
+  bodyHtml: string;
+  bodyText: string;
+}
+
+export interface ReusableBlockDto {
+  id: string;
+  name: string;
+  bodyHtml: string;
+  bodyText: string;
+}
+
+export const composerApi = {
+  saveVariant: (
+    workspaceId: string,
+    campaignId: string,
+    stepId: string,
+    variantKey: string,
+    content: {
+      subject: string;
+      preheader: string;
+      bodyHtml: string;
+      bodyText: string;
+      signature: string;
+    },
+  ) =>
+    apiFetch<{ variant: CampaignVariantDto; validation: VariantValidationDto }>(
+      `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/steps/${stepId}/variants/${variantKey}`,
+      { method: "PUT", body: JSON.stringify(content) },
+    ),
+  preview: (
+    workspaceId: string,
+    campaignId: string,
+    input: { stepId: string; variantKey: string; contactId: string },
+  ) =>
+    apiFetch<PreviewResponseDto>(
+      `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/preview`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    ),
+  testSend: (
+    workspaceId: string,
+    campaignId: string,
+    input: { stepId: string; variantKey: string; contactId: string; emailAccountId?: string },
+  ) =>
+    apiFetch<{ from: string; to: string; subject: string; providerMessageId: string }>(
+      `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/test-send`,
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+  templates: {
+    list: (workspaceId: string) =>
+      apiFetch<EmailTemplateDto[]>(`/api/v1/workspaces/${workspaceId}/email-templates`),
+    create: (workspaceId: string, input: Omit<EmailTemplateDto, "id">) =>
+      apiFetch<EmailTemplateDto>(`/api/v1/workspaces/${workspaceId}/email-templates`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    remove: (workspaceId: string, templateId: string) =>
+      apiFetch<void>(`/api/v1/workspaces/${workspaceId}/email-templates/${templateId}`, {
+        method: "DELETE",
+      }),
+  },
+  blocks: {
+    list: (workspaceId: string) =>
+      apiFetch<ReusableBlockDto[]>(`/api/v1/workspaces/${workspaceId}/reusable-blocks`),
+    create: (workspaceId: string, input: Omit<ReusableBlockDto, "id">) =>
+      apiFetch<ReusableBlockDto>(`/api/v1/workspaces/${workspaceId}/reusable-blocks`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    remove: (workspaceId: string, blockId: string) =>
+      apiFetch<void>(`/api/v1/workspaces/${workspaceId}/reusable-blocks/${blockId}`, {
+        method: "DELETE",
+      }),
+  },
 };

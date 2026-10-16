@@ -149,11 +149,20 @@ object Main extends IOApp:
                   authorizer = authorizer
                 )
 
-                // Campaign domain (Phase 4.1)
+                // Campaign domain (Phase 4.1) + composer (Phase 4.2)
+                val campaignRepos = new CampaignRepos(transactor)
                 val campaignRoutes = new CampaignRoutes(
                   authenticator = authenticator,
-                  repos = new CampaignRepos(transactor),
+                  repos = campaignRepos,
                   authorizer = authorizer
+                )
+                val composerRoutes = new ComposerRoutes(
+                  authenticator = authenticator,
+                  repos = campaignRepos,
+                  leadsRepos = leadsReposShared,
+                  emailAccounts = accountRepos,
+                  authorizer = authorizer,
+                  registry = Some(registry)
                 )
 
                 val dbReady: IO[Boolean] =
@@ -187,7 +196,7 @@ object Main extends IOApp:
                   RateLimit(config.rateLimitPerMinute)(
                     SecurityHeaders(
                       workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http
-                        <+> segmentRoutes.http <+> campaignRoutes.http <+> leadsRoutes.http <+> importRoutes.http
+                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> importRoutes.http
                     )
                   )
 
