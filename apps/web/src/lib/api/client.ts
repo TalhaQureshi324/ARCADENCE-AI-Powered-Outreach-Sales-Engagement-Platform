@@ -672,10 +672,9 @@ export const segmentsApi = {
       method: "DELETE",
     }),
   preview: (workspaceId: string, segmentId: string) =>
-    apiFetch<SegmentPreviewDto>(
-      `/api/v1/workspaces/${workspaceId}/segments/${segmentId}/preview`,
-      { method: "POST" },
-    ),
+    apiFetch<SegmentPreviewDto>(`/api/v1/workspaces/${workspaceId}/segments/${segmentId}/preview`, {
+      method: "POST",
+    }),
   bulkTag: (workspaceId: string, segmentId: string, tagId: string) =>
     apiFetch<{ tagged: number }>(
       `/api/v1/workspaces/${workspaceId}/segments/${segmentId}/bulk-tag`,

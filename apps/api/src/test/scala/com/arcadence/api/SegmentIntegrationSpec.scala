@@ -115,7 +115,9 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
               .`Content-Type`(org.http4s.MediaType.application.json)
           )
       )
-    app.run(req).flatMap(res => res.bodyText.compile.string.map(t => (res.status, t)))
+    app
+      .run(req)
+      .flatMap(res => res.bodyText.compile.string.map(t => (res.status, t)))
 
   private def jsonField(body: Json, field: String): String =
     body.hcursor.get[String](field).toOption.getOrElse("")
@@ -220,27 +222,58 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
         insert into public.workspace_member (workspace_id, user_id, role)
         values ($wsA, $userB, 'viewer')
       """.update.run.void.transact(xa)
-      _ <- createContact(wsA, s"seg-eu-1-$wsA@arcadence.test", Some("Ada"), Some("Engineer"), Some("EU"))
+      _ <- createContact(
+        wsA,
+        s"seg-eu-1-$wsA@arcadence.test",
+        Some("Ada"),
+        Some("Engineer"),
+        Some("EU")
+      )
         .map(id => c1 = id)
-      _ <- createContact(wsA, s"seg-eu-2-$wsA@arcadence.test", None, Some("Designer"), Some("EU"))
+      _ <- createContact(
+        wsA,
+        s"seg-eu-2-$wsA@arcadence.test",
+        None,
+        Some("Designer"),
+        Some("EU")
+      )
         .map(id => c2 = id)
-      _ <- createContact(wsA, s"seg-us-1-$wsA@arcadence.test", Some("Grace"), Some("Engineer"), Some("US"))
+      _ <- createContact(
+        wsA,
+        s"seg-us-1-$wsA@arcadence.test",
+        Some("Grace"),
+        Some("Engineer"),
+        Some("US")
+      )
         .map(id => c3 = id)
     yield ()
   }
 
   test("segment CRUD: create, get, rename, list, delete, gone") {
-    val filters = group("and", cond("region", "eq", "EU"), cond("job_title", "contains", "Engineer"))
+    val filters = group(
+      "and",
+      cond("region", "eq", "EU"),
+      cond("job_title", "contains", "Engineer")
+    )
     for
       created <- request(
         Method.POST,
         s"/api/v1/workspaces/$wsA/segments",
         Some("token-A"),
-        Some(Json.obj("name" -> Json.fromString("EU engineers"), "filters" -> filters))
+        Some(
+          Json.obj(
+            "name" -> Json.fromString("EU engineers"),
+            "filters" -> filters
+          )
+        )
       )
       _ <- IO(assertEquals(created._1, Status.Created))
       segId = UUID.fromString(jsonField(created._2, "id"))
-      got <- request(Method.GET, s"/api/v1/workspaces/$wsA/segments/$segId", Some("token-A"))
+      got <- request(
+        Method.GET,
+        s"/api/v1/workspaces/$wsA/segments/$segId",
+        Some("token-A")
+      )
       _ <- IO {
         assertEquals(got._1, Status.Ok)
         assertEquals(jsonField(got._2, "name"), "EU engineers")
@@ -255,13 +288,29 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
         assertEquals(renamed._1, Status.Ok)
         assertEquals(jsonField(renamed._2, "name"), "EU eng v2")
       }
-      listed <- request(Method.GET, s"/api/v1/workspaces/$wsA/segments", Some("token-A"))
+      listed <- request(
+        Method.GET,
+        s"/api/v1/workspaces/$wsA/segments",
+        Some("token-A")
+      )
       _ <- IO {
         assertEquals(listed._1, Status.Ok)
-        assert(listed._2.asArray.exists(_.exists(_.hcursor.get[String]("id").exists(_ == segId.toString))))
+        assert(
+          listed._2.asArray.exists(
+            _.exists(_.hcursor.get[String]("id").exists(_ == segId.toString))
+          )
+        )
       }
-      deleted <- request(Method.DELETE, s"/api/v1/workspaces/$wsA/segments/$segId", Some("token-A"))
-      gone <- request(Method.GET, s"/api/v1/workspaces/$wsA/segments/$segId", Some("token-A"))
+      deleted <- request(
+        Method.DELETE,
+        s"/api/v1/workspaces/$wsA/segments/$segId",
+        Some("token-A")
+      )
+      gone <- request(
+        Method.GET,
+        s"/api/v1/workspaces/$wsA/segments/$segId",
+        Some("token-A")
+      )
       _ <- IO {
         assertEquals(deleted._1, Status.NoContent)
         assertEquals(gone._1, Status.NotFound)
@@ -270,13 +319,19 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
   }
 
   test("AND-group preview matches only contacts satisfying every condition") {
-    val filters = group("and", cond("region", "eq", "EU"), cond("job_title", "contains", "Engineer"))
+    val filters = group(
+      "and",
+      cond("region", "eq", "EU"),
+      cond("job_title", "contains", "Engineer")
+    )
     for
       created <- request(
         Method.POST,
         s"/api/v1/workspaces/$wsA/segments",
         Some("token-A"),
-        Some(Json.obj("name" -> Json.fromString("AND seg"), "filters" -> filters))
+        Some(
+          Json.obj("name" -> Json.fromString("AND seg"), "filters" -> filters)
+        )
       )
       segId = UUID.fromString(jsonField(created._2, "id"))
       preview <- request(
@@ -286,9 +341,16 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
       )
       _ <- IO {
         assertEquals(preview._1, Status.Ok)
-        assertEquals(preview._2.hcursor.get[Long]("count").toOption.getOrElse(-1L), 1L)
+        assertEquals(
+          preview._2.hcursor.get[Long]("count").toOption.getOrElse(-1L),
+          1L
+        )
         val sampleEmails =
-          preview._2.hcursor.downField("sample").values.toList.flatten
+          preview._2.hcursor
+            .downField("sample")
+            .values
+            .toList
+            .flatten
             .flatMap(_.hcursor.get[String]("email").toOption)
         assertEquals(sampleEmails, List(s"seg-eu-1-$wsA@arcadence.test"))
       }
@@ -296,13 +358,16 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
   }
 
   test("OR-group preview unions matching branches") {
-    val filters = group("or", cond("region", "eq", "EU"), cond("region", "eq", "US"))
+    val filters =
+      group("or", cond("region", "eq", "EU"), cond("region", "eq", "US"))
     for
       created <- request(
         Method.POST,
         s"/api/v1/workspaces/$wsA/segments",
         Some("token-A"),
-        Some(Json.obj("name" -> Json.fromString("OR seg"), "filters" -> filters))
+        Some(
+          Json.obj("name" -> Json.fromString("OR seg"), "filters" -> filters)
+        )
       )
       segId = UUID.fromString(jsonField(created._2, "id"))
       preview <- request(
@@ -312,12 +377,17 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
       )
       _ <- IO {
         assertEquals(preview._1, Status.Ok)
-        assertEquals(preview._2.hcursor.get[Long]("count").toOption.getOrElse(-1L), 3L)
+        assertEquals(
+          preview._2.hcursor.get[Long]("count").toOption.getOrElse(-1L),
+          3L
+        )
       }
     yield ()
   }
 
-  test("filter whitelist: unknown field or operator is rejected with validation_failed") {
+  test(
+    "filter whitelist: unknown field or operator is rejected with validation_failed"
+  ) {
     val badField = group("and", cond("password_hash", "eq", "x"))
     val badOp = group("and", cond("region", "drop table", "x"))
     for
@@ -325,7 +395,12 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
         Method.POST,
         s"/api/v1/workspaces/$wsA/segments",
         Some("token-A"),
-        Some(Json.obj("name" -> Json.fromString("bad field"), "filters" -> badField))
+        Some(
+          Json.obj(
+            "name" -> Json.fromString("bad field"),
+            "filters" -> badField
+          )
+        )
       )
       r2 <- request(
         Method.POST,
@@ -343,7 +418,8 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
   }
 
   test("bulk tag applies to the member set and is idempotent") {
-    val filters = group("or", cond("region", "eq", "EU"), cond("region", "eq", "US"))
+    val filters =
+      group("or", cond("region", "eq", "EU"), cond("region", "eq", "US"))
     for
       tag <- request(
         Method.POST,
@@ -356,27 +432,47 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
         Method.POST,
         s"/api/v1/workspaces/$wsA/segments",
         Some("token-A"),
-        Some(Json.obj("name" -> Json.fromString("bulk seg"), "filters" -> filters))
+        Some(
+          Json.obj("name" -> Json.fromString("bulk seg"), "filters" -> filters)
+        )
       )
       segId = UUID.fromString(jsonField(created._2, "id"))
       first <- request(
         Method.POST,
         s"/api/v1/workspaces/$wsA/segments/$segId/bulk-tag",
         Some("token-A"),
-        Some(Json.obj("segmentId" -> Json.fromString(segId.toString), "tagId" -> Json.fromString(tagId.toString)))
+        Some(
+          Json.obj(
+            "segmentId" -> Json.fromString(segId.toString),
+            "tagId" -> Json.fromString(tagId.toString)
+          )
+        )
       )
       again <- request(
         Method.POST,
         s"/api/v1/workspaces/$wsA/segments/$segId/bulk-tag",
         Some("token-A"),
-        Some(Json.obj("segmentId" -> Json.fromString(segId.toString), "tagId" -> Json.fromString(tagId.toString)))
+        Some(
+          Json.obj(
+            "segmentId" -> Json.fromString(segId.toString),
+            "tagId" -> Json.fromString(tagId.toString)
+          )
+        )
       )
       rows <- sql"select count(*) from public.contact_tag where tag_id = $tagId"
-        .query[Long].unique.transact(xa)
+        .query[Long]
+        .unique
+        .transact(xa)
       _ <- IO {
         assertEquals(first._1, Status.Ok)
-        assertEquals(first._2.hcursor.get[Int]("tagged").toOption.getOrElse(-1), 3)
-        assertEquals(again._2.hcursor.get[Int]("tagged").toOption.getOrElse(-1), 0)
+        assertEquals(
+          first._2.hcursor.get[Int]("tagged").toOption.getOrElse(-1),
+          3
+        )
+        assertEquals(
+          again._2.hcursor.get[Int]("tagged").toOption.getOrElse(-1),
+          0
+        )
         assertEquals(rows, 3L)
       }
     yield ()
@@ -385,8 +481,20 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
   test("merge fills empty kept fields, moves tags, deletes the source") {
     val suffix = wsA.toString.take(8)
     for
-      kept <- createContact(wsA, s"merge-kept-$suffix@arcadence.test", Some("Kept"), None, None)
-      source <- createContact(wsA, s"merge-src-$suffix@arcadence.test", Some("Source"), Some("Engineer"), Some("US"))
+      kept <- createContact(
+        wsA,
+        s"merge-kept-$suffix@arcadence.test",
+        Some("Kept"),
+        None,
+        None
+      )
+      source <- createContact(
+        wsA,
+        s"merge-src-$suffix@arcadence.test",
+        Some("Source"),
+        Some("Engineer"),
+        Some("US")
+      )
       tag <- request(
         Method.POST,
         s"/api/v1/workspaces/$wsA/tags",
@@ -394,7 +502,9 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
         Some(Json.obj("name" -> Json.fromString(s"merge-tag-$suffix")))
       )
       tagId = UUID.fromString(jsonField(tag._2, "id"))
-      _ <- sql"insert into public.contact_tag (contact_id, tag_id) values ($source, $tagId)".update.run.void.transact(xa)
+      _ <-
+        sql"insert into public.contact_tag (contact_id, tag_id) values ($source, $tagId)".update.run.void
+          .transact(xa)
       list <- request(
         Method.POST,
         s"/api/v1/workspaces/$wsA/lead-lists",
@@ -402,7 +512,9 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
         Some(Json.obj("name" -> Json.fromString(s"merge-list-$suffix")))
       )
       listId = UUID.fromString(jsonField(list._2, "id"))
-      _ <- sql"insert into public.list_membership (list_id, contact_id) values ($listId, $source)".update.run.void.transact(xa)
+      _ <-
+        sql"insert into public.list_membership (list_id, contact_id) values ($listId, $source)".update.run.void
+          .transact(xa)
       merged <- request(
         Method.POST,
         s"/api/v1/workspaces/$wsA/contacts/$kept/merge",
@@ -411,21 +523,50 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
       )
       _ <- IO {
         assertEquals(merged._1, Status.Ok)
-        assertEquals(merged._2.hcursor.get[Int]("filledFields").toOption.getOrElse(-1), 2) // job_title + region
-        assertEquals(merged._2.hcursor.get[Int]("movedTags").toOption.getOrElse(-1), 1)
-        assertEquals(merged._2.hcursor.get[Int]("movedListMemberships").toOption.getOrElse(-1), 1)
+        assertEquals(
+          merged._2.hcursor.get[Int]("filledFields").toOption.getOrElse(-1),
+          2
+        ) // job_title + region
+        assertEquals(
+          merged._2.hcursor.get[Int]("movedTags").toOption.getOrElse(-1),
+          1
+        )
+        assertEquals(
+          merged._2.hcursor
+            .get[Int]("movedListMemberships")
+            .toOption
+            .getOrElse(-1),
+          1
+        )
       }
-      sourceGone <- request(Method.GET, s"/api/v1/workspaces/$wsA/contacts/$source", Some("token-A"))
-      keptNow <- request(Method.GET, s"/api/v1/workspaces/$wsA/contacts/$kept", Some("token-A"))
-      tagRows <- sql"select count(*) from public.contact_tag where contact_id = $kept and tag_id = $tagId"
-        .query[Long].unique.transact(xa)
-      listRows <- sql"select count(*) from public.list_membership where contact_id = $kept and list_id = $listId"
-        .query[Long].unique.transact(xa)
+      sourceGone <- request(
+        Method.GET,
+        s"/api/v1/workspaces/$wsA/contacts/$source",
+        Some("token-A")
+      )
+      keptNow <- request(
+        Method.GET,
+        s"/api/v1/workspaces/$wsA/contacts/$kept",
+        Some("token-A")
+      )
+      tagRows <-
+        sql"select count(*) from public.contact_tag where contact_id = $kept and tag_id = $tagId"
+          .query[Long]
+          .unique
+          .transact(xa)
+      listRows <-
+        sql"select count(*) from public.list_membership where contact_id = $kept and list_id = $listId"
+          .query[Long]
+          .unique
+          .transact(xa)
       _ <- IO {
         assertEquals(sourceGone._1, Status.NotFound)
         assertEquals(keptNow._1, Status.Ok)
         assertEquals(jsonField(keptNow._2, "jobTitle"), "Engineer")
-        assertEquals(jsonField(keptNow._2, "email"), s"merge-kept-$suffix@arcadence.test")
+        assertEquals(
+          jsonField(keptNow._2, "email"),
+          s"merge-kept-$suffix@arcadence.test"
+        )
         assertEquals(tagRows, 1L)
         assertEquals(listRows, 1L)
       }
@@ -451,7 +592,12 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
         Method.POST,
         s"/api/v1/workspaces/$wsA/segments",
         Some("token-A"),
-        Some(Json.obj("name" -> Json.fromString("export seg"), "filters" -> filters))
+        Some(
+          Json.obj(
+            "name" -> Json.fromString("export seg"),
+            "filters" -> filters
+          )
+        )
       )
       segId = UUID.fromString(jsonField(created._2, "id"))
       exported <- requestRaw(
@@ -474,7 +620,11 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
 
   test("data-quality endpoint returns rollups for the workspace") {
     for
-      dq <- request(Method.GET, s"/api/v1/workspaces/$wsA/contacts/data-quality", Some("token-A"))
+      dq <- request(
+        Method.GET,
+        s"/api/v1/workspaces/$wsA/contacts/data-quality",
+        Some("token-A")
+      )
       _ <- IO {
         assertEquals(dq._1, Status.Ok)
         val total = dq._2.hcursor.get[Long]("total").toOption.getOrElse(-1L)
@@ -484,18 +634,33 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
     yield ()
   }
 
-  test("tenant isolation: outsiders cannot touch WS-A segments; viewer cannot mutate") {
+  test(
+    "tenant isolation: outsiders cannot touch WS-A segments; viewer cannot mutate"
+  ) {
     val filters = group("and", cond("region", "eq", "EU"))
     for
       created <- request(
         Method.POST,
         s"/api/v1/workspaces/$wsA/segments",
         Some("token-A"),
-        Some(Json.obj("name" -> Json.fromString("private seg"), "filters" -> filters))
+        Some(
+          Json.obj(
+            "name" -> Json.fromString("private seg"),
+            "filters" -> filters
+          )
+        )
       )
       segId = UUID.fromString(jsonField(created._2, "id"))
-      outsiderList <- request(Method.GET, s"/api/v1/workspaces/$wsA/segments", Some("token-C"))
-      outsiderGet <- request(Method.GET, s"/api/v1/workspaces/$wsA/segments/$segId", Some("token-C"))
+      outsiderList <- request(
+        Method.GET,
+        s"/api/v1/workspaces/$wsA/segments",
+        Some("token-C")
+      )
+      outsiderGet <- request(
+        Method.GET,
+        s"/api/v1/workspaces/$wsA/segments/$segId",
+        Some("token-C")
+      )
       outsiderExport <- requestRaw(
         Method.POST,
         s"/api/v1/workspaces/$wsA/segments/$segId/export",
@@ -507,9 +672,16 @@ final class SegmentIntegrationSpec extends CatsEffectSuite:
         Some("token-B"),
         Some(Json.obj("name" -> Json.fromString("nope"), "filters" -> filters))
       )
-      viewerDelete <- request(Method.DELETE, s"/api/v1/workspaces/$wsA/segments/$segId", Some("token-B"))
+      viewerDelete <- request(
+        Method.DELETE,
+        s"/api/v1/workspaces/$wsA/segments/$segId",
+        Some("token-B")
+      )
       _ <- IO {
-        assertEquals(outsiderList._1, Status.NotFound) // not a member → workspace hidden
+        assertEquals(
+          outsiderList._1,
+          Status.NotFound
+        ) // not a member → workspace hidden
         assertEquals(outsiderGet._1, Status.NotFound)
         assertEquals(outsiderExport._1, Status.NotFound)
         assertEquals(viewerCreate._1, Status.Forbidden)

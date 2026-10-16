@@ -763,7 +763,9 @@ final class LeadsRepos(val transactor: Transactor[IO]):
         count(*) filter (where company_id is null)::bigint
       from public.contact
       where workspace_id = $workspaceId
-    """.query[(Long, Long, Long, Long, Long, Long, Long, Long, Long, Long, Long)].unique
+    """
+      .query[(Long, Long, Long, Long, Long, Long, Long, Long, Long, Long, Long)]
+      .unique
       .transact(transactor)
       .map { t =>
         Json.obj(
@@ -782,38 +784,59 @@ final class LeadsRepos(val transactor: Transactor[IO]):
       }
 
   /** Bulk tag for a segment's member set (fragment-based WHERE). */
-  def bulkTagByFragment(workspaceId: UUID, tagId: UUID, where: Fragment): IO[Int] =
+  def bulkTagByFragment(
+      workspaceId: UUID,
+      tagId: UUID,
+      where: Fragment
+  ): IO[Int] =
     (fr"""
       insert into public.contact_tag (contact_id, tag_id)
       select c.id, $tagId
       from public.contact c
       left join public.company co on co.id = c.company_id
       where c.workspace_id = $workspaceId and """ ++ where ++
-      fr"on conflict (contact_id, tag_id) do nothing")
-      .update
-      .run
+      fr"on conflict (contact_id, tag_id) do nothing").update.run
       .transact(transactor)
 
-  /** Merges source into kept: fills empty kept fields from source, moves
-    * tags + list memberships + provenance, deletes the source contact.
-    * Returns (filledFields, movedTags, movedListMemberships).
+  /** Merges source into kept: fills empty kept fields from source, moves tags +
+    * list memberships + provenance, deletes the source contact. Returns
+    * (filledFields, movedTags, movedListMemberships).
     */
-  def mergeContacts(workspaceId: UUID, keptId: UUID, sourceId: UUID): IO[(Int, Int, Int)] =
+  def mergeContacts(
+      workspaceId: UUID,
+      keptId: UUID,
+      sourceId: UUID
+  ): IO[(Int, Int, Int)] =
     (for
-      keptOpt <- (contactSelect ++ fr"where c.workspace_id = $workspaceId and c.id = $keptId")
-        .query[ContactView]
-        .option
+      keptOpt <-
+        (contactSelect ++ fr"where c.workspace_id = $workspaceId and c.id = $keptId")
+          .query[ContactView]
+          .option
       kept <- keptOpt match
-        case None       => FC.raiseError(new IllegalStateException("kept contact missing"))
+        case None =>
+          FC.raiseError(new IllegalStateException("kept contact missing"))
         case Some(view) => FC.pure(view)
       srcFields <- sql"""
         select first_name, last_name, job_title, phone, region, timezone, website, notes, company_id
         from public.contact
         where workspace_id = $workspaceId and id = $sourceId
-      """.query[(Option[String], Option[String], Option[String], Option[String], Option[String], Option[String], Option[String], Option[String], Option[UUID])]
+      """
+        .query[
+          (
+              Option[String],
+              Option[String],
+              Option[String],
+              Option[String],
+              Option[String],
+              Option[String],
+              Option[String],
+              Option[String],
+              Option[UUID]
+          )
+        ]
         .option
       filled <- srcFields match
-        case None => FC.pure(0)
+        case None      => FC.pure(0)
         case Some(src) =>
           val pairs = List(
             ("first_name", src._1, kept.firstName),
@@ -825,8 +848,9 @@ final class LeadsRepos(val transactor: Transactor[IO]):
             ("website", src._7, kept.website),
             ("notes", src._8, kept.notes)
           )
-          val fills = pairs.collect { case (col, srcVal, None) if srcVal.nonEmpty =>
-            Fragment.const(s"$col = ") ++ fr"$srcVal"
+          val fills = pairs.collect {
+            case (col, srcVal, None) if srcVal.nonEmpty =>
+              Fragment.const(s"$col = ") ++ fr"$srcVal"
           }
           val companyFill: List[Fragment] =
             (kept.companyId, src._9) match
@@ -845,7 +869,8 @@ final class LeadsRepos(val transactor: Transactor[IO]):
           on conflict (contact_id, tag_id) do nothing
           returning tag_id
         """.query[UUID].to[List].map(_.size)
-      _ <- sql"delete from public.contact_tag where contact_id = $sourceId".update.run
+      _ <-
+        sql"delete from public.contact_tag where contact_id = $sourceId".update.run
       movedLists <-
         sql"""
           insert into public.list_membership (list_id, contact_id, added_at)
@@ -853,11 +878,13 @@ final class LeadsRepos(val transactor: Transactor[IO]):
           on conflict (list_id, contact_id) do nothing
           returning list_id
         """.query[UUID].to[List].map(_.size)
-      _ <- sql"delete from public.list_membership where contact_id = $sourceId".update.run
+      _ <-
+        sql"delete from public.list_membership where contact_id = $sourceId".update.run
       _ <- sql"""
         update public.source_provenance set contact_id = $keptId where contact_id = $sourceId
       """.update.run
-      _ <- sql"delete from public.contact where workspace_id = $workspaceId and id = $sourceId".update.run
+      _ <-
+        sql"delete from public.contact where workspace_id = $workspaceId and id = $sourceId".update.run
     yield (filled, movedTags, movedLists)).transact(transactor)
 
   def audit(
