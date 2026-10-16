@@ -717,3 +717,108 @@ export const segmentsApi = {
     URL.revokeObjectURL(url);
   },
 };
+
+// -- Campaigns (Phase 4.1) -----------------------------------------------------
+
+export interface CampaignVariantDto {
+  variantKey: string;
+  subject: string;
+  preheader: string;
+  bodyHtml: string;
+  bodyText: string;
+}
+
+export interface CampaignStepDto {
+  id: string;
+  position: number;
+  type: string;
+  name: string;
+  waitDays: number | null;
+  variants: CampaignVariantDto[];
+}
+
+export interface CampaignAudienceDto {
+  id: string;
+  leadListId: string | null;
+  segmentId: string | null;
+}
+
+export interface CampaignDto {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description: string;
+  tags: string[];
+  status: "draft" | "active" | "paused" | "completed" | "cancelled" | "archived";
+  timezone: string;
+  dailyCap: number;
+  openTracking: boolean;
+  clickTracking: boolean;
+  stepCount: number;
+  activatedAt: string | null;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CampaignDetailDto {
+  campaign: CampaignDto;
+  steps: CampaignStepDto[];
+  mailboxIds: string[];
+  audiences: CampaignAudienceDto[];
+}
+
+export interface CampaignStepInput {
+  type: string;
+  name?: string;
+  waitDays?: number;
+  variants?: {
+    variantKey: string;
+    subject?: string;
+    preheader?: string;
+    bodyHtml?: string;
+    bodyText?: string;
+  }[];
+}
+
+export const campaignsApi = {
+  list: (workspaceId: string, status?: string) =>
+    apiFetch<CampaignDto[]>(
+      `/api/v1/workspaces/${workspaceId}/campaigns${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+    ),
+  create: (workspaceId: string, input: { name: string; description?: string }) =>
+    apiFetch<CampaignDto>(`/api/v1/workspaces/${workspaceId}/campaigns`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  get: (workspaceId: string, campaignId: string) =>
+    apiFetch<CampaignDetailDto>(`/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}`),
+  update: (workspaceId: string, campaignId: string, patch: Record<string, unknown>) =>
+    apiFetch<CampaignDetailDto>(`/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  remove: (workspaceId: string, campaignId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}`, {
+      method: "DELETE",
+    }),
+  duplicate: (workspaceId: string, campaignId: string) =>
+    apiFetch<CampaignDetailDto>(
+      `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/duplicate`,
+      { method: "POST" },
+    ),
+  transition: (workspaceId: string, campaignId: string, action: string) =>
+    apiFetch<{ status: string }>(
+      `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/transition`,
+      { method: "POST", body: JSON.stringify({ action }) },
+    ),
+  enroll: (workspaceId: string, campaignId: string, contactIds: string[]) =>
+    apiFetch<{ enrolled: number }>(
+      `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/enroll`,
+      { method: "POST", body: JSON.stringify({ contactIds }) },
+    ),
+  versions: (workspaceId: string, campaignId: string) =>
+    apiFetch<{ id: string; version: number; definition: unknown; createdAt: string }[]>(
+      `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/versions`,
+    ),
+};

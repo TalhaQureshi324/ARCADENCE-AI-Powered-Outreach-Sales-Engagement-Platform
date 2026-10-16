@@ -129,11 +129,7 @@ Planned:
 
 ### 3.5 Campaigns — Phase 4
 
-- ⬜ `GET|POST /api/v1/workspaces/{id}/campaigns` · `GET|PATCH|DELETE .../campaigns/{campaignId}`
-- ⬜ `POST .../campaigns/{campaignId}/start|pause|resume|archive`
-- ⬜ `PUT .../campaigns/{campaignId}/sequence` (steps + variants as a unit)
-- ⬜ `POST .../campaigns/{campaignId}/connections` (assign sending accounts)
-- ⬜ `POST .../campaigns/{campaignId}/enrollments` (batch enroll; idempotent) · `GET .../enrollments?status=`
+- ✅ (4.1) campaign model & lifecycle — `GET|POST /api/v1/workspaces/{id}/campaigns` (list with `?status=` filter / create draft; name 1–140 chars, case-insensitive uniqueness → 409; timezone validated against `ZoneId` → 422), `GET|PATCH|DELETE .../campaigns/{campaignId}` (detail includes steps/variants/mailboxes/audiences; PATCH: description/tags/dailyCap stay editable while active/paused, name/timezone locked, structural arrays (steps/mailboxIds/audiences) are draft-only → 409 with the active-enrollment count; terminal states fully read-only; DELETE is draft-only → 409 otherwise), `POST .../campaigns/{campaignId}/duplicate` (deep copy as draft with `(copy)`/`(copy N)` name dedupe), `POST .../campaigns/{campaignId}/transition` `{action}` — permitted: draft→activate, active⇄paused, active→complete|cancel, paused→cancel, draft|completed|cancelled→archive; activation requires ≥1 step + audience + mailbox → 409 listing the missing pieces; guarded status-conditional UPDATE (concurrent change → 409), `POST .../campaigns/{campaignId}/enroll` `{contactIds}` (active campaigns only; idempotent per (campaign, contact)), `GET .../campaigns/{campaignId}/versions` (snapshot per structural save). Mutations require `manage_campaigns`; reads `view_workspace`. (4.3 will add the validated-graph sequence PUT; 4.4 adds enrollment listing/management.)
 - ⬜ `POST .../enrollments/{enrollmentId}/pause|resume|delete`
 
 ### 3.6 Inbox — Phase 6

@@ -232,3 +232,19 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
 - Contact merge is one `ConnectionIO` transaction: fill empty kept fields from the source, move tags/list memberships (`INSERT … ON CONFLICT DO NOTHING RETURNING`, returning UUIDs — the row count of actually-moved rows), repoint `source_provenance`, delete the source; audited with the per-field counts.
 
 **Consequences.** Segment previews/exports/bulk actions are injection-safe by construction and case-insensitive by default; adding a filterable field is a one-line whitelist change plus a column mapping; the mount-order constraint is documented in `docs/API.md` to protect future route additions.
+
+## ADR-0025 — Campaign lifecycle: six states, draft-only structural authority, versioned definitions (Phase 4.1)
+
+**Date:** 2026-10-16 · **Status:** accepted
+
+**Context.** Campaigns acquire enrollments when active; mutating what those enrollments must execute (steps, variants, audience, mailboxes) mid-flight corrupts their meaning, and changing scheduling identity (name, timezone) breaks in-progress timing and audit trails.
+
+**Decision.**
+- Lifecycle: `draft → active`, `active ⇄ paused`, `active → completed | cancelled`, `paused → cancelled`, `draft | completed | cancelled → archived` (terminal). Enforced in Scala via an explicit transition table and applied with a status-conditional `UPDATE`, so concurrent mutations lose safely (409 with a reload hint).
+- Activation requires ≥1 step, ≥1 audience, ≥1 mailbox; deeper preflight checks (contacts, domain authentication, suppressions) arrive in Phase 4.4 and will gate the same endpoint.
+- Structural authority is draft-only. Active/paused campaigns accept `description`, `tags`, `daily_cap` edits only; terminal states are fully read-only (duplicate to iterate). Rejections name the active-enrollment count when one exists.
+- Every structural save snapshots the step/variant definition into `campaign_version` (append-only), so any enrollment's executed definition stays reconstructable.
+- Request DTOs use `Option` fields with defaults applied in the route layer — circe's derived decoders do not honour Scala default values, and missing JSON keys otherwise fail the whole body with an opaque 400 (found and fixed during the 4.1 integration tests).
+- Sending-account and audience references are existence-checked against the workspace BEFORE any mutation, mapping failures to 422 validation errors instead of 500s.
+
+**Consequences.** Enrollment semantics stay trustworthy from the first send (Phase 5); the UI can present precise state-dependent controls; Phase 4.3 branch step types extend the `step_type` enum without touching lifecycle logic.

@@ -149,6 +149,13 @@ object Main extends IOApp:
                   authorizer = authorizer
                 )
 
+                // Campaign domain (Phase 4.1)
+                val campaignRoutes = new CampaignRoutes(
+                  authenticator = authenticator,
+                  repos = new CampaignRepos(transactor),
+                  authorizer = authorizer
+                )
+
                 val dbReady: IO[Boolean] =
                   sql"select 1"
                     .query[Int]
@@ -180,7 +187,7 @@ object Main extends IOApp:
                   RateLimit(config.rateLimitPerMinute)(
                     SecurityHeaders(
                       workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http
-                        <+> segmentRoutes.http <+> leadsRoutes.http <+> importRoutes.http
+                        <+> segmentRoutes.http <+> campaignRoutes.http <+> leadsRoutes.http <+> importRoutes.http
                     )
                   )
 
