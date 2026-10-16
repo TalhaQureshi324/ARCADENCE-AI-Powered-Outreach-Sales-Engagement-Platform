@@ -154,6 +154,8 @@ object Main extends IOApp:
                 val campaignRoutes = new CampaignRoutes(
                   authenticator = authenticator,
                   repos = campaignRepos,
+                  leadsRepos = leadsReposShared,
+                  emailAccounts = accountRepos,
                   authorizer = authorizer
                 )
                 val composerRoutes = new ComposerRoutes(

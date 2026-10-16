@@ -275,3 +275,15 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
 - The visual builder (React Flow / @xyflow/react) is view-state only; the backend graph is the single source of truth (node positions are auto-layered, not persisted).
 
 **Consequences.** Phase 5's scheduler executes a validated DAG deterministically; new step types extend one enum + one validator.
+
+## ADR-0028 — Preflight gates activation; simulation requires a real contact (Phase 4.4)
+
+**Date:** 2026-10-16 · **Status:** accepted
+
+**Decision.**
+- `preflightFor` computes blockers + warnings once; the transition endpoint runs it on `activate` and refuses with every blocker message (409). The standalone `POST preflight` endpoint exposes the same result for the UI.
+- Blockers: missing/invalid sequence graph, unknown personalization tokens, no audience, no mailbox, no CONNECTED mailbox. Warnings: empty lead lists, suppressed contacts in the audience, unverified sending domain (advisory until deliverability enforcement, Phase 8).
+- Simulation (`Schedule.simulate`) walks the stored graph for a REAL contact — branch conditions resolve with the same field resolution as personalization, so there is no synthetic contact and no fabricated data. Planned send moments land inside the campaign's window/timezone with weekend skipping.
+- Scheduling fields (window, business-days-only) are draft-only edits for the same reason as timezone.
+
+**Consequences.** Only valid campaigns activate; pausing/resuming preserves enrollment state (structural locks unchanged); Phase 5's scheduler reuses `Schedule` for due-time computation.

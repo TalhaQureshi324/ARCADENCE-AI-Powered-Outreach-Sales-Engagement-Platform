@@ -80,6 +80,9 @@ object CampaignDtos:
       openTracking: Boolean,
       clickTracking: Boolean,
       threadMode: Boolean,
+      sendWindowStart: String,
+      sendWindowEnd: String,
+      businessDaysOnly: Boolean,
       stepCount: Int,
       activatedAt: Option[OffsetDateTime],
       archivedAt: Option[OffsetDateTime],
@@ -113,6 +116,45 @@ object CampaignDtos:
     given Encoder[GraphValidationDto] = deriveEncoder
     given Decoder[GraphValidationDto] = deriveDecoder
     given Schema[GraphValidationDto] = Schema.derived
+
+  final case class SimulateRequest(contactId: UUID)
+  object SimulateRequest:
+    given Encoder[SimulateRequest] = deriveEncoder
+    given Decoder[SimulateRequest] = deriveDecoder
+    given Schema[SimulateRequest] = Schema.derived
+
+  final case class PlannedStepDto(
+      stepKey: String,
+      stepType: String,
+      name: String,
+      plannedAt: OffsetDateTime,
+      note: String
+  )
+  object PlannedStepDto:
+    given Encoder[PlannedStepDto] = deriveEncoder
+    given Decoder[PlannedStepDto] = deriveDecoder
+    given Schema[PlannedStepDto] = Schema.derived
+
+  final case class SimulationDto(timezone: String, plan: List[PlannedStepDto])
+  object SimulationDto:
+    given Encoder[SimulationDto] = deriveEncoder
+    given Decoder[SimulationDto] = deriveDecoder
+    given Schema[SimulationDto] = Schema.derived
+
+  final case class PreflightIssue(code: String, message: String)
+  object PreflightIssue:
+    given Encoder[PreflightIssue] = deriveEncoder
+    given Decoder[PreflightIssue] = deriveDecoder
+    given Schema[PreflightIssue] = Schema.derived
+
+  final case class PreflightDto(
+      blockers: List[PreflightIssue],
+      warnings: List[PreflightIssue]
+  )
+  object PreflightDto:
+    given Encoder[PreflightDto] = deriveEncoder
+    given Decoder[PreflightDto] = deriveDecoder
+    given Schema[PreflightDto] = Schema.derived
   object CampaignDetailDto:
     given Encoder[CampaignDetailDto] = deriveEncoder
     given Decoder[CampaignDetailDto] = deriveDecoder
@@ -185,6 +227,9 @@ object CampaignDtos:
       timezone: Option[String] = None,
       dailyCap: Option[Int] = None,
       threadMode: Option[Boolean] = None,
+      sendWindowStart: Option[String] = None,
+      sendWindowEnd: Option[String] = None,
+      businessDaysOnly: Option[Boolean] = None,
       steps: Option[List[StepInput]] = None,
       edges: Option[List[EdgeInput]] = None,
       mailboxIds: Option[List[UUID]] = None,
@@ -239,6 +284,8 @@ object CampaignDtos:
 final class CampaignRoutes(
     authenticator: Authenticator,
     repos: CampaignRepos,
+    leadsRepos: LeadsRepos,
+    emailAccounts: EmailAccountRepos,
     authorizer: Authorizer
 ):
   import CampaignDtos.*
@@ -347,6 +394,27 @@ final class CampaignRoutes(
     .out(jsonBody[GraphValidationDto])
     .errorOut(errorOut)
 
+  private val simulate = endpoint.post
+    .in(
+      "api" / "v1" / "workspaces" / path[UUID](
+        "workspaceId"
+      ) / "campaigns" / path[UUID]("campaignId") / "simulate"
+    )
+    .in(header[Option[String]]("Authorization"))
+    .in(jsonBody[SimulateRequest])
+    .out(jsonBody[SimulationDto])
+    .errorOut(errorOut)
+
+  private val preflight = endpoint.post
+    .in(
+      "api" / "v1" / "workspaces" / path[UUID](
+        "workspaceId"
+      ) / "campaigns" / path[UUID]("campaignId") / "preflight"
+    )
+    .in(header[Option[String]]("Authorization"))
+    .out(jsonBody[PreflightDto])
+    .errorOut(errorOut)
+
   private val listVersions = endpoint.get
     .in(base / path[UUID]("campaignId") / "versions")
     .in(header[Option[String]]("Authorization"))
@@ -368,6 +436,9 @@ final class CampaignRoutes(
       openTracking = c.openTracking,
       clickTracking = c.clickTracking,
       threadMode = c.threadMode,
+      sendWindowStart = c.sendWindowStart.toString,
+      sendWindowEnd = c.sendWindowEnd.toString,
+      businessDaysOnly = c.businessDaysOnly,
       stepCount = stepCount,
       activatedAt = c.activatedAt,
       archivedAt = c.archivedAt,
@@ -721,7 +792,9 @@ final class CampaignRoutes(
             case Some(c) =>
               val status = c.status
               val structural =
-                req.steps.isDefined || req.mailboxIds.isDefined || req.audiences.isDefined || req.threadMode.isDefined
+                req.steps.isDefined || req.mailboxIds.isDefined || req.audiences.isDefined ||
+                  req.threadMode.isDefined || req.sendWindowStart.isDefined ||
+                  req.sendWindowEnd.isDefined || req.businessDaysOnly.isDefined
               val identity = req.name.isDefined || req.timezone.isDefined
               val locked = status == "active" || status == "paused"
               val frozen =
@@ -819,7 +892,12 @@ final class CampaignRoutes(
                                   ),
                                   req.timezone,
                                   req.dailyCap,
-                                  req.threadMode
+                                  req.threadMode,
+                                  req.sendWindowStart
+                                    .map(v => java.time.LocalTime.parse(v)),
+                                  req.sendWindowEnd
+                                    .map(v => java.time.LocalTime.parse(v)),
+                                  req.businessDaysOnly
                                 )
                                 conflicted = fieldResult == -1
                                 _ <-
@@ -907,6 +985,245 @@ final class CampaignRoutes(
                 .map(e => SequenceGraph.GEdge(e.from, e.to, e.branchKey))
               val errors = SequenceGraph.validate(gSteps, gEdges)
               IO.pure(Right(GraphValidationDto(errors.isEmpty, errors)))
+          }
+      }
+
+  private def simulateLogic(
+      authorization: Option[String],
+      workspaceId: UUID,
+      campaignId: UUID,
+      req: SimulateRequest
+  ): IO[Either[(SttpStatus, Envelope), SimulationDto]] =
+    requirePermission(authorization, workspaceId, Permission.ViewWorkspace)
+      .flatMap {
+        case Left(envelope) => IO.pure(Left(envelope))
+        case Right(_)       =>
+          repos.findCampaign(workspaceId, campaignId).flatMap {
+            case None    => IO.pure(Left(failed(ApiError.NotFound("campaign"))))
+            case Some(c) =>
+              leadsRepos.findContact(workspaceId, req.contactId).flatMap {
+                case None => IO.pure(Left(failed(ApiError.NotFound("contact"))))
+                case Some(contactView) =>
+                  (repos.stepsFor(c.id), repos.edgesFor(c.id))
+                    .parMapN { (steps, edges) =>
+                      val keyById = steps
+                        .flatMap(sr => sr.clientKey.map(k => sr.id -> k))
+                        .toMap
+                      val resolver = Personalization.resolverFor(
+                        email = contactView.email,
+                        firstName = contactView.firstName,
+                        lastName = contactView.lastName,
+                        company = contactView.companyName,
+                        jobTitle = contactView.jobTitle,
+                        region = contactView.region,
+                        timezone = contactView.timezone,
+                        website = contactView.website,
+                        phone = contactView.phone,
+                        customFields = contactView.customFields
+                      )
+                      val zone = scala.util
+                        .Try(java.time.ZoneId.of(c.timezone))
+                        .getOrElse(java.time.ZoneId.of("Etc/UTC"))
+                      Schedule.simulate(
+                        steps.map(sr =>
+                          Schedule.SimStep(
+                            key = sr.clientKey.getOrElse(sr.position.toString),
+                            position = sr.position,
+                            stepType = sr.`type`,
+                            name = sr.name,
+                            waitDays = sr.waitDays,
+                            businessDays = sr.businessDays,
+                            condition = sr.condition
+                          )
+                        ),
+                        edges.flatMap { e =>
+                          for
+                            from <- keyById.get(e.fromStepId)
+                            to <- keyById.get(e.toStepId)
+                          yield Schedule.SimEdge(from, to, e.branchKey)
+                        },
+                        zone,
+                        c.sendWindowStart,
+                        c.sendWindowEnd,
+                        c.businessDaysOnly,
+                        resolver,
+                        java.time.ZonedDateTime.now(zone)
+                      )
+                    }
+                    .flatMap {
+                      case Left(err) =>
+                        IO.pure(Left(failed(ApiError.Invalid(err))))
+                      case Right(plan) =>
+                        IO.pure(
+                          Right(
+                            SimulationDto(
+                              timezone = c.timezone,
+                              plan = plan.map(p =>
+                                PlannedStepDto(
+                                  p.stepKey,
+                                  p.stepType,
+                                  p.name,
+                                  p.plannedAt.toOffsetDateTime,
+                                  p.note
+                                )
+                              )
+                            )
+                          )
+                        )
+                    }
+              }
+          }
+      }
+
+  /** Launch preflight (Phase 4.4): blockers prevent activation; warnings do not
+    * (domain authentication and suppression overlap are advisory until
+    * deliverability enforcement lands).
+    */
+  private def preflightFor(
+      workspaceId: UUID,
+      campaignId: UUID
+  ): IO[PreflightDto] =
+    repos.findCampaign(workspaceId, campaignId).flatMap {
+      case None =>
+        IO.pure(
+          PreflightDto(
+            List(PreflightIssue("not_found", "Campaign not found.")),
+            Nil
+          )
+        )
+      case Some(c) =>
+        (
+          repos.stepsFor(c.id),
+          repos.edgesFor(c.id),
+          repos.variantsFor(c.id),
+          repos.audiencesFor(
+            c.id
+          ),
+          repos.mailboxIdsFor(c.id)
+        ).parMapN { (steps, edges, variants, audiences, mailboxIds) =>
+          val blockers = List.newBuilder[PreflightIssue]
+          val warnings = List.newBuilder[PreflightIssue]
+
+          if steps.isEmpty then
+            blockers += PreflightIssue(
+              "no_steps",
+              "The campaign has no steps yet."
+            )
+          else
+            val gSteps = steps.map { sr =>
+              SequenceGraph.GStep(
+                key = sr.clientKey.getOrElse(sr.position.toString),
+                stepType = sr.`type`,
+                waitDays = sr.waitDays,
+                condition = sr.condition,
+                tagId = sr.tagId,
+                taskDueDays = sr.taskDueDays,
+                variantCount = 1
+              )
+            }
+            val graphErrors =
+              if edges.isEmpty then SequenceGraph.validateLinear(gSteps)
+              else
+                val keyById =
+                  steps.flatMap(st => st.clientKey.map(k => st.id -> k)).toMap
+                SequenceGraph.validate(
+                  gSteps,
+                  edges.flatMap(e =>
+                    for
+                      from <- keyById.get(e.fromStepId)
+                      to <- keyById.get(e.toStepId)
+                    yield SequenceGraph.GEdge(from, to, e.branchKey)
+                  )
+                )
+            if graphErrors.nonEmpty then
+              blockers += PreflightIssue(
+                "graph_invalid",
+                "Sequence problems: " + graphErrors.mkString(" ")
+              )
+
+          val unknown = Personalization.unknownTokens(
+            variants
+              .map(v =>
+                s"${v.subject}\n${v.preheader}\n${v.bodyHtml}\n${v.bodyText}"
+              )
+              .mkString("\n")
+          )
+          if unknown.nonEmpty then
+            blockers += PreflightIssue(
+              "unknown_token",
+              "Unknown personalization tokens: " + unknown.mkString(", ") + "."
+            )
+
+          if audiences.isEmpty then
+            blockers += PreflightIssue(
+              "no_audience",
+              "No audience is assigned."
+            )
+          if mailboxIds.isEmpty then
+            blockers += PreflightIssue(
+              "no_mailbox",
+              "No sending mailbox is assigned."
+            )
+
+          val audienceSize = repos.listAudienceSize(campaignId)
+          val suppressed = repos.suppressedInListAudience(campaignId)
+          val domainCount = repos.verifiedDomainCount(c.id)
+          val connectedCheck =
+            if mailboxIds.isEmpty then IO.pure(0)
+            else
+              mailboxIds.foldLeft(IO.pure(0)) { (acc, id) =>
+                acc.flatMap { n =>
+                  emailAccounts.findAccount(workspaceId, id).map {
+                    case Some(a) if a.status == "connected" => n + 1
+                    case _                                  => n
+                  }
+                }
+              }
+          val result: IO[PreflightDto] = audienceSize.flatMap { size =>
+            suppressed.flatMap { sup =>
+              domainCount.flatMap { domains =>
+                connectedCheck.flatMap { connected =>
+                  if audiences.exists(_.leadListId.isDefined) && size == 0 then
+                    warnings += PreflightIssue(
+                      "empty_audience",
+                      "The assigned lead lists have no contacts yet — enroll or import before sending."
+                    )
+                  if sup > 0 then
+                    warnings += PreflightIssue(
+                      "suppressed_in_audience",
+                      s"$sup audience contact(s) are suppressed — they are skipped at send time."
+                    )
+                  if mailboxIds.nonEmpty && connected == 0 then
+                    blockers += PreflightIssue(
+                      "no_connected_mailbox",
+                      "None of the assigned mailboxes is connected — reconnect on the Email Accounts page."
+                    )
+                  if mailboxIds.nonEmpty && domains == 0 then
+                    warnings += PreflightIssue(
+                      "domain_not_verified",
+                      "No assigned mailbox uses a verified sending domain — deliverability may suffer."
+                    )
+                  IO.pure(PreflightDto(blockers.result(), warnings.result()))
+                }
+              }
+            }
+          }
+          result
+        }.flatten
+    }
+
+  private def preflightLogic(
+      authorization: Option[String],
+      workspaceId: UUID,
+      campaignId: UUID
+  ): IO[Either[(SttpStatus, Envelope), PreflightDto]] =
+    requirePermission(authorization, workspaceId, Permission.ViewWorkspace)
+      .flatMap {
+        case Left(envelope) => IO.pure(Left(envelope))
+        case Right(_)       =>
+          repos.findCampaign(workspaceId, campaignId).flatMap {
+            case None    => IO.pure(Left(failed(ApiError.NotFound("campaign"))))
+            case Some(_) => preflightFor(workspaceId, campaignId).map(Right(_))
           }
       }
 
@@ -1080,6 +1397,57 @@ final class CampaignRoutes(
                           )
                         )
                       )
+                    case None if action == "activate" =>
+                      preflightFor(workspaceId, campaignId).flatMap { pf =>
+                        if pf.blockers.nonEmpty then
+                          IO.pure(
+                            Left(
+                              failed(
+                                ApiError.Conflict(
+                                  "Cannot activate \u2014 preflight found blocking issues: " +
+                                    pf.blockers
+                                      .map(b => b.message)
+                                      .mkString(" ")
+                                )
+                              )
+                            )
+                          )
+                        else
+                          repos
+                            .transitionStatus(
+                              workspaceId,
+                              campaignId,
+                              c.status,
+                              next
+                            )
+                            .flatMap {
+                              case 0 =>
+                                IO.pure(
+                                  Left(
+                                    failed(
+                                      ApiError.Conflict(
+                                        "Campaign state changed concurrently \u2014 reload and retry."
+                                      )
+                                    )
+                                  )
+                                )
+                              case _ =>
+                                repos
+                                  .audit(
+                                    workspaceId,
+                                    user.id,
+                                    "campaign.transitioned",
+                                    "campaign",
+                                    campaignId.toString,
+                                    Json.obj(
+                                      "from" -> Json.fromString(c.status),
+                                      "to" -> Json.fromString(next),
+                                      "action" -> Json.fromString(action)
+                                    )
+                                  )
+                                  .map(_ => Right(TransitionResult(next)))
+                            }
+                      }
                     case None =>
                       repos
                         .transitionStatus(
@@ -1205,6 +1573,12 @@ final class CampaignRoutes(
       ),
       validateGraph.serverLogic((workspaceId, campaignId, auth, req) =>
         validateGraphLogic(auth, workspaceId, campaignId, req)
+      ),
+      simulate.serverLogic((workspaceId, campaignId, auth, req) =>
+        simulateLogic(auth, workspaceId, campaignId, req)
+      ),
+      preflight.serverLogic((workspaceId, campaignId, auth) =>
+        preflightLogic(auth, workspaceId, campaignId)
       ),
       listVersions.serverLogic((workspaceId, campaignId, auth) =>
         versionsLogic(auth, workspaceId, campaignId)

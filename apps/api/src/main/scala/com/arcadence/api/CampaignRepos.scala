@@ -35,6 +35,9 @@ final class CampaignRepos(val transactor: Transactor[IO]):
       openTracking: Boolean,
       clickTracking: Boolean,
       threadMode: Boolean,
+      sendWindowStart: java.time.LocalTime,
+      sendWindowEnd: java.time.LocalTime,
+      businessDaysOnly: Boolean,
       activatedAt: Option[OffsetDateTime],
       archivedAt: Option[OffsetDateTime],
       createdAt: OffsetDateTime,
@@ -107,6 +110,7 @@ final class CampaignRepos(val transactor: Transactor[IO]):
   private val campaignSelect = fr"""
       select id, workspace_id, name, description, tags, status::text, timezone,
              daily_cap, open_tracking, click_tracking, thread_mode,
+             send_window_start, send_window_end, business_days_only,
              activated_at, archived_at, created_at, updated_at
       from public.campaign
     """
@@ -123,6 +127,9 @@ final class CampaignRepos(val transactor: Transactor[IO]):
         Int,
         Boolean,
         Boolean,
+        Boolean,
+        java.time.LocalTime,
+        java.time.LocalTime,
         Boolean,
         Option[OffsetDateTime],
         Option[OffsetDateTime],
@@ -145,7 +152,10 @@ final class CampaignRepos(val transactor: Transactor[IO]):
       t._12,
       t._13,
       t._14,
-      t._15
+      t._15,
+      t._16,
+      t._17,
+      t._18
     )
   }
 
@@ -328,7 +338,10 @@ final class CampaignRepos(val transactor: Transactor[IO]):
       tags: Option[List[String]],
       timezone: Option[String],
       dailyCap: Option[Int],
-      threadMode: Option[Boolean]
+      threadMode: Option[Boolean],
+      sendWindowStart: Option[java.time.LocalTime],
+      sendWindowEnd: Option[java.time.LocalTime],
+      businessDaysOnly: Option[Boolean]
   ): IO[Int] =
     val sets = List.newBuilder[Fragment]
     name.foreach(v => sets += fr"name = $v")
@@ -337,6 +350,9 @@ final class CampaignRepos(val transactor: Transactor[IO]):
     timezone.foreach(v => sets += fr"timezone = $v")
     dailyCap.foreach(v => sets += fr"daily_cap = $v")
     threadMode.foreach(v => sets += fr"thread_mode = $v")
+    sendWindowStart.foreach(v => sets += fr"send_window_start = $v")
+    sendWindowEnd.foreach(v => sets += fr"send_window_end = $v")
+    businessDaysOnly.foreach(v => sets += fr"business_days_only = $v")
     val assignments = sets.result()
     if assignments.isEmpty then IO.pure(0)
     else
@@ -608,6 +624,40 @@ final class CampaignRepos(val transactor: Transactor[IO]):
         contactIds.map(id => fr"$id").reduce((a, b) => a ++ fr", " ++ b) ++
         fr") on conflict (campaign_id, contact_id) do nothing").update.run
         .transact(transactor)
+
+  // -- Preflight (Phase 4.4) ------------------------------------------------------
+
+  /** Audience size for list audiences (segment audiences need the segment
+    * preview — returned as -1 here).
+    */
+  def listAudienceSize(campaignId: UUID): IO[Long] =
+    sql"""
+      select count(*) from public.campaign_audience ca
+      join public.list_membership lm on lm.list_id = ca.lead_list_id
+      where ca.campaign_id = $campaignId
+    """.query[Long].unique.transact(transactor)
+
+  def suppressedInListAudience(campaignId: UUID): IO[Long] =
+    sql"""
+      select count(*) from public.campaign_audience ca
+      join public.campaign cc on cc.id = ca.campaign_id
+      join public.list_membership lm on lm.list_id = ca.lead_list_id
+      join public.contact ct on ct.id = lm.contact_id
+      join public.suppression sp on sp.workspace_id = cc.workspace_id and sp.email = ct.email
+      where ca.campaign_id = $campaignId
+    """.query[Long].unique.transact(transactor)
+
+  def verifiedDomainCount(campaignId: UUID): IO[Long] =
+    sql"""
+      select count(distinct split_part(lower(ea.email_address), '@', 2))
+      from public.campaign_mailbox m
+      join public.email_accounts ea on ea.id = m.email_account_id
+      join public.campaign cc on cc.id = m.campaign_id
+      join public.sender_domains d on d.workspace_id = cc.workspace_id
+       and d.domain = split_part(lower(ea.email_address), '@', 2)
+       and d.verification_status = 'verified'
+      where m.campaign_id = $campaignId
+    """.query[Long].unique.transact(transactor)
 
   // -- Composer (Phase 4.2) -------------------------------------------------------
 

@@ -337,3 +337,7 @@ Canonical state machines live in `docs/ARCHITECTURE.md` §7. Schema mapping:
 - `campaign_step`: `client_key` (stable editor identity; UNIQUE per (campaign, client_key) — the first cut was globally unique and collided across campaigns), `condition` jsonb (branch), `tag_id` (add_tag), `task_due_days` (task), `business_days` (wait).
 - `campaign_edge`: `from_step_id`/`to_step_id` (cascade), `branch_key` ('yes'/'no' on branch outputs), UNIQUE (from_step_id, branch_key), self-loop check. RLS member-select.
 - `campaign.stop_on_reply` — enforcement arrives with reply detection (Phase 6).
+
+## Phase 4.4 — scheduling rules (`20261020090000`)
+
+- `campaign.send_window_start` / `send_window_end` (time, default 09:00/17:00, midnight-spanning allowed) and `business_days_only` (default true). Draft-only edits — changing scheduling identity mid-flight is rejected like structural changes.

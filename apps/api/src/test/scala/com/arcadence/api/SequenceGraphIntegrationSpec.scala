@@ -54,6 +54,8 @@ final class SequenceGraphIntegrationSpec extends CatsEffectSuite:
     new CampaignRoutes(
       authenticator = fakeAuth,
       repos = campaignRepos,
+      leadsRepos = leadsRepos,
+      emailAccounts = new EmailAccountRepos(xa),
       authorizer = new Authorizer(xa)
     ).http
       <+> new WorkspaceRoutes(

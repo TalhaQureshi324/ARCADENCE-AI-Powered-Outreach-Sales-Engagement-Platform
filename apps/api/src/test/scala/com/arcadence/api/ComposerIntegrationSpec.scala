@@ -55,6 +55,8 @@ final class ComposerIntegrationSpec extends CatsEffectSuite:
     new CampaignRoutes(
       authenticator = fakeAuth,
       repos = campaignRepos,
+      leadsRepos = leadsRepos,
+      emailAccounts = emailAccounts,
       authorizer = new Authorizer(xa)
     ).http
       <+> new ComposerRoutes(
