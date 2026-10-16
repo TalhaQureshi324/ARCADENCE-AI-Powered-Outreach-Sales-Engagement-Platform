@@ -611,3 +611,27 @@
 - Phase 3 plan's test list, all verified: 10,000-record import (3.2), duplicate handling (3.1/3.2), malformed files (3.2), tenant isolation (3.1/3.2/3.4), suppression enforcement (3.3 + import path), import restart (3.2), pagination (3.1), export correctness (3.4).
 - Completion statement from the plan holds: a user can import, clean, segment and manage leads end to end (upload CSV -> map -> strategy -> import -> verify -> auto-suppress -> segment -> preview/export/bulk tag -> merge).
 - Handoff commit: recorded after this file (see `git log`).
+
+---
+
+## Phase 4.1 — Campaign model & lifecycle (2026-10-16)
+
+**Branch** `feature/phase-04-campaigns` → `develop` (develop only; main promotion happens at the Phase 4 milestone).
+
+### Database
+
+- `20261017090000_campaigns.sql` applied local + staging: `campaign`, `campaign_step`, `step_variant`, `campaign_mailbox`, `campaign_audience`, `campaign_enrollment`, `campaign_version`, plus `cancelled` added to `campaign_status`. RLS member-select policies on all seven tables.
+
+### Implemented / tested
+
+| Area | Detail |
+| --- | --- |
+| API | `CampaignRoutes` (9 endpoints) + `CampaignRepos` wired into Main; explicit transition table with guarded updates; activation prerequisites (step + audience + mailbox); draft-only structural edits; workspace-scoped ownership pre-checks (422, not 500); version snapshots per structural save; audit rows on transitions |
+| Tests | CampaignIntegrationSpec 8/8 — creation validation + case-insensitive name conflict + viewer 403; structural edit shape/foreign-ref 422; lifecycle incl. prerequisite blocks and invalid transitions; edit locking + safe-field edits + read-only terminal states; enroll idempotency + draft rejection; delete draft-only + duplicate `(copy 2)` dedupe; version snapshot; tenant isolation + viewer read. Full Scala 196/196 (2 worker + 75 core + 119 api) |
+| Web | `campaignsApi`, `/app/campaigns` list (status filter, create dialog, duplicate, draft delete) + `/app/campaigns/[id]` detail (state-dependent transition buttons, edit dialog, email/wait step add/remove, audience + mailbox assignment, structural-lock hints); Campaigns nav entry live |
+| Playwright | 13/13 incl. new `campaigns.spec.ts`: create → activation blocked (no steps) → add email + wait steps → audience → activation blocked (no mailbox) → DB-seeded mailbox assigned → activate → structural lock visible → pause → resume → rename refused while running → list shows Active |
+| Fixes | circe derived decoders ignore Scala defaults → request DTOs use Option fields (ADR-0025); ownership failures now 422; transition messages include the current state |
+
+### Next
+
+- 4.2 composer: subject/preheader/HTML+text editing, personalization tokens with missing-variable validation, sanitization, saved templates/blocks, sample-contact test rendering + authorized test send, autosave.

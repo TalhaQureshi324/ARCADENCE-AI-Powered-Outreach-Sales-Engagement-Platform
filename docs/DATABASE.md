@@ -318,3 +318,10 @@ Canonical state machines live in `docs/ARCHITECTURE.md` §7. Schema mapping:
 - `public.segment`: `workspace_id` FK (cascade), `name` (1–120 chars, UNIQUE per workspace on `lower(name)` via expression index), `filters` jsonb (typed AND/OR tree validated by the API, never trusted by SQL), `created_by`, `set_updated_at` trigger. RLS enabled with member-select policy; writes flow through the audited API only.
 - `pg_trgm` extension + GIN indexes `contact_email_trgm_idx` and `contact_name_trgm_idx` (on `coalesce(first_name,'') || ' ' || coalesce(last_name,'')`) back substring search at database scale.
 - Note: expression unique indexes (`lower(name)`) are created via `create unique index`, not table constraints; partial unique indexes cannot be ON CONFLICT targets (see the `20261015100000` provenance note in `docs/HANDOFF.md`).
+
+## Phase 4.1 — campaign domain (`20261017090000`)
+
+- `public.campaign`: workspace-scoped, `name` unique per workspace on `lower(name)` (expression index), `status campaign_status` (six values — `cancelled` added via `ALTER TYPE`), `timezone`, `daily_cap` (1–10 000), tracking flags, `activated_at`/`archived_at`. Transitions are validated in Scala and applied with status-conditional updates.
+- `public.campaign_step` (`position` 1–100 unique per campaign; `step_shape` check ties `wait_days` to `type='wait'`) + `public.step_variant` (`variant_key` in {A, Z}, unique per step).
+- `public.campaign_mailbox` (FK → `public.email_accounts`, priority), `public.campaign_audience` (exactly one of `lead_list_id`/`segment_id` via a `num_nonnulls` check), `public.campaign_enrollment` (unique per (campaign, contact); due-scan partial index `(status, next_action_at) where status='active'`), `public.campaign_version` (append-only snapshots, unique per (campaign, version)).
+- All seven tables carry RLS member-select policies; writes flow through the audited API.
