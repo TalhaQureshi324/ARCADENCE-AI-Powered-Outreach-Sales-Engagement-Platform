@@ -46,7 +46,39 @@ final class CampaignRepos(val transactor: Transactor[IO]):
       position: Int,
       `type`: String,
       name: String,
-      waitDays: Option[Int]
+      waitDays: Option[Int],
+      clientKey: Option[String],
+      condition: Option[Json],
+      tagId: Option[UUID],
+      taskDueDays: Option[Int],
+      businessDays: Boolean
+  )
+
+  final case class EdgeRow(
+      id: UUID,
+      fromStepId: UUID,
+      toStepId: UUID,
+      branchKey: Option[String]
+  )
+
+  /** Editor-side graph shapes (client keys -> stable step identity). */
+  final case class GraphStepIn(
+      key: String,
+      position: Int,
+      stepType: String,
+      name: String,
+      waitDays: Option[Int],
+      businessDays: Boolean,
+      condition: Option[Json],
+      tagId: Option[UUID],
+      taskDueDays: Option[Int],
+      variants: List[VariantRow]
+  )
+
+  final case class GraphEdgeIn(
+      fromKey: String,
+      toKey: String,
+      branchKey: Option[String]
   )
 
   final case class VariantRow(
@@ -118,13 +150,44 @@ final class CampaignRepos(val transactor: Transactor[IO]):
   }
 
   private val stepSelect = fr"""
-      select id, position, type::text, name, wait_days
+      select id, position, type::text, name, wait_days, client_key, condition::text,
+             tag_id, task_due_days, business_days
       from public.campaign_step
     """
 
-  private implicit val stepRead: Read[StepRow] =
-    Read[(UUID, Int, String, String, Option[Int])]
-      .map(t => StepRow(t._1, t._2, t._3, t._4, t._5))
+  private implicit val stepRead: Read[StepRow] = Read[
+    (
+        UUID,
+        Int,
+        String,
+        String,
+        Option[Int],
+        Option[String],
+        Option[String],
+        Option[UUID],
+        Option[Int],
+        Boolean
+    )
+  ].map { t =>
+    StepRow(
+      t._1,
+      t._2,
+      t._3,
+      t._4,
+      t._5,
+      t._6,
+      t._7.map(parseJson),
+      t._8,
+      t._9,
+      t._10
+    )
+  }
+
+  def edgesFor(campaignId: UUID): IO[List[EdgeRow]] =
+    sql"select id, from_step_id, to_step_id, branch_key from public.campaign_edge where campaign_id = $campaignId order by created_at"
+      .query[EdgeRow]
+      .to[List]
+      .transact(transactor)
 
   def listCampaigns(
       workspaceId: UUID,
@@ -288,6 +351,86 @@ final class CampaignRepos(val transactor: Transactor[IO]):
             -1 // name conflict
           case Left(e) => throw e
         }
+
+  /** Graph save: preserves step UUIDs for repeated client keys (enrollment
+    * references stay valid), rewrites edges, snapshots a version. Caller
+    * enforces lifecycle rules and graph validity.
+    */
+  def replaceGraph(
+      campaignId: UUID,
+      actor: UUID,
+      steps: List[GraphStepIn],
+      edges: List[GraphEdgeIn]
+  ): IO[Unit] =
+    (for
+      existing <-
+        (fr"select id, client_key from public.campaign_step where campaign_id = $campaignId and client_key is not null")
+          .query[(UUID, String)]
+          .to[List]
+      existingByKey = existing.map { case (id, k) => k -> id }.toMap
+      keptKeys = steps.map(_.key).toSet
+      _ <-
+        (fr"delete from public.campaign_step where campaign_id = $campaignId and (client_key is null or client_key not in (" ++
+          keptKeys
+            .map(k => fr"$k")
+            .reduce((a, b) => a ++ fr", " ++ b) ++ fr"))").update.run
+      keyToId <- steps.foldLeft(FC.pure(Map.empty[String, UUID])) {
+        (accF, st) =>
+          accF
+            .flatMap { acc =>
+              val condFrag = st.condition match
+                case Some(c) => fr"${c.noSpaces}::jsonb"
+                case None    => fr"null"
+              existingByKey.get(st.key) match
+                case Some(id) =>
+                  sql"""
+                update public.campaign_step set position = ${st.position}, type = ${st.stepType}::step_type, name = ${st.name},
+                       wait_days = ${st.waitDays}, condition = $condFrag,
+                       tag_id = ${st.tagId}, task_due_days = ${st.taskDueDays}, business_days = ${st.businessDays}
+                where id = $id
+                returning id
+              """.query[UUID].unique.map(id2 => acc + (st.key -> id2))
+                case None =>
+                  (fr"insert into public.campaign_step (campaign_id, position, type, name, wait_days, client_key, condition, tag_id, task_due_days, business_days) values (" ++
+                    fr"$campaignId, ${st.position}, ${st.stepType}::step_type, ${st.name}, ${st.waitDays}, ${st.key}, " ++
+                    condFrag ++ fr", ${st.tagId}, ${st.taskDueDays}, ${st.businessDays}) returning id")
+                    .query[UUID]
+                    .unique
+                    .map(id => acc + (st.key -> id))
+            }
+            .flatMap { acc =>
+              acc.get(st.key) match
+                case Some(stepId) =>
+                  sql"delete from public.step_variant where step_id = $stepId".update.run
+                    .flatMap { _ =>
+                      st.variants.foldLeft(FC.unit)((u, v) =>
+                        u *> sql"""
+                    insert into public.step_variant (step_id, variant_key, subject, preheader, body_html, body_text, signature)
+                    values ($stepId, ${v.variantKey}, ${v.subject}, ${v.preheader}, ${v.bodyHtml}, ${v.bodyText}, ${v.signature})
+                  """.update.run.void
+                      )
+                    }
+                    .map(_ => acc)
+                case None => FC.pure(acc)
+            }
+      }
+      _ <-
+        sql"delete from public.campaign_edge where campaign_id = $campaignId".update.run
+      _ <- edges.traverse_(e =>
+        (keyToId.get(e.fromKey), keyToId.get(e.toKey)) match
+          case (Some(from), Some(to)) =>
+            sql"""
+              insert into public.campaign_edge (campaign_id, from_step_id, to_step_id, branch_key)
+              values ($campaignId, $from, $to, ${e.branchKey})
+              on conflict (from_step_id, branch_key) do update set to_step_id = excluded.to_step_id
+            """.update.run.void
+          case _ => FC.unit
+      )
+      definition <- definitionJson(campaignId)
+      _ <- snapshotVersion(campaignId, actor, definition)
+      _ <-
+        sql"update public.campaign set updated_at = now() where id = $campaignId".update.run
+    yield ()).transact(transactor)
 
   /** Replaces steps + variants in one transaction and snapshots a version.
     * Caller enforces the lifecycle rules.
@@ -593,15 +736,23 @@ final class CampaignRepos(val transactor: Transactor[IO]):
           .to[List]
       variants <- variantsForConn(campaignId)
       byStep = variants.groupBy(_.stepId)
+      edges <-
+        sql"select id, from_step_id, to_step_id, branch_key from public.campaign_edge where campaign_id = $campaignId"
+          .query[EdgeRow]
+          .to[List]
+      idToKey = steps.flatMap(s => s.clientKey.map(k => s.id -> k)).toMap
     yield Json.obj(
       "steps" -> steps.map { s =>
         Json.obj(
+          "key" -> s.clientKey.map(Json.fromString).getOrElse(Json.Null),
           "position" -> Json.fromInt(s.position),
           "type" -> Json.fromString(s.`type`),
           "name" -> Json.fromString(s.name),
           "waitDays" -> s.waitDays
             .map(d => Json.fromInt(d))
             .getOrElse(Json.Null),
+          "businessDays" -> Json.fromBoolean(s.businessDays),
+          "condition" -> s.condition.getOrElse(Json.Null),
           "variants" -> byStep
             .getOrElse(s.id, Nil)
             .map(v =>
@@ -612,7 +763,20 @@ final class CampaignRepos(val transactor: Transactor[IO]):
             )
             .asJson
         )
-      }.asJson
+      }.asJson,
+      "edges" -> edges
+        .map(e =>
+          Json.obj(
+            "from" -> Json.fromString(
+              idToKey.getOrElse(e.fromStepId, e.fromStepId.toString)
+            ),
+            "to" -> Json.fromString(
+              idToKey.getOrElse(e.toStepId, e.toStepId.toString)
+            ),
+            "branchKey" -> e.branchKey.map(Json.fromString).getOrElse(Json.Null)
+          )
+        )
+        .asJson
     )
 
   private def variantsForConn(

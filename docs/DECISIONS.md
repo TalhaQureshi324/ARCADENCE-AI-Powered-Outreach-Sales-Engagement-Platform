@@ -262,3 +262,16 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
 - Variant content has a dedicated PUT (draft-only, no version snapshot) so editor autosave does not churn `campaign_version` history.
 
 **Consequences.** Send-time rendering (Phase 5) reuses the same engine; sanitization is centralized; template/block content is safe by construction.
+
+## ADR-0027 — Sequence graphs: client-keyed steps, merge-free validation, stored-graph activation gating (Phase 4.3)
+
+**Date:** 2026-10-16 · **Status:** accepted
+
+**Decision.**
+- The editor owns stable client keys; the server maps key → existing step UUID on every save, so step identity (and future enrollment step references) survives edits. Keys are unique per campaign (the first globally-unique index collided across campaigns — caught by the integration suite).
+- Validation rules: exactly one root, every other step exactly one incoming edge (merges rejected — execution must be deterministic), branch steps need exactly two outgoing edges labeled `yes`/`no` plus a whitelisted condition, other steps at most one outgoing edge, full reachability from the root. With in-degree ≤ 1, reachability implies acyclicity. Legacy linear campaigns (no edges) validate as position-ordered chains.
+- Graph saves bypass the Phase 4.1 linear validator (which only knows email/wait) and run `SequenceGraph.validate` before any mutation; activation re-validates the STORED graph and refuses to activate invalid sequences.
+- Branch conditions reuse the segment operator whitelist over contact fields resolvable in Scala (`custom.*` included); they are evaluated per contact by the simulator (4.4) and the scheduler (Phase 5).
+- The visual builder (React Flow / @xyflow/react) is view-state only; the backend graph is the single source of truth (node positions are auto-layered, not persisted).
+
+**Consequences.** Phase 5's scheduler executes a validated DAG deterministically; new step types extend one enum + one validator.

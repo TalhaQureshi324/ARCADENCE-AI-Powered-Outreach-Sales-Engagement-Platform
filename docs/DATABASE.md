@@ -330,3 +330,10 @@ Canonical state machines live in `docs/ARCHITECTURE.md` §7. Schema mapping:
 
 - `public.email_template` and `public.reusable_block`: workspace-scoped, name unique per workspace on `lower(name)`, sanitized HTML stored (sanitization happens in the API; the DB stores what it is given). RLS member-select.
 - `step_variant.signature` (HTML, appended at send time) and `campaign.thread_mode` (follow-up steps send as replies in the same provider thread once the sending engine wires it, Phase 5).
+
+## Phase 4.3 — sequence graph (`20261019090000`–`20261019090002`)
+
+- `step_type` gains `branch | task | add_tag`; `step_shape` widened in a SECOND migration (`ALTER TYPE ... ADD VALUE` cannot be used in the same transaction — PG 55P04).
+- `campaign_step`: `client_key` (stable editor identity; UNIQUE per (campaign, client_key) — the first cut was globally unique and collided across campaigns), `condition` jsonb (branch), `tag_id` (add_tag), `task_due_days` (task), `business_days` (wait).
+- `campaign_edge`: `from_step_id`/`to_step_id` (cascade), `branch_key` ('yes'/'no' on branch outputs), UNIQUE (from_step_id, branch_key), self-loop check. RLS member-select.
+- `campaign.stop_on_reply` — enforcement arrives with reply detection (Phase 6).
