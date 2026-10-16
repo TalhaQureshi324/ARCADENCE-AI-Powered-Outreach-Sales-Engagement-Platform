@@ -44,7 +44,11 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   const json = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
-    const envelope = json?.error as { code?: string; message?: string } | undefined;
+    // The Scala API returns the envelope at top level ({code, message[, requestId]});
+    // json.error is kept as a fallback for non-API responses.
+    const envelope =
+      (json?.code ? { code: json.code as string, message: json.message as string } : undefined) ??
+      (json?.error as { code?: string; message?: string } | undefined);
     throw new ApiError(
       envelope?.code ?? "request_failed",
       envelope?.message ?? `Request failed with HTTP ${res.status}.`,
@@ -122,6 +126,315 @@ export const invitationsApi = {
   accept: (token: string) =>
     apiFetch<WorkspaceDto>(`/api/v1/invitations/${token}/accept`, {
       method: "POST",
+    }),
+};
+
+export interface ImportJobDto {
+  id: string;
+  fileName: string;
+  status: string;
+  duplicateStrategy: string;
+  totalRows: number;
+  processedRows: number;
+  insertedRows: number;
+  updatedRows: number;
+  skippedRows: number;
+  invalidRows: number;
+  duplicateRows: number;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const importsApi = {
+  /** Uploads raw CSV bytes for parsing; returns the job + headers + preview. */
+  upload: (workspaceId: string, fileName: string, bytes: Uint8Array) =>
+    apiFetch<{ job: ImportJobDto; headers: string[]; preview: string[][] }>(
+      `/api/v1/workspaces/${workspaceId}/imports/upload?fileName=${encodeURIComponent(fileName)}`,
+      {
+        method: "POST",
+        body: bytes as unknown as BodyInit,
+        headers: { "Content-Type": "application/octet-stream" },
+      },
+    ),
+  start: (
+    workspaceId: string,
+    jobId: string,
+    input: {
+      mapping: Record<string, string>;
+      duplicateStrategy: string;
+      defaults?: Record<string, string>;
+      targetListId?: string;
+    },
+  ) =>
+    apiFetch<ImportJobDto>(`/api/v1/workspaces/${workspaceId}/imports/${jobId}/start`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  list: (workspaceId: string) =>
+    apiFetch<ImportJobDto[]>(`/api/v1/workspaces/${workspaceId}/imports`),
+  get: (workspaceId: string, jobId: string) =>
+    apiFetch<ImportJobDto>(`/api/v1/workspaces/${workspaceId}/imports/${jobId}`),
+  retry: (workspaceId: string, jobId: string) =>
+    apiFetch<ImportJobDto>(`/api/v1/workspaces/${workspaceId}/imports/${jobId}/retry`, {
+      method: "POST",
+    }),
+};
+
+export interface SuppressionDto {
+  id: string;
+  email: string;
+  contactId: string | null;
+  reason: string;
+  source: string;
+  createdAt: string;
+}
+
+export const verificationApi = {
+  verify: (workspaceId: string, contactId: string) =>
+    apiFetch<{
+      contactId: string;
+      email: string;
+      status: string;
+      provider: string;
+      details: string;
+      suppressed: boolean;
+    }>(`/api/v1/workspaces/${workspaceId}/contacts/${contactId}/verify`, { method: "POST" }),
+  suppressions: {
+    list: (workspaceId: string, q?: string) =>
+      apiFetch<SuppressionDto[]>(
+        `/api/v1/workspaces/${workspaceId}/suppressions${q ? `?q=${encodeURIComponent(q)}` : ""}`,
+      ),
+    create: (workspaceId: string, input: { email?: string; contactId?: string; reason: string }) =>
+      apiFetch<SuppressionDto>(`/api/v1/workspaces/${workspaceId}/suppressions`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    remove: (workspaceId: string, suppressionId: string) =>
+      apiFetch<void>(`/api/v1/workspaces/${workspaceId}/suppressions/${suppressionId}`, {
+        method: "DELETE",
+      }),
+  },
+};
+
+// -- Leads (Phase 3.1) ---------------------------------------------------------
+
+export interface ContactDto {
+  id: string;
+  companyId: string | null;
+  companyName: string | null;
+  email: string;
+  emailDisplay: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  jobTitle: string | null;
+  website: string | null;
+  phone: string | null;
+  region: string | null;
+  timezone: string | null;
+  notes: string | null;
+  customFields: Record<string, unknown>;
+  verificationStatus: string;
+  verificationCheckedAt: string | null;
+  verificationProvider: string | null;
+  state: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContactPage {
+  items: ContactDto[];
+  nextCursor: string | null;
+  total: number;
+}
+
+export interface ContactInput {
+  email: string;
+  emailDisplay?: string;
+  firstName?: string;
+  lastName?: string;
+  jobTitle?: string;
+  companyId?: string | null;
+  website?: string;
+  phone?: string;
+  region?: string;
+  timezone?: string;
+  notes?: string;
+  customFields?: Record<string, unknown>;
+}
+
+export const contactsApi = {
+  list: (
+    workspaceId: string,
+    params: {
+      q?: string;
+      state?: string;
+      verification?: string;
+      companyId?: string;
+      listId?: string;
+      tagId?: string;
+      sort?: string;
+      limit?: number;
+      cursor?: string;
+    } = {},
+  ) => {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") search.set(k, String(v));
+    });
+    const qs = search.toString();
+    return apiFetch<ContactPage>(`/api/v1/workspaces/${workspaceId}/contacts${qs ? `?${qs}` : ""}`);
+  },
+  get: (workspaceId: string, contactId: string) =>
+    apiFetch<ContactDto>(`/api/v1/workspaces/${workspaceId}/contacts/${contactId}`),
+  create: (workspaceId: string, input: ContactInput) =>
+    apiFetch<ContactDto>(`/api/v1/workspaces/${workspaceId}/contacts`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  update: (
+    workspaceId: string,
+    contactId: string,
+    patch: Partial<Record<keyof ContactInput, unknown>>,
+  ) =>
+    apiFetch<ContactDto>(`/api/v1/workspaces/${workspaceId}/contacts/${contactId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  remove: (workspaceId: string, contactId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/contacts/${contactId}`, {
+      method: "DELETE",
+    }),
+  batch: (workspaceId: string, contacts: ContactInput[]) =>
+    apiFetch<{ created: number; updated: number; skipped: number }>(
+      `/api/v1/workspaces/${workspaceId}/contacts/batch`,
+      { method: "POST", body: JSON.stringify({ contacts }) },
+    ),
+};
+
+export interface CompanyDto {
+  id: string;
+  name: string;
+  domain: string | null;
+  website: string | null;
+  contactCount: number;
+  createdAt: string;
+}
+
+export const companiesApi = {
+  list: (workspaceId: string, q?: string) =>
+    apiFetch<CompanyDto[]>(
+      `/api/v1/workspaces/${workspaceId}/companies${q ? `?q=${encodeURIComponent(q)}` : ""}`,
+    ),
+  create: (workspaceId: string, input: { name: string; domain?: string; website?: string }) =>
+    apiFetch<CompanyDto>(`/api/v1/workspaces/${workspaceId}/companies`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  update: (
+    workspaceId: string,
+    companyId: string,
+    patch: { name?: string; domain?: string | null; website?: string | null },
+  ) =>
+    apiFetch<CompanyDto>(`/api/v1/workspaces/${workspaceId}/companies/${companyId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  remove: (workspaceId: string, companyId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/companies/${companyId}`, {
+      method: "DELETE",
+    }),
+};
+
+export interface LeadListDto {
+  id: string;
+  name: string;
+  description: string | null;
+  memberCount: number;
+  createdAt: string;
+}
+
+export const leadListsApi = {
+  list: (workspaceId: string) =>
+    apiFetch<LeadListDto[]>(`/api/v1/workspaces/${workspaceId}/lead-lists`),
+  create: (workspaceId: string, input: { name: string; description?: string }) =>
+    apiFetch<LeadListDto>(`/api/v1/workspaces/${workspaceId}/lead-lists`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  update: (
+    workspaceId: string,
+    listId: string,
+    patch: { name?: string; description?: string | null },
+  ) =>
+    apiFetch<LeadListDto>(`/api/v1/workspaces/${workspaceId}/lead-lists/${listId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  remove: (workspaceId: string, listId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/lead-lists/${listId}`, {
+      method: "DELETE",
+    }),
+  addMembers: (workspaceId: string, listId: string, contactIds: string[]) =>
+    apiFetch<{ added: number }>(`/api/v1/workspaces/${workspaceId}/lead-lists/${listId}/members`, {
+      method: "POST",
+      body: JSON.stringify({ contactIds }),
+    }),
+  removeMember: (workspaceId: string, listId: string, contactId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/lead-lists/${listId}/members/${contactId}`, {
+      method: "DELETE",
+    }),
+};
+
+export interface TagDto {
+  id: string;
+  name: string;
+  color: string | null;
+  contactCount: number;
+  createdAt: string;
+}
+
+export const tagsApi = {
+  list: (workspaceId: string) => apiFetch<TagDto[]>(`/api/v1/workspaces/${workspaceId}/tags`),
+  create: (workspaceId: string, input: { name: string; color?: string }) =>
+    apiFetch<TagDto>(`/api/v1/workspaces/${workspaceId}/tags`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  remove: (workspaceId: string, tagId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/tags/${tagId}`, {
+      method: "DELETE",
+    }),
+};
+
+export interface CustomFieldDto {
+  id: string;
+  name: string;
+  fieldType: string;
+  description: string | null;
+  createdAt: string;
+}
+
+export const customFieldsApi = {
+  list: (workspaceId: string) =>
+    apiFetch<CustomFieldDto[]>(`/api/v1/workspaces/${workspaceId}/custom-fields`),
+  create: (workspaceId: string, input: { name: string; fieldType: string; description?: string }) =>
+    apiFetch<CustomFieldDto>(`/api/v1/workspaces/${workspaceId}/custom-fields`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  update: (
+    workspaceId: string,
+    fieldId: string,
+    patch: { name?: string; description?: string | null },
+  ) =>
+    apiFetch<CustomFieldDto>(`/api/v1/workspaces/${workspaceId}/custom-fields/${fieldId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  remove: (workspaceId: string, fieldId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/custom-fields/${fieldId}`, {
+      method: "DELETE",
     }),
 };
 
@@ -286,4 +599,122 @@ export const emailAccountsApi = {
       `/api/v1/workspaces/${workspaceId}/email-accounts/${accountId}/test`,
       { method: "POST", body: JSON.stringify({ to }) },
     ),
+};
+
+// -- Segments (Phase 3.4) ------------------------------------------------------
+
+export interface SegmentDto {
+  id: string;
+  name: string;
+  filters: SegmentFilterGroup;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SegmentCondition {
+  field: "state" | "verification_status" | "company" | "tag" | "region" | "job_title" | "email";
+  operator: "eq" | "neq" | "contains" | "not_contains" | "in" | "not_in";
+  value?: string;
+  values?: string[];
+}
+
+export interface SegmentFilterGroup {
+  op: "and" | "or";
+  conditions: (SegmentCondition | SegmentFilterGroup)[];
+}
+
+export interface SegmentPreviewDto {
+  count: number;
+  sample: ContactDto[];
+}
+
+export interface DataQualityDto {
+  total: number;
+  valid: number;
+  risky: number;
+  invalid: number;
+  unknown: number;
+  active: number;
+  unsubscribed: number;
+  bounced: number;
+  complained: number;
+  missingName: number;
+  missingCompany: number;
+}
+
+export interface MergeContactResultDto {
+  mergedId: string;
+  keptId: string;
+  filledFields: number;
+  movedTags: number;
+  movedListMemberships: number;
+}
+
+export const segmentsApi = {
+  list: (workspaceId: string) =>
+    apiFetch<SegmentDto[]>(`/api/v1/workspaces/${workspaceId}/segments`),
+  create: (workspaceId: string, input: { name: string; filters: SegmentFilterGroup }) =>
+    apiFetch<SegmentDto>(`/api/v1/workspaces/${workspaceId}/segments`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  update: (
+    workspaceId: string,
+    segmentId: string,
+    patch: { name?: string; filters?: SegmentFilterGroup },
+  ) =>
+    apiFetch<SegmentDto>(`/api/v1/workspaces/${workspaceId}/segments/${segmentId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  remove: (workspaceId: string, segmentId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/segments/${segmentId}`, {
+      method: "DELETE",
+    }),
+  preview: (workspaceId: string, segmentId: string) =>
+    apiFetch<SegmentPreviewDto>(
+      `/api/v1/workspaces/${workspaceId}/segments/${segmentId}/preview`,
+      { method: "POST" },
+    ),
+  bulkTag: (workspaceId: string, segmentId: string, tagId: string) =>
+    apiFetch<{ tagged: number }>(
+      `/api/v1/workspaces/${workspaceId}/segments/${segmentId}/bulk-tag`,
+      { method: "POST", body: JSON.stringify({ segmentId, tagId }) },
+    ),
+  dataQuality: (workspaceId: string) =>
+    apiFetch<DataQualityDto>(`/api/v1/workspaces/${workspaceId}/contacts/data-quality`),
+  merge: (workspaceId: string, keptContactId: string, sourceContactId: string) =>
+    apiFetch<MergeContactResultDto>(
+      `/api/v1/workspaces/${workspaceId}/contacts/${keptContactId}/merge`,
+      { method: "POST", body: JSON.stringify({ sourceContactId }) },
+    ),
+  /** Segment export is CSV text, not JSON — stream it through a blob download. */
+  exportCsv: async (workspaceId: string, segmentId: string, fileName: string) => {
+    const token = await accessToken();
+    const res = await fetch(
+      `${API_BASE_URL}/api/v1/workspaces/${workspaceId}/segments/${segmentId}/export`,
+      { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {} },
+    );
+    if (!res.ok) {
+      let code = "request_failed";
+      let message = `Export failed with HTTP ${res.status}.`;
+      try {
+        const body = await res.json();
+        if (body?.code) code = body.code;
+        if (body?.message) message = body.message;
+      } catch {
+        // non-JSON error body — keep defaults
+      }
+      throw new ApiError(code, message, res.status);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  },
 };

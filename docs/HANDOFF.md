@@ -10,6 +10,78 @@
 
 ---
 
+---
+
+---
+
+---
+
+## 2026-10-15 — Phase 3 / Subphase 3.3: Verification & suppression
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **Provider abstraction (core, `email.verification`)** — `EmailVerificationProvider` trait + `SyntaxMxProvider` default (syntax check, MX lookup via JNDI DNS with bounded timeouts). Per the plan: **syntax+MX alone never classifies an address as verified** — MX found → `risky`, no MX → `invalid`, DNS errors → `unknown`. Licensed external providers plug into the same trait when API keys exist (MANUAL_SETUP 12a).
+- **Verification API** — `POST /contacts/{id}/verify` + `/contacts/verify-batch` (≤25): persists verification_status/checked_at/provider on the contact, writes provenance (source=verification), **auto-suppresses invalid results** (reason=invalid, source=automatic; contact → bounced).
+- **Suppression** — `suppression` table (workspace-scoped, unique per email; reuses Phase 0 reason/source enums) + API: list/search, create by email-or-contact (dedup upserts reason), delete = **reactivation** restricted to admin+ (manage_members), audited, and **unsubscribe/complaint suppressions are permanent** (409 on delete attempt). Removal reactivates the contact (state → active).
+- **Import enforcement** — suppressed emails are skipped during CSV import (recorded in the error report as `suppressed: …`), enforced at Phase 3.2's batched pipeline.
+- **Web** — Suppression tab on /app/leads (add-by-email with reason, list, permanent badges, two-step reactivation with admin gate) and a **Verify** action on every contact row (toast shows provider verdict; badges refresh).
+
+### Tested (evidence)
+
+- **VerificationSuppressionSpec 8/8** (DB-gated): risky-never-verified, invalid → auto-suppress + bounced state + suppression row, manual suppression create/dedupe/list, viewer 403, unsubscribe suppression PERMANENT (owner delete → 409), admin removal → reactivation + audit row, import skips suppressed emails.
+- Full Scala suite: **178/178** (worker 2 · core 101 incl. new core provider file compile · api 75). Web: tsc/lint/vitest 25/25/build green.
+
+### Notes
+
+- MX lookups hit real DNS only in the default provider path at runtime; tests use a stub provider (no network). Licensed provider API keys are a future MANUAL_SETUP item.
+
+## 2026-10-15 — Phase 3 / Subphase 3.2: CSV import pipeline
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **Database (`20261015100000_imports.sql`)**: `import_job` (status created/queued/running/completed/failed/cancelled; duplicate strategy; column mapping + defaults jsonb; target list; per-outcome counters) + `import_error` (row-level report). `source_provenance` gains `row_number` with UNIQUE (import_job_id, row_number) — the idempotency marker. Applied local + staging.
+- **Pipeline (`ImportService`)**: batched processing (500 rows/batch, bounded memory) — bulk existence checks, bulk contact INSERT … ON CONFLICT DO NOTHING RETURNING, bulk provenance markers, company find-or-create BEFORE insert (UUID-typed), per-batch progress bump, finish/fail with error message. CSV: RFC 4180 state machine (quoted fields/delimiters/newlines, escaped quotes), delimiter sniffing (`,` `;` `	` `|`), UTF-8 BOM + ISO-8859-1 fallback. Duplicate strategies: skip / update-non-empty / reject(→error rows). Row classification: missing/invalid email → import_error; in-file duplicates per strategy. target list membership on import.
+- **API**: upload (octet-stream ≤25MB → headers + 5-row preview + job in `created`), start (mapping validation: email required, custom-field targets must exist), history, progress, errors.csv download, retry (failed/completed only; guarded transition; resume skips already-imported rows). Startup recovery marks interrupted `running` jobs failed → retryable.
+- **Web**: Imports tab on /app/leads — file upload, mapping UI (file column → contact field selects), duplicate-strategy + target-list selects, live progress polling (1.5s while queued/running), history table with totals + retry + error-report download.
+
+### Bugs found & fixed during 3.2
+
+1. **Partial unique index broke ON CONFLICT** — `UNIQUE (import_job_id, row_number) WHERE … NOT NULL` cannot be targeted by `ON CONFLICT (…)`; provenance markers silently never wrote (batch failed → job failed). Replaced with a plain unique index (NULLs never conflict).
+2. **Email regex missing caret** — hand-built `[\s@]` instead of `[^\s@]` in the final class rejected ALL valid emails (caught by 10k test inserted=0).
+3. foldLeftM accumulator semantics — per-batch deltas were returned as the new accumulator instead of sums (10k totals showed only the last batch).
+
+### Tested (evidence)
+
+- **ImportIntegrationSpec 7/7** incl. the plan's required **10,000-record import** (~9s, batched), duplicate skip/update strategies, malformed/empty CSV 422, error-report content, **idempotent retry** (forced reprocess → still exactly 1 contact), tenant isolation (outsider 404).
+- Web: tsc clean · lint 0 errors · vitest 25/25 · build green.
+- Full Scala suite re-run after merge (see 3.3 entry).
+
+## 2026-10-15 — Phase 3 / Subphase 3.1: Contacts and companies
+
+**Status:** ✅ Completed and pushed
+
+### Implemented
+
+- **Database (`20261015090000_contacts.sql`)**: `company`, `contact` (UNIQUE normalized-lowercase email per workspace + `email_display` original casing; names/title/website/phone/region/timezone/notes; `custom_fields` jsonb; verification columns ready for 3.3), `lead_list`, `list_membership` (idempotent pairs, actor recorded), `tag` + `contact_tag`, `custom_field` (typed definitions), `source_provenance` (append-only: manual/api/import/verification; `import_job_id` reserved for 3.2). Keyset index `(workspace_id, created_at desc, id)` + GIN on custom_fields (for 3.4). RLS member-select policies; writes via the audited API. Applied to local + staging.
+- **API (`ContactRoutes` + `LeadsRepos`)**: contact CRUD with normalization + 409 dedup; list with `q/state/verification/companyId/listId/tagId` filters, 4 sorts, **sort-aware keyset cursor pagination** (email sorts cursor on `(email, id)`; opaque base64url cursor, malformed → 422), `total` included; batch create (≤200, all-or-nothing email validation, per-item created/skipped); provenance; tags on contacts; companies CRUD; lead lists CRUD + idempotent membership add/remove + paged members; custom-fields CRUD. Reads = view permission; writes = edit_content. Unknown custom-field keys rejected at write time (must be defined first). Envelope errors map 1:1.
+- **Web**: `/app/leads` page with Contacts / Companies / Lists / Tags & Fields tabs — searchable + sortable + paginated contacts table with normalized-vs-display email, create dialog (dedup 409 surfaced), companies with contact counts, lists with member management dialogs, tags + typed custom field management. Sidebar "Leads" nav activated.
+- **Fixed (long-standing)**: `apiFetch` only parsed `json.error`; the Scala API returns the error envelope top-level (`{code,message}`) — business errors now surface their real messages app-wide (e.g. dedup 409s).
+
+### Tested (evidence)
+
+- Scala `Test/test` with `TEST_DATABASE_URL` → **163/163** (worker 2 · core 75 · api 86 incl. **LeadsIntegrationSpec 11**: custom-field validation, normalization + display casing + 409 dedup, viewer read-only + 403 writes, outsider 404, batch all-or-nothing validation + skip semantics, **cursor pagination no-overlap across email sort**, companies/lists/membership/tags/provenance round-trip, PATCH null-clear + delete, cross-tenant end state).
+- Web: vitest 25/25 · tsc clean · lint clean · build green (`/app/leads` registered).
+- **Playwright 10/10** — new leads spec: create contact (display + normalized emails shown), dedup 409 surfaced in dialog, search, tag create, list create + member add with toast.
+
+### Notes
+
+- Cursor keyset gotcha fixed during testing: email-sorted pages must cursor on `(email, id)` — created_at cursors silently overlap pages.
+- pg_trgm full-text search intentionally deferred to 3.4 (segment/search scale work).
+
 ## 2026-10-14 — Phase 2 / Subphase 2.4: SMTP/IMAP + completed email-account dashboard — PHASE 2 MILESTONE
 
 **Status:** ✅ Completed and pushed — **Phase 2 milestone (tag `phase-2`)**
@@ -504,3 +576,38 @@
 ### Next
 
 - Product owner supplies the detailed **Phase 0 implementation plan**; agent executes it subphase-by-subphase (expected: build scaffolds, pinned toolchain, CI, skeleton API/worker/frontend, health checks, first deployment wiring).
+
+---
+
+## Phase 3.4 — Segments & complete lead UI (2026-10-16)
+
+**Branch** `feature/phase-03-segments` -> `develop`. Segment CRUD + whitelist-compiled AND/OR filters, preview, CSV export, idempotent bulk tag, atomic contact merge, data-quality rollup, pg_trgm search indexes; web Segments tab (rollup cards, condition builder, preview dialog, CSV download, bulk tag) + Merge dialog in Contacts.
+
+### Database
+
+- `20261015210000_segments_search.sql` — `public.segment` (unique `lower(name)` per workspace, updated_at trigger, RLS member-select), `pg_trgm` + GIN trigram indexes on contact email/name. Applied local + staging.
+
+### Implemented / tested
+
+| Area | Detail |
+| --- | --- |
+| API | SegmentRoutes (10 endpoints) wired into Main **before** ContactRoutes (see ADR-0024 mount-order note); SegmentRepos with `buildFilter` whitelist compiler; LeadsRepos additions: `dataQuality`, `bulkTagByFragment`, `mergeContacts` (single transaction) |
+| Tests (Scala) | SegmentIntegrationSpec 10/10 — CRUD lifecycle, AND/OR preview counts + sample, whitelist 422, bulk-tag idempotency, merge (fill/move/delete + self-merge 422), export correctness incl. no cross-member leak, data quality, tenant isolation (outsider 404, viewer 403) |
+| Tests (full) | Scala 188/188 across worker/core/api; web vitest 25/25; `tsc --noEmit` clean; lint clean for new files; production build green |
+| Playwright | 12/12 including new `segments.spec.ts`: signup -> workspace -> 3 contacts -> AND segment -> preview dialog -> CSV download (filename + content asserted) -> bulk tag toast -> merge -> source row gone |
+| Web | `segmentsApi` in client (CSV export via blob download), `SegmentsTab` component, `MergeContactDialog` in ContactsTab, `valid` badge vocabulary fix, "Segments" tab in Leads nav |
+
+### Bugs found and fixed during 3.4
+
+1. Segment `eq/neq/in/not_in` bound raw values against `lower()` columns -> segments matched nothing. Values now lowered symmetrically.
+2. Merge `INSERT ... RETURNING tag_id/list_id` decoded as `Int` -> PSQLException 500. Decoded as `UUID`.
+3. `GET /contacts/data-quality` returned Tapir's 400 decode-failure from the earlier `/contacts/{contactId}` capture -> SegmentRoutes mounted before ContactRoutes (ADR-0024).
+4. Data-quality SQL used enum label `verified`, which does not exist (`contact_verification` labels are `unknown|valid|risky|invalid`) -> 500. Renamed SQL literal + JSON/DTO vocabulary to `valid` (ADR-0024).
+5. `bulkTagByFragment` unused `actor` param removed; audit written at the route layer.
+
+### Phase 3 checkpoint
+
+- Merge `feature/phase-03-segments` -> `develop`; promote `develop` -> `main`; tag `phase-3`.
+- Phase 3 plan's test list, all verified: 10,000-record import (3.2), duplicate handling (3.1/3.2), malformed files (3.2), tenant isolation (3.1/3.2/3.4), suppression enforcement (3.3 + import path), import restart (3.2), pagination (3.1), export correctness (3.4).
+- Completion statement from the plan holds: a user can import, clean, segment and manage leads end to end (upload CSV -> map -> strategy -> import -> verify -> auto-suppress -> segment -> preview/export/bulk tag -> merge).
+- Handoff commit: recorded after this file (see `git log`).

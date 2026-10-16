@@ -112,6 +112,41 @@ object Main extends IOApp:
                   authorizer = authorizer,
                   registry = registry
                 )
+                val leadsRoutes = new ContactRoutes(
+                  authenticator = authenticator,
+                  repos = new LeadsRepos(transactor),
+                  authorizer = authorizer
+                )
+
+                // CSV import pipeline (Phase 3.2)
+                val leadsReposShared = new LeadsRepos(transactor)
+                val importRepos = new ImportRepos(transactor)
+                val importService = new ImportService(
+                  repos = importRepos,
+                  leadsRepos = leadsReposShared,
+                  transactor = transactor,
+                  spoolRoot = sys.env
+                    .get("IMPORT_SPOOL_DIR")
+                    .map(java.nio.file.Paths.get(_))
+                    .getOrElse(ImportService.defaultSpoolRoot),
+                  maxFileBytes = 25L * 1024 * 1024
+                )
+                val importRoutes = new ImportRoutes(
+                  authenticator = authenticator,
+                  repos = importRepos,
+                  leadsRepos = leadsReposShared,
+                  authorizer = authorizer,
+                  service = importService
+                )
+
+                // Saved segments, exports, bulk actions, merge (Phase 3.4)
+                val segmentRepos = new SegmentRepos(transactor, leadsReposShared)
+                val segmentRoutes = new SegmentRoutes(
+                  authenticator = authenticator,
+                  repos = segmentRepos,
+                  leadsRepos = leadsReposShared,
+                  authorizer = authorizer
+                )
 
                 val dbReady: IO[Boolean] =
                   sql"select 1"
@@ -144,6 +179,7 @@ object Main extends IOApp:
                   RateLimit(config.rateLimitPerMinute)(
                     SecurityHeaders(
                       workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http
+                      <+> segmentRoutes.http <+> leadsRoutes.http <+> importRoutes.http
                     )
                   )
 
@@ -167,6 +203,11 @@ object Main extends IOApp:
                 }
 
                 applyLogLevel *>
+                  importService.recoverAfterRestart.flatMap(n =>
+                    logger.info(
+                      s"import recovery: $n interrupted job(s) marked failed"
+                    )
+                  ) *>
                   logger.info(
                     s"arcadence-api ${BuildInfo.version} starting on port ${config.port}"
                   ) *>

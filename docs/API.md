@@ -96,6 +96,30 @@ Planned:
 
 ### 3.4 Leads & lists — Phase 3
 
+Implemented (3.1):
+
+- ✅ `POST /api/v1/workspaces/{id}/contacts` (E+) — email normalized lowercase (dedup per workspace → 409), display casing kept in `emailDisplay`; custom fields validated against defined fields
+- ✅ `GET /contacts` (view) — filters `q/state/verification/companyId/listId/tagId`, sorts `created_desc|created_asc|email_asc|email_desc`, cursor pagination (opaque cursor; sort-aware keyset), `limit` ≤ 100, response `{items, nextCursor, total}`
+- ✅ `GET|PATCH|DELETE /contacts/{contactId}` (view / E+) — PATCH absent=unchanged, explicit null=clear
+- ✅ `POST /contacts/batch` (E+) — ≤200; invalid email anywhere rejects the whole batch (422); new→created, existing→skipped
+- ✅ `GET /contacts/{id}/provenance` (view) — manual/api/import/verification trail
+- ✅ `POST /contacts/{id}/tags`, `DELETE /contacts/{id}/tags/{tagId}` (E+)
+- ✅ `GET|POST /companies`, `PATCH|DELETE /companies/{id}` (view / E+)
+- ✅ `GET|POST /lead-lists`, `PATCH|DELETE /lead-lists/{id}`, `POST|DELETE /lead-lists/{id}/members[/{contactId}]`, `GET .../members` (view / E+) — membership idempotent
+
+Planned:
+
+- ✅ (3.2) `POST /imports/upload?fileName=` (E+, octet-stream ≤25MB) — parses headers + 5-row preview, creates job (status `created`/mapping); 422 on malformed/empty CSV
+- ✅ (3.2) `POST /imports/{jobId}/start` `{mapping: {colIndex → field}, duplicateStrategy: skip|update|reject, defaults?, targetListId?}` (E+) — validates mapping (email required, custom fields must exist), enqueues the processing fiber
+- ✅ (3.2) `GET /imports` (history) · `GET /imports/{jobId}` (progress: processed/inserted/updated/skipped/invalid/duplicate totals)
+- ✅ (3.2) `GET /imports/{jobId}/errors.csv` — per-row error report (row_number, reason)
+- ✅ (3.2) `POST /imports/{jobId}/retry` (E+) — failed/completed only; idempotent: provenance UNIQUE (import_job_id, row_number) skips already-imported rows; startup marks interrupted `running` jobs failed for retry
+- ✅ (3.3) `POST /contacts/{id}/verify` (E+) — provider abstraction (stub in tests; syntax+MX default; licensed providers when configured); **invalid auto-suppresses** (reason=invalid, source=automatic, contact → bounced); syntax+MX alone NEVER yields verified
+- ✅ (3.3) `POST /contacts/verify-batch` `{contactIds}` ≤25 (E+)
+- ✅ (3.3) `GET|POST /suppressions` (view / E+) · `DELETE /suppressions/{id}` (**admin+ only**, audited; unsubscribe/complaint suppressions are PERMANENT and cannot be removed; removal reactivates the contact)
+- ✅ (3.3) import enforcement: suppressed emails are skipped at import (error report notes them)
+- ✅ (3.4) segments, data quality, bulk tag, export, merge — `GET|POST /api/v1/workspaces/{id}/segments` (list / create; create validates the filter tree up front, duplicate name → 409), `GET|PATCH|DELETE .../segments/{segmentId}` (update validates patch filters), `POST .../segments/{segmentId}/preview` → `{count, sample[≤10]}`, `POST .../segments/{segmentId}/export` → `text/csv` (50,000-row cap), `POST .../segments/{segmentId}/bulk-tag` `{segmentId, tagId}` → `{tagged}` (idempotent — already-tagged rows are not recounted), `GET /api/v1/workspaces/{id}/contacts/data-quality` → `{total, valid, risky, invalid, unknown, active, unsubscribed, bounced, complained, missingName, missingCompany}`, `POST /api/v1/workspaces/{id}/contacts/{contactId}/merge` `{sourceContactId}` → `{mergedId, keptId, filledFields, movedTags, movedListMemberships}` (self-merge → 422; atomic single transaction). Filters are typed JSON trees validated against a field/operator whitelist; unknown field/operator → 422 `validation_failed`. **Mount-order constraint:** SegmentRoutes is registered BEFORE ContactRoutes because `/contacts/data-quality` (static) would otherwise hit the `/contacts/{contactId}` capture's decode-failure 400.
+
 - ⬜ `GET|POST /api/v1/workspaces/{id}/contacts` · `GET|PATCH|DELETE .../contacts/{contactId}`
 - ⬜ `POST .../contacts/import` (CSV via signed URL) · `GET .../contacts/export`
 - ⬜ `GET|POST|PATCH|DELETE .../companies[/{companyId}]`

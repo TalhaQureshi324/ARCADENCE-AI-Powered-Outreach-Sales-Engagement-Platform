@@ -216,3 +216,19 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
   - **Cursors:** inbox sync pages newest-25 with the last seen IMAP UID as cursor (`jakarta.mail.UIDFolder`); CONDSTORE/QRESYNC and the unified sync engine arrive in Phase 6.
   - **OAuth-only operations** (`completeAuthorization`, `refresh`, `revokeAccess`) return `NotSupported` values; disconnect simply purges the local encrypted credentials.
 - **Consequences:** all three providers now expose consistent capabilities through one registry; the connect form collects app-password-style credentials with explicit provider guidance (Google App Passwords / Entra app passwords / provider-specific permission notes in MANUAL_SETUP); TLS behavior against real production servers remains a provider-console verification item, noted in MANUAL_SETUP.
+
+## ADR-0024 — Segmentation: whitelist-compiled filter trees, mount-order constraint, `valid` verification vocabulary (Phase 3.4)
+
+**Date:** 2026-10-16 · **Status:** accepted
+
+**Context.** Saved segments let users re-query their contact base with AND/OR rules. The filter payload arrives from the browser as JSON, so the API must translate it to SQL without opening an injection path, and the vocabulary must match the rest of the platform.
+
+**Decision.**
+- Filters are a typed tree (`{"op":"and"|"or","conditions":[…]}`; groups nest). `SegmentRepos.buildFilter` whitelists fields (`state, verification_status, company, tag, region, job_title, email`) and operators (`eq, neq, contains, not_contains, in, not_in`); column names come from a closed match, every value is a bound parameter, and unknown fields/operators are rejected as `validation_failed` (validated at segment create/update, not only at query time).
+- All text comparisons are case-insensitive: columns go through `lower()` and bound values are lowered symmetrically (`eq/neq/in/not_in` lower the parameter; `contains` lowercases before wrapping in `%…%`). The first implementation bound raw values against lowered columns and silently matched nothing — the integration test caught it.
+- Tag conditions compile to `EXISTS (… contact_tag …)` so counts stay correct without fan-out joins.
+- `SegmentRoutes` must be mounted **before** `ContactRoutes`: Tapir's default decode-failure handler answers 400 for a failed `path[UUID]` capture, which would shadow the static `/contacts/data-quality` path with a 400 before SegmentRoutes ever saw the request.
+- The public verification vocabulary is the enum's own label `valid` (not `verified`): syntax+MX checks can never claim verification (Phase 3.3 rule), so data-quality rollups and DTOs use `valid`.
+- Contact merge is one `ConnectionIO` transaction: fill empty kept fields from the source, move tags/list memberships (`INSERT … ON CONFLICT DO NOTHING RETURNING`, returning UUIDs — the row count of actually-moved rows), repoint `source_provenance`, delete the source; audited with the per-field counts.
+
+**Consequences.** Segment previews/exports/bulk actions are injection-safe by construction and case-insensitive by default; adding a filterable field is a one-line whitelist change plus a column mapping; the mount-order constraint is documented in `docs/API.md` to protect future route additions.
