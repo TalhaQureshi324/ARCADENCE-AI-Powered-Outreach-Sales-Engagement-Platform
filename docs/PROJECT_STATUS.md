@@ -2,7 +2,7 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-10-16 (4.4 — Phase 4 complete)
+**Last updated:** 2026-10-20 (5.1 — Phase 5 started)
 
 ---
 
@@ -97,3 +97,9 @@ None.
 ## Manual setup queue
 
 See [`docs/MANUAL_SETUP.md`](MANUAL_SETUP.md) — no items block Phase 3; carried items (Google OAuth client 6a, Entra app 7, EMAIL_ENCRYPTION_KEY backup, branch protection #3, staging DB password rotation) remain pending on the product owner.
+
+### Subphase detail — Phase 5
+
+| # | Subphase | Status | Notes |
+| --- | --- | --- | --- |
+| 5.1 | Persistent job infrastructure: scheduled_action (the ONE sending queue - SKIP LOCKED claims + leases + attempts + application-level idempotency keys), job_attempt, send_attempt, quota_reservation, outbound_message, event_outbox (at-least-once event delivery, never a competing send queue); JobQueue.Repo in core (replay-safe enqueue, claimBatch, failOrRetry with capped exponential backoff + jitter, requeueExpiredLeases); SendWorker lease loop wired into the independent worker process | **tested** | Migration 20261021090000 applied local + staging; WorkerQueueIntegrationSpec 6/6: duplicate idempotency keys -> one row; 8 concurrent workers x 40 jobs, zero double-claims; expired-lease recovery re-claims; retry -> dead-letter at max_attempts; DB reconnection on a fresh transactor |
