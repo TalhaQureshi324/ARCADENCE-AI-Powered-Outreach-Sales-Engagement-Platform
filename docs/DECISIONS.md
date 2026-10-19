@@ -287,3 +287,17 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
 - Scheduling fields (window, business-days-only) are draft-only edits for the same reason as timezone.
 
 **Consequences.** Only valid campaigns activate; pausing/resuming preserves enrollment state (structural locks unchanged); Phase 5's scheduler reuses `Schedule` for due-time computation.
+
+## ADR-0029 - Sending queue: one SKIP LOCKED queue, outbox for events (Phase 5.1)
+
+**Date:** 2026-10-20 - **Status:** accepted
+
+**Decision.**
+- public.scheduled_action is the single sending queue: workers claim due jobs with FOR UPDATE SKIP LOCKED under a lease (locked_at/locked_by, attempts incremented at claim); crashed workers' leases expire and requeueExpiredLeases returns jobs to pending. No in-memory queues, no cron loop.
+- Event delivery uses public.event_outbox: events are written with the state change they describe and dispatched at-least-once by the worker to downstream sinks (webhooks arrive later). The outbox never carries sends - scheduling and event delivery have disjoint mechanisms by design.
+- public.job_queue (Phase 0) remains for platform-level jobs; same claim pattern, disjoint from sending.
+- Idempotency is application-level: every enqueue carries a stable business key (send:{enrollmentId}:{stepId}:{dueDate} from 5.2) enforced by a unique index with ON CONFLICT DO NOTHING, so at-least-once enqueueing cannot create duplicate jobs.
+- Failures retry with capped exponential backoff + jitter (Retry-After honored from 5.3) and dead-letter as failed at max_attempts, keeping the full job_attempt trail.
+- The worker is a separate process (apps/worker) that recovers expired leases on boot and resumes after restart; ambiguous send outcomes (5.3) are held for reconciliation, never retried blind.
+
+**Consequences.** Duplicate suppression is structural; crash recovery is bounded by the lease timeout; throughput scales horizontally with worker count without coordination beyond SKIP LOCKED.

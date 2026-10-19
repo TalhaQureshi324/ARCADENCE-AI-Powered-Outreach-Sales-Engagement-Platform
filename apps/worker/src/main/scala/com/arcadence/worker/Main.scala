@@ -26,16 +26,53 @@ object Main extends IOApp:
           root.setLevel(ch.qos.logback.classic.Level.valueOf(config.logLevel))
         }
 
+        val sendWorker =
+          com.arcadence.core.db.DbUrl
+            .parse(sys.env.getOrElse("DATABASE_URL", "")) match
+            case Left(error) =>
+              logger.error(s"worker needs DATABASE_URL: $error") *> IO(
+                ExitCode.Error
+              )
+            case Right(jdbc) =>
+              given doobie.Transactor[IO] =
+                doobie.util.transactor.Transactor.fromDriverManager[IO](
+                  "org.postgresql.Driver",
+                  jdbc.jdbcUrl,
+                  jdbc.user,
+                  jdbc.password,
+                  logHandler = None
+                )
+              val cfg = SendWorker.Config.fromEnv(sys.env)
+              given org.typelevel.log4cats.Logger[IO] = logger
+              SendWorker
+                .stream(
+                  new com.arcadence.core.jobs.JobQueue.Repo(
+                    summon[doobie.Transactor[IO]]
+                  ),
+                  List(SendWorker.GenericHandler),
+                  cfg
+                )
+                .compile
+                .drain
+                .as(ExitCode.Success)
+
         applyLogLevel *>
           logger.info(
             s"arcadence-worker ${BuildInfo.version} starting: heartbeat interval ${config.tickInterval.toMillis}ms"
           ) *>
-          fs2.Stream
-            .awakeEvery[IO](config.tickInterval)
-            .zipWithIndex
-            .evalMap { case (_, index) =>
-              logger.info(Heartbeat(index + 1, config.tickInterval).describe)
-            }
+          fs2
+            .Stream(
+              fs2.Stream
+                .awakeEvery[IO](config.tickInterval)
+                .zipWithIndex
+                .evalMap { case (_, index) =>
+                  logger.info(
+                    Heartbeat(index + 1, config.tickInterval).describe
+                  )
+                },
+              fs2.Stream.eval(sendWorker)
+            )
+            .parJoin(2)
             .compile
             .drain
             .as(ExitCode.Success)
