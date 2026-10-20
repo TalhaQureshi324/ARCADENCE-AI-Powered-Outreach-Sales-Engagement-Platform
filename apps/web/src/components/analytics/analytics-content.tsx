@@ -31,7 +31,8 @@ function Kpi({ label, value, hint }: { label: string; value: number | string; hi
 /** Simple CSS bar chart (no chart lib): one row per day, scaled to max. */
 function Bars({ data, field }: { data: Row[]; field: string }) {
   const max = Math.max(1, ...data.map((d) => Number(d[field] ?? 0)));
-  if (data.length === 0) return <div className="text-muted-foreground text-sm">No data in range.</div>;
+  if (data.length === 0)
+    return <div className="text-muted-foreground text-sm">No data in range.</div>;
   return (
     <div className="space-y-1">
       {data.map((d) => (
@@ -123,10 +124,14 @@ export function AnalyticsContent() {
     })();
   }
 
-  if (!workspaces)
-    return <Skeleton className="h-64" />;
+  if (!workspaces) return <Skeleton className="h-64" />;
   if (!selected)
-    return <EmptyState title="No workspace selected" description="Create a workspace to see analytics." />;
+    return (
+      <EmptyState
+        title="No workspace selected"
+        description="Create a workspace to see analytics."
+      />
+    );
 
   const num = (k: string) => Number(summary?.[k] ?? 0);
 
@@ -179,7 +184,11 @@ export function AnalyticsContent() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Kpi label="Emails submitted" value={num("emailsSubmitted")} />
         <Kpi label="Unique leads contacted" value={num("uniqueLeadsContacted")} />
-        <Kpi label="Provider-accepted" value={num("accepted")} hint="Relay receipt, not inbox delivery" />
+        <Kpi
+          label="Provider-accepted"
+          value={num("accepted")}
+          hint="Relay receipt, not inbox delivery"
+        />
         <Kpi label="Hard bounces" value={num("bounceHard")} />
         <Kpi label="Soft bounces" value={num("bounceSoft")} />
         <Kpi label="Replies" value={num("replies")} />
@@ -189,7 +198,11 @@ export function AnalyticsContent() {
       </div>
 
       <Card>
-        <CardHeader eyebrow="Trends" title="Daily sends" subtitle="Bars scale to the max day in range." />
+        <CardHeader
+          eyebrow="Trends"
+          title="Daily sends"
+          subtitle="Bars scale to the max day in range."
+        />
         <div className="px-6 pb-6">
           <Bars data={series} field="sends" />
         </div>
@@ -206,7 +219,10 @@ export function AnalyticsContent() {
         <CardHeader eyebrow="Per campaign" title="Campaign comparison" />
         {campaigns.length === 0 ? (
           <div className="px-6 pb-6">
-            <EmptyState title="No campaign activity" description="Activate a campaign to see comparisons." />
+            <EmptyState
+              title="No campaign activity"
+              description="Activate a campaign to see comparisons."
+            />
           </div>
         ) : (
           <div className="px-6 pb-6">
@@ -247,7 +263,9 @@ export function AnalyticsContent() {
           subtitle="Accepted vs bounced per sending account."
         />
         {mailboxes.length === 0 ? (
-          <div className="px-6 pb-6 text-muted-foreground text-sm">No mailbox activity in range.</div>
+          <div className="text-muted-foreground px-6 pb-6 text-sm">
+            No mailbox activity in range.
+          </div>
         ) : (
           <div className="px-6 pb-6">
             <Table>
