@@ -50,6 +50,7 @@ const NAV_ITEMS: {
 }[] = [
   { href: "/app", label: "Dashboard", icon: LayoutDashboard, active: true },
   { href: "/app/inbox", label: "Inbox", icon: Inbox },
+  { href: "/app/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/app/campaigns", label: "Campaigns", icon: BarChart3 },
   { href: "/app/leads", label: "Leads", icon: Users },
   { href: "/app/email-accounts", label: "Email Accounts", icon: Mail },

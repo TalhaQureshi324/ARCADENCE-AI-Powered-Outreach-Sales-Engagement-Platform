@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { API_BASE_URL } from "@/lib/config";
+export { API_BASE_URL };
 
 /** Browser-side API error mirroring the server's error envelope. */
 export class ApiError extends Error {
@@ -18,7 +19,7 @@ export class ApiError extends Error {
   }
 }
 
-async function accessToken(): Promise<string | null> {
+export async function accessToken(): Promise<string | null> {
   const supabase = createClient();
   const {
     data: { session },
@@ -1028,3 +1029,57 @@ export const inboxApi = {
       body: JSON.stringify({ body }),
     }),
 };
+
+// -- Analytics (Phase 7) ---------------------------------------------------------
+
+export interface AnalyticsWarning {
+  type: string;
+  change?: number;
+  detail: string;
+}
+
+export const analyticsApi = {
+  summary: (workspaceId: string, from?: string, to?: string) => {
+    const p = new URLSearchParams();
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    return apiFetch<Record<string, number | string>>(
+      `/api/v1/workspaces/${workspaceId}/analytics/summary${p.toString() ? `?${p}` : ""}`,
+    );
+  },
+  timeseries: async (workspaceId: string, from?: string, to?: string) => {
+    const p = new URLSearchParams();
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    const res = await apiFetch<unknown[]>(
+      `/api/v1/workspaces/${workspaceId}/analytics/timeseries${p.toString() ? `?${p}` : ""}`,
+    );
+    return res;
+  },
+  campaigns: async (workspaceId: string, from?: string, to?: string) => {
+    const p = new URLSearchParams();
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    const res = await apiFetch<unknown[]>(
+      `/api/v1/workspaces/${workspaceId}/analytics/campaigns${p.toString() ? `?${p}` : ""}`,
+    );
+    return res;
+  },
+  mailboxes: async (workspaceId: string, from?: string, to?: string) => {
+    const p = new URLSearchParams();
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    const res = await apiFetch<unknown[]>(
+      `/api/v1/workspaces/${workspaceId}/analytics/mailboxes${p.toString() ? `?${p}` : ""}`,
+    );
+    return res;
+  },
+  anomalies: async (workspaceId: string) => {
+    const res = await apiFetch<{ warnings: AnalyticsWarning[] }>(
+      `/api/v1/workspaces/${workspaceId}/analytics/anomalies`,
+    );
+    return res;
+  },
+};
+
+
