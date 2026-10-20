@@ -732,3 +732,25 @@
 
 - develop -> main promotion + tag `phase-5`.
 - Acceptance from the plan holds end to end: a configured campaign's enrollments are scheduled by the real scheduler, sent through provider adapters according to window/timezone rules, failures classified and handled (retry/held/skip), every step auditable in job_attempt/send_attempt/outbound_message/event_outbox.
+
+---
+
+## Phase 6 - Unified inbox, replies and team collaboration (2026-10-20)
+
+**Branches** 6.1+6.2 feature/phase-061-062-inbox-sync -> develop (bdbec7c); 6.3+6.4 feature/phase-063-064-unibox -> develop.
+
+### Implemented / tested
+
+| Subphase | Detail |
+| --- | --- |
+| 6.1 | Sync tables + InboxSyncService (adapter-contract incremental sync, transactional idempotency, cursor error recording, resync dedupe) |
+| 6.2 | ReplyClassifier deterministic rules; enrollment replied + pending follow-ups cancelled in DB; unsubscribe/bounce -> suppression |
+| 6.3 | InboxRoutes + /app/inbox page (filters, list, thread view, reply composer through provider adapter preserving threading, archive/read, empty/loading/error states); Supabase Realtime deferred - sync trigger + refetch for now |
+| 6.4 | Assignment, notes, classification/status filters, activity via event_outbox; audit timeline basics |
+| Tests | InboxSyncSpec 4/4; full Scala 241/241; web tsc/lint/build green |
+| Fixes | doobie null-cursor param (Option put), thread_id null-guard on In-Reply-To match, transactional dedupe (message insert + ref claim atomic) |
+
+### Phase 6 milestone
+
+- develop -> main promotion + tag phase-6.
+- Acceptance: real inbound replies sync into threads, classify deterministically, reliably cancel pending follow-ups in the database, and are answerable from the Unibox with preserved threading.

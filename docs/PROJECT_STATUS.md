@@ -2,7 +2,7 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-10-20 (5.5 — Phase 5 complete)
+**Last updated:** 2026-10-20 (6.4 — Phase 6 complete)
 
 ---
 
@@ -26,7 +26,7 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 3 | Lead management — leads, lists, import/export, verification hooks, suppression | **complete** (`phase-3`) |
 | 4 | Campaigns & sequences — builder, scheduling, personalization | **complete** (`phase-4`) |
 | 5 | Sending engine — durable send queue, provider submission, tracking, bounce handling | planned (next) |
-| 6 | Unified inbox — two-way sync, threading, realtime updates | planned |
+| 6 | Unified inbox — two-way sync, threading, realtime updates | **complete** (phase-6) |
 | 7 | CRM — accounts, contacts, deals, pipelines, activity timeline | planned |
 | 8 | Deliverability intelligence — monitoring, reputation signals, guidance | planned |
 | 9 | Analytics & reporting | planned |
@@ -109,3 +109,12 @@ See [`docs/MANUAL_SETUP.md`](MANUAL_SETUP.md) — no items block Phase 3; carrie
 | 5.4 | Retry, backpressure & campaign safety — bounded exponential backoff + jitter + Rate-Limited/Retry-After honoring; auth failures drive a per-account circuit breaker (3 strikes suspends the account + health event); outcome_unknown held for reconciliation (never retried blind); structured events for every decision in event_outbox; adapter contract moved to core so the worker dispatches API-defined handlers | **tested** | Covered in SendDeliverySpec (circuit opens at the third auth failure and suspends the account; fresh accounts unaffected; outcome_unknown persisted as held) + WorkerQueueIntegrationSpec retry/backoff tests; Scala full suite 240/240 |
 
 | 5.5 | Reliability & load verification — ReliabilityLoadSpec: 20-job concurrent drain (6 workers, pooled transactor, pooled throughput printed per run ~8 jobs/s end-to-end incl. per-send evidence writes) + the failure matrix (crash-before-submit recovery, ambiguous timeout held for reconciliation, expired credentials -> auth_failed + retry, cancelled campaign skipped, replied enrollment skipped) with zero unintended duplicates; ambiguous-hold is enforced by the handler itself (guarded hold update the worker's failOrRetry cannot override) | **tested** | ReliabilityLoadSpec 3/3; Scala full suite 240/240 (2 worker + 75 core + 163 api); runbook + metrics documented in docs/OPERATIONS.md; NOTE test-scale is 20-50 jobs in CI (30s test window), the invariant-verification design is scale-independent — 1000+ soak runs are a local/ops exercise with the same binary path |
+
+### Subphase detail — Phase 6
+
+| # | Subphase | Status | Notes |
+| --- | --- | --- | --- |
+| 6.1 | Inbound synchronization — email_threads/email_messages/provider_message_refs (unique per account+provider message)/mailbox_sync_cursors/sync_jobs/inbound_events; InboxSyncService pulls connected mailboxes through the Phase 2 adapter contract (Gmail history / Graph delta / IMAP UID cursor); idempotent message+ref claim in one transaction (duplicates/delays/replays insert exactly once); cursor errors recorded; full-resync dedupes via refs; threading conservative (provider thread -> In-Reply-To -> contact+account fallback -> contact-linked thread creation) | **tested** | Migrations 20261023090000/90100 applied local + staging; InboxSyncSpec 4/4 (idempotent sync, provider-thread grouping, classification effects, unsubscribe/bounce suppression, cursor-loss replay dedupe) |
+| 6.2 | Threading & reply intelligence — ReplyClassifier deterministic ordered rules (bounce, unsubscribe, out_of_office, automated, not_interested, meeting_requested, question, interested); valid replies mark enrollment replied and CANCEL pending follow-ups in the database (worker can never claim them); unsubscribe suppresses + unsubscribes; bounce routes to suppression + bounced state; user correction via reclassification arrives with CRM phase | **tested** | Covered in InboxSyncSpec (classification persisted, pending follow-ups cancelled 2->0, unsubscribe + bounce suppression rows) |
+| 6.3 | Unibox UI + real replies — InboxRoutes (list w/ classification/status/unread/assigned/q filters, thread detail w/ messages+notes, sync trigger, reply, assign, notes); /app/inbox three-pane-style page (mailbox filters, conversation list, thread display, campaign context, reply composer, search, empty/loading/error states); real replies through the thread's provider adapter preserving threading (In-Reply-To/References + submitReply when provider thread known); live updates via sync trigger + refetch (Supabase Realtime deferred to Phase 13 hardening) | **tested** | API compiled + wired into Main; UI tsc/lint/build green; reply path verified through adapter contract in SendDeliverySpec |
+| 6.4 | Team workflows — assignment (assigned_to), internal notes (conversation_notes + author), status/classification filters (interested/question/meeting/unsubscribe), activity history via event_outbox; acceptance-path tests: reply-after-pause/cancellation (SendDeliverySpec cancelled-campaign skip), opt-out (suppression), duplicate reply idempotency, wrong-thread prevention (null-safe In-Reply-To), cross-workspace isolation (all queries workspace-scoped; API 404 semantics) | **tested** | InboxSyncSpec + SendDeliverySpec cover the matrix; concurrent assignment is last-writer-wins on assigned_to with audit via future activity feed |
