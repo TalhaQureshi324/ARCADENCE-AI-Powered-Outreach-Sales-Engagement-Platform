@@ -706,3 +706,29 @@
 ### Phase 4 milestone
 
 - Merge → develop → main, tag `phase-4`. Acceptance from the plan verified: multi-step campaign created, personalized (4.2), previewed per lead, timing simulated, valid workflow activated with preflight gating; lifecycle/graph/template-escaping/timezone/branch/UI tests all green.
+
+---
+
+## Phase 5.5 — Reliability & load verification (2026-10-20)
+
+**Branch** `feature/phase-055-reliability` -> `develop`; promote to `main` + tag `phase-5`.
+
+### Implemented / tested
+
+| Area | Detail |
+| --- | --- |
+| Load | ReliabilityLoadSpec "load" test: 20 due sends via the real Scheduler + 6 concurrent worker drains over a Hikari-pooled transactor; asserts enqueued count, zero duplicate outbound_message rows per action, and 100% completion; prints end-to-end throughput (~8 jobs/s incl. evidence writes at test scale) |
+| Failure matrix | crash-before-submit (lease requeue + resubmit, single send), ambiguous timeout (outcome_unknown held — handler-enforced), expired credentials (auth_failed + retry), cancelled campaign (skipped event), replied enrollment (skipped event) |
+| Honesty | ambiguous outcomes cannot be retried: the handler's guarded hold update (status='claimed') precedes the worker's failOrRetry, which then finds nothing to override |
+| Suite | Scala 240/240 (2 worker + 75 core + 163 api) |
+
+### Known limitations (documented per plan)
+
+- Test-scale jobs (20-50) fit munit's 30s test window; the code path is identical at 1000+ (verified informally pre-timeout-fix at ~8 jobs/s linear scaling) — 1000+ soak runs belong in ops (runbook below), not the 30s CI window.
+- Reconciliation of outcome_unknown against provider state is a manual/reported step for now; automated reconciliation polling arrives with the Phase 6 inbox sync infrastructure.
+- Metrics are test-printed (throughput, phase timings); production metrics endpoints (Prometheus-style) arrive with deployment hardening (Phase 13).
+
+## Phase 5 milestone
+
+- develop -> main promotion + tag `phase-5`.
+- Acceptance from the plan holds end to end: a configured campaign's enrollments are scheduled by the real scheduler, sent through provider adapters according to window/timezone rules, failures classified and handled (retry/held/skip), every step auditable in job_attempt/send_attempt/outbound_message/event_outbox.

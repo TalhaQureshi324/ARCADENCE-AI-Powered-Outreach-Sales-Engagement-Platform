@@ -63,6 +63,8 @@ lazy val core = (project in file("modules/core"))
       "org.typelevel"  %% "cats-core"        % V.catsCore,
       "org.typelevel"  %% "cats-effect"      % V.catsEffect,
       "org.tpolecat"   %% "doobie-core"      % V.doobie,
+      "org.tpolecat"   %% "doobie-postgres"  % V.doobie,
+      "org.tpolecat"   %% "doobie-hikari"  % V.doobie,
       "org.postgresql" % "postgresql"        % V.postgres,
       // Provider adapters (Phase 2): HTTP access to Google/Microsoft/SMTP worlds
       "org.http4s"     %% "http4s-client"       % V.http4s,
@@ -112,7 +114,7 @@ lazy val api = (project in file("apps/api"))
 
 lazy val worker = (project in file("apps/worker"))
   .enablePlugins(JavaAppPackaging, DockerPlugin)
-  .dependsOn(core)
+  .dependsOn(core, api)
   .settings(
     commonSettings,
     name := "arcadence-worker",
@@ -120,6 +122,11 @@ lazy val worker = (project in file("apps/worker"))
       "org.typelevel"  %% "cats-effect"    % V.catsEffect,
       "org.typelevel"  %% "log4cats-core"  % V.log4cats,
       "org.typelevel"  %% "log4cats-slf4j" % V.log4cats,
+      "org.tpolecat"   %% "doobie-core"    % V.doobie,
+      "org.tpolecat"   %% "doobie-hikari"  % V.doobie,
+      "org.postgresql" % "postgresql"      % V.postgres,
+      "io.circe"       %% "circe-core"     % V.circe,
+      "io.circe"       %% "circe-parser"   % V.circe,
       "ch.qos.logback" % "logback-classic" % V.logback
     )
   )

@@ -37,7 +37,7 @@ import java.util.UUID
   * credentials are absent, the registry exposes no adapter for it and the
   * connect endpoints answer "not configured" honestly (Phases 2.2/2.3).
   */
-final class ProviderRegistry(
+class ProviderRegistry(
     val encryptor: CredentialEncryptor,
     val stateSigner: OAuthStateSigner,
     val appOrigin: String,
