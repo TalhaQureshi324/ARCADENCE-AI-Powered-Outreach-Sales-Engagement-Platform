@@ -26,6 +26,11 @@ import scala.concurrent.duration.*
   */
 object JobQueue:
 
+  /** Worker-side execution contract for a claimed job. */
+  trait Handler:
+    def handles(actionType: String): Boolean
+    def run(job: Claimed): IO[Outcome]
+
   sealed trait Outcome
   case object Done extends Outcome
   final case class Retry(reason: String, after: FiniteDuration) extends Outcome
@@ -71,6 +76,49 @@ object JobQueue:
         on conflict (idempotency_key) do nothing
         returning id
       """.query[UUID].option.map(_.isDefined).transact(transactor)
+
+    /** Claims one specific action (test/ops helper) under the same lease rules.
+      */
+    def claimBatchFor(actionId: UUID, workerId: String): IO[Option[Claimed]] =
+      sql"""
+        update public.scheduled_action sa
+        set status = 'claimed', locked_at = now(), locked_by = $workerId,
+            attempts = sa.attempts + 1
+        where sa.id = $actionId and sa.status in ('pending', 'failed')
+        returning sa.id, sa.workspace_id, sa.type::text, sa.enrollment_id,
+                  sa.contact_id, sa.email_account_id, sa.attempts, sa.max_attempts,
+                  sa.payload::text, sa.locked_by
+      """
+        .query[
+          (
+              UUID,
+              UUID,
+              String,
+              Option[UUID],
+              Option[UUID],
+              Option[UUID],
+              Int,
+              Int,
+              String,
+              String
+          )
+        ]
+        .map { t =>
+          Claimed(
+            t._1,
+            t._2,
+            t._3,
+            t._4,
+            t._5,
+            t._6,
+            t._7,
+            t._8,
+            io.circe.parser.parse(t._9).getOrElse(Json.Null),
+            t._10
+          )
+        }
+        .option
+        .transact(transactor)
 
     /** Atomically claims up to `limit` due jobs for `workerId`. */
     def claimBatch(workerId: String, limit: Int): IO[List[Claimed]] =

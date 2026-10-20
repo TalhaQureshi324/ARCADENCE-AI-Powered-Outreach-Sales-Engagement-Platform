@@ -301,3 +301,16 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
 - The worker is a separate process (apps/worker) that recovers expired leases on boot and resumes after restart; ambiguous send outcomes (5.3) are held for reconciliation, never retried blind.
 
 **Consequences.** Duplicate suppression is structural; crash recovery is bounded by the lease timeout; throughput scales horizontally with worker count without coordination beyond SKIP LOCKED.
+
+## ADR-0030 - Delivery honesty: reconciliation over blind retries (Phase 5.3/5.4)
+
+**Date:** 2026-10-20 - **Status:** accepted
+
+**Decision.**
+- Unreachable/timeout transport errors classify as outcome_unknown and the action is dead-lettered as failed with last_error outcome_unknown - held for reconciliation. A network timeout after submission is NOT evidence of non-delivery; 5.5 adds provider-state reconciliation before any resend.
+- Crash-after-acceptance is detected at claim time: if outbound_message already holds a sent/delivered row for the action (unique action_id index), the handler completes the action with a reconciled event and never submits again.
+- Circuit breaker is per sending account: three consecutive authentication failures suspend the account (status suspended + account_health_event) and the worker defers jobs against it until an operator reconnects. Breaker state is per-account, never per-campaign or global.
+- Rate limiting honors Retry-After where the adapter surfaces it, else provider-tuned defaults (auth 10m, rate 2m, generic 5m).
+- Adapter contract (Handler) lives in core so the worker process can dispatch API-defined handlers without a module cycle.
+
+**Consequences.** No unintended duplicates across crash/ambiguity paths at the cost of holding ambiguous actions for operator/reconciler review; 5.5 load tests verify these guarantees under concurrency.

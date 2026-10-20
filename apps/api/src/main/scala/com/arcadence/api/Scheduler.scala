@@ -47,7 +47,6 @@ object Scheduler:
   def enqueueDue(
       repos: CampaignRepos,
       jobQueue: JobQueue.Repo,
-      leadsRepos: LeadsRepos,
       perWorkspace: Int,
       batch: Int
   ): IO[Int] =
