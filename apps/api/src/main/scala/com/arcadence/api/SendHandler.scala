@@ -399,12 +399,24 @@ final class SendHandler(
                           ) *>
                           (status match
                             case "outcome_unknown" =>
-                              // Network ambiguity: hold for reconciliation — never retry blind.
-                              IO(
-                                JobQueue.Fail(
-                                  "outcome_unknown — held for reconciliation"
-                                )
-                              )
+                              // Network ambiguity: hold for reconciliation — never
+                              // retry blind. The guarded hold update means the
+                              // worker's later failOrRetry (status='claimed')
+                              // finds nothing to retry.
+                              val hold: doobie.ConnectionIO[Unit] = sql"""
+                                update public.scheduled_action
+                                set status = 'failed', locked_at = null,
+                                    last_error = 'outcome_unknown — held for reconciliation'
+                                where id = ${job.id} and status = 'claimed' and locked_by = ${job.lockedBy}
+                              """.update.run.void
+                              val res: IO[JobQueue.Outcome] =
+                                hold.transact(xa) *>
+                                  IO.pure(
+                                    JobQueue.Fail(
+                                      "outcome_unknown — held for reconciliation"
+                                    ): JobQueue.Outcome
+                                  )
+                              res
                             case "authentication_failed" =>
                               guard.recordAuthFailure(
                                 ctx.workspaceId,

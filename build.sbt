@@ -64,6 +64,7 @@ lazy val core = (project in file("modules/core"))
       "org.typelevel"  %% "cats-effect"      % V.catsEffect,
       "org.tpolecat"   %% "doobie-core"      % V.doobie,
       "org.tpolecat"   %% "doobie-postgres"  % V.doobie,
+      "org.tpolecat"   %% "doobie-hikari"  % V.doobie,
       "org.postgresql" % "postgresql"        % V.postgres,
       // Provider adapters (Phase 2): HTTP access to Google/Microsoft/SMTP worlds
       "org.http4s"     %% "http4s-client"       % V.http4s,
