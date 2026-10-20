@@ -132,7 +132,6 @@ final class SchedulerIntegrationSpec extends CatsEffectSuite:
       enq <- Scheduler.enqueueDue(
         repos,
         queue,
-        leadsRepos,
         perWorkspace = 5,
         batch = 50
       )
@@ -142,7 +141,7 @@ final class SchedulerIntegrationSpec extends CatsEffectSuite:
           .unique
           .transact(xa)
       // cap is 1/day on the seeded account: a second pass must find nothing to allocate
-      second <- Scheduler.enqueueDue(repos, queue, leadsRepos, 5, 50)
+      second <- Scheduler.enqueueDue(repos, queue, 5, 50)
       pending <- sql"""
         select count(*) from public.scheduled_action sa
         join public.campaign_enrollment e on e.id = sa.enrollment_id
@@ -188,7 +187,7 @@ final class SchedulerIntegrationSpec extends CatsEffectSuite:
   test("paused campaigns and disconnected mailboxes produce no enqueues") {
     for
       enrPaused <- seedCampaign("sched-paused", status = "paused")
-      n1 <- Scheduler.enqueueDue(repos, queue, leadsRepos, 5, 50)
+      n1 <- Scheduler.enqueueDue(repos, queue, 5, 50)
       // disconnect the single mailbox of a fresh active campaign
       enrDisc <- seedCampaign("sched-disc")
       _ <- sql"""
@@ -197,7 +196,7 @@ final class SchedulerIntegrationSpec extends CatsEffectSuite:
                      join public.campaign_enrollment e on e.campaign_id = m.campaign_id
                      where e.id = $enrDisc)
       """.update.run.transact(xa)
-      n2 <- Scheduler.enqueueDue(repos, queue, leadsRepos, 5, 50)
+      n2 <- Scheduler.enqueueDue(repos, queue, 5, 50)
       pendingPaused <-
         sql"select count(*) from public.scheduled_action where enrollment_id = $enrPaused"
           .query[Long]
@@ -222,7 +221,7 @@ final class SchedulerIntegrationSpec extends CatsEffectSuite:
         update public.contact set state = 'unsubscribed'
         where id = (select contact_id from public.campaign_enrollment where id = $enrSup)
       """.update.run.transact(xa)
-      _ <- Scheduler.enqueueDue(repos, queue, leadsRepos, 5, 50)
+      _ <- Scheduler.enqueueDue(repos, queue, 5, 50)
       pendingSup <-
         sql"select count(*) from public.scheduled_action where enrollment_id = $enrSup"
           .query[Long]
@@ -242,7 +241,7 @@ final class SchedulerIntegrationSpec extends CatsEffectSuite:
         winStart = LocalTime.of(3, 0),
         winEnd = LocalTime.of(3, 1)
       )
-      _ <- Scheduler.enqueueDue(repos, queue, leadsRepos, 5, 50)
+      _ <- Scheduler.enqueueDue(repos, queue, 5, 50)
       deferred <-
         sql"select next_action_at from public.campaign_enrollment where id = $enr"
           .query[OffsetDateTime]

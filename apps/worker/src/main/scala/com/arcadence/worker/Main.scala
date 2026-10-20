@@ -34,6 +34,10 @@ object Main extends IOApp:
                 ExitCode.Error
               )
             case Right(jdbc) =>
+              // Provider registry: built when console credentials exist; SMTP/IMAP
+              // adapters work regardless, OAuth sends degrade to explicit failures.
+              val workerRegistry: Option[com.arcadence.api.ProviderRegistry] =
+                None
               given doobie.Transactor[IO] =
                 doobie.util.transactor.Transactor.fromDriverManager[IO](
                   "org.postgresql.Driver",
@@ -44,12 +48,20 @@ object Main extends IOApp:
                 )
               val cfg = SendWorker.Config.fromEnv(sys.env)
               given org.typelevel.log4cats.Logger[IO] = logger
+              val xa = summon[doobie.Transactor[IO]]
+              val handlers: List[SendWorker.Handler] = List(
+                new com.arcadence.api.SendHandler(
+                  xa = xa,
+                  registry = workerRegistry,
+                  emailAccounts = new com.arcadence.api.EmailAccountRepos(xa),
+                  guard = new com.arcadence.api.AccountGuard(xa),
+                  events = new com.arcadence.api.Events(xa)
+                )
+              )
               SendWorker
                 .stream(
-                  new com.arcadence.core.jobs.JobQueue.Repo(
-                    summon[doobie.Transactor[IO]]
-                  ),
-                  List(SendWorker.GenericHandler),
+                  new com.arcadence.core.jobs.JobQueue.Repo(xa),
+                  handlers,
                   cfg
                 )
                 .compile

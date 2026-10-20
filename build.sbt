@@ -113,7 +113,7 @@ lazy val api = (project in file("apps/api"))
 
 lazy val worker = (project in file("apps/worker"))
   .enablePlugins(JavaAppPackaging, DockerPlugin)
-  .dependsOn(core)
+  .dependsOn(core, api)
   .settings(
     commonSettings,
     name := "arcadence-worker",

@@ -20,9 +20,7 @@ import scala.concurrent.duration.*
   */
 object SendWorker:
 
-  trait Handler:
-    def handles(actionType: String): Boolean
-    def run(job: JobQueue.Claimed): IO[JobQueue.Outcome]
+  type Handler = com.arcadence.core.jobs.JobQueue.Handler
 
   /** Placeholder until the send handler arrives in 5.3. */
   object GenericHandler extends Handler:
