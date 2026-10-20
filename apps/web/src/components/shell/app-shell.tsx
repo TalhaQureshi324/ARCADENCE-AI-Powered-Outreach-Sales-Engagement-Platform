@@ -41,9 +41,9 @@ interface ShellUser {
   displayName: string;
 }
 
-const NAV_ITEMS = [
+const NAV_ITEMS: { href: string; label: string; icon: React.ComponentType<{ size?: number }>; active?: boolean; soon?: boolean }[] = [
   { href: "/app", label: "Dashboard", icon: LayoutDashboard, active: true },
-  { href: "/soon/inbox", label: "Inbox", icon: Inbox, soon: true },
+  { href: "/app/inbox", label: "Inbox", icon: Inbox },
   { href: "/app/campaigns", label: "Campaigns", icon: BarChart3 },
   { href: "/app/leads", label: "Leads", icon: Users },
   { href: "/app/email-accounts", label: "Email Accounts", icon: Mail },

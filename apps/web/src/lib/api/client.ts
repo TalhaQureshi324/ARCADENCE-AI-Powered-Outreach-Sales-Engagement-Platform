@@ -950,3 +950,82 @@ export const composerApi = {
       }),
   },
 };
+
+// -- Unibox (Phase 6) -----------------------------------------------------------
+
+export interface InboxThreadDto {
+  id: string;
+  emailAccountId: string;
+  contactEmail: string | null;
+  contactName: string | null;
+  campaignName: string | null;
+  subject: string;
+  status: string;
+  classification: string;
+  unread: boolean;
+  assignedTo: string | null;
+  assignedToName: string | null;
+  lastMessageAt: string;
+}
+
+export interface InboxMessageDto {
+  id: string;
+  direction: string;
+  fromAddress: string;
+  subject: string;
+  bodyText: string;
+  bodyHtml: string;
+  occurredAt: string;
+}
+
+export interface InboxNoteDto {
+  id: string;
+  authorName: string | null;
+  body: string;
+  createdAt: string;
+}
+
+export interface InboxThreadDetailDto {
+  thread: InboxThreadDto;
+  messages: InboxMessageDto[];
+  notes: InboxNoteDto[];
+}
+
+export const inboxApi = {
+  list: (
+    workspaceId: string,
+    filters: { classification?: string; status?: string; unread?: boolean; q?: string } = {},
+  ) => {
+    const p = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
+    });
+    const qs = p.toString();
+    return apiFetch<{ items: InboxThreadDto[]; nextCursor: string | null }>(
+      `/api/v1/workspaces/${workspaceId}/inbox${qs ? `?${qs}` : ""}`,
+    );
+  },
+  sync: (workspaceId: string) =>
+    apiFetch<{ items: InboxThreadDto[]; nextCursor: string | null }>(
+      `/api/v1/workspaces/${workspaceId}/inbox/sync`,
+      { method: "POST" },
+    ),
+  get: (workspaceId: string, threadId: string) =>
+    apiFetch<InboxThreadDetailDto>(`/api/v1/workspaces/${workspaceId}/inbox/${threadId}`),
+  reply: (workspaceId: string, threadId: string, bodyText: string) =>
+    apiFetch<InboxMessageDto>(`/api/v1/workspaces/${workspaceId}/inbox/${threadId}/reply`, {
+      method: "POST",
+      body: JSON.stringify({ bodyText }),
+    }),
+  assign: (workspaceId: string, threadId: string, assignedTo: string | null) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/inbox/${threadId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ assignedTo }),
+    }),
+  addNote: (workspaceId: string, threadId: string, body: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/inbox/${threadId}/notes`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    }),
+};
+

@@ -141,7 +141,12 @@ final case class InboxMessage(
     internetMessageId: Option[String],
     fromAddress: String,
     subject: Option[String],
-    receivedAt: OffsetDateTime
+    receivedAt: OffsetDateTime,
+    /** Body content when the adapter fetches it (adapters fill these
+      * incrementally; sync persists whatever is available).
+      */
+    textBody: Option[String] = None,
+    htmlBody: Option[String] = None
 )
 
 final case class HealthSnapshot(
