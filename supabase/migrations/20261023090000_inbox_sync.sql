@@ -18,7 +18,7 @@ create table public.email_threads (
                      ('unknown','interested','not_interested','question','meeting_requested',
                       'unsubscribe','out_of_office','automated','bounce')),
   unread           boolean not null default true,
-  assigned_to      uuid references auth.users (id) on delete set null,
+  assigned_to      uuid,                       -- = auth.users.id (FK added conditionally below)
   last_message_at  timestamptz not null default now(),
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now()
@@ -101,3 +101,14 @@ create policy email_threads_select_for_members on public.email_threads
   for select using (public.is_workspace_member(workspace_id));
 create policy email_messages_select_for_members on public.email_messages
   for select using (public.is_workspace_member(workspace_id));
+
+-- Conditional FK to Supabase auth (skipped on plain PostgreSQL in CI)
+do $$
+begin
+  if exists (select 1 from information_schema.schemata where schema_name = 'auth') then
+    alter table public.email_threads
+      add constraint email_threads_assigned_to_fkey foreign key (assigned_to)
+      references auth.users (id) on delete set null;
+  end if;
+end
+$$;

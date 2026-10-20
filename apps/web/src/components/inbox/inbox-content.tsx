@@ -230,7 +230,7 @@ export function InboxContent() {
                   </span>
                   <span>{new Date(m.occurredAt).toLocaleString()}</span>
                 </div>
-                <div className="text-foreground whitespace-pre-wrap text-sm">
+                <div className="text-foreground text-sm whitespace-pre-wrap">
                   {m.bodyText || m.bodyHtml.replace(/<[^>]+>/g, " ") || "(no body fetched)"}
                 </div>
               </div>
