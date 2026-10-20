@@ -1028,4 +1028,3 @@ export const inboxApi = {
       body: JSON.stringify({ body }),
     }),
 };
-
