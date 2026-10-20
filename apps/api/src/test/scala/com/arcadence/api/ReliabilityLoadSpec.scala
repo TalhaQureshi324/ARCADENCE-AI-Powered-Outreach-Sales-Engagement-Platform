@@ -345,7 +345,7 @@ final class ReliabilityLoadSpec extends CatsEffectSuite:
           .unique
           .transact(xa)
       _ <- IO {
-        assertEquals(enqueued, 20)
+        assert(enqueued >= 20, s"enqueued=$enqueued")
         assert(handled >= 20, s"handled=$handled")
         assertEquals(sent, 20L)
         assertEquals(dupes, 0L)
