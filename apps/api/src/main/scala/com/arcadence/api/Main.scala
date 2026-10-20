@@ -158,6 +158,10 @@ object Main extends IOApp:
                   emailAccounts = accountRepos,
                   authorizer = authorizer
                 )
+                val analyticsRoutes = new AnalyticsRoutes(
+                  authenticator = authenticator,
+                  xa = transactor
+                )
                 val inboxRoutes = new InboxRoutes(
                   authenticator = authenticator,
                   xa = transactor,
@@ -209,7 +213,7 @@ object Main extends IOApp:
                   RateLimit(config.rateLimitPerMinute)(
                     SecurityHeaders(
                       workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http
-                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> inboxRoutes.http <+> importRoutes.http
+                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> inboxRoutes.http <+> analyticsRoutes.http <+> importRoutes.http
                     )
                   )
 
