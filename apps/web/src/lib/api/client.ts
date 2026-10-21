@@ -1081,3 +1081,31 @@ export const analyticsApi = {
     return res;
   },
 };
+
+// -- Deliverability (Phase 8) ----------------------------------------------------
+
+export const deliverabilityApi = {
+  checkDomain: (workspaceId: string, domain: string, provider: string, dkimSelectors: string[]) =>
+    apiFetch<{ domain: string; overall: string; findings: { record: string; ok: boolean; message: string; remediation: string }[] }>(
+      `/api/v1/workspaces/${workspaceId}/deliverability/domains/check`,
+      { method: "POST", body: JSON.stringify({ domain, provider, dkimSelectors }) },
+    ),
+  domainHistory: (workspaceId: string, domain: string) =>
+    apiFetch<{ history: { checkedAt: string; status: string; reasons: unknown }[] }>(
+      `/api/v1/workspaces/${workspaceId}/deliverability/domains/${encodeURIComponent(domain)}/history`,
+    ),
+  accountHealth: (workspaceId: string, accountId: string) =>
+    apiFetch<{ status: string; reasons: string[]; bounceHardRate: number; authFailures: number }>(
+      `/api/v1/workspaces/${workspaceId}/deliverability/accounts/${accountId}/health`,
+      { method: "POST" },
+    ),
+  createPlacementTest: (workspaceId: string, emailAccountId: string, sampleSize: number, seedAddresses: string[]) =>
+    apiFetch<{ id: string; status: string; statusReason: string | null; sampleSize: number }>(
+      `/api/v1/workspaces/${workspaceId}/deliverability/placement-tests`,
+      { method: "POST", body: JSON.stringify({ emailAccountId, sampleSize, seedAddresses }) },
+    ),
+  placementTests: (workspaceId: string) =>
+    apiFetch<{ id: string; status: string; statusReason: string | null; sampleSize: number }[]>(
+      `/api/v1/workspaces/${workspaceId}/deliverability/placement-tests`,
+    ),
+};
