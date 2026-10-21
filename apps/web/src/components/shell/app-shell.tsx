@@ -3,22 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import {
-  BarChart3,
-  Bell,
-  Building2,
-  Command,
-  Inbox,
-  LayoutDashboard,
-  LogOut,
-  Mail,
-  Moon,
-  Plus,
-  Search,
-  Settings,
-  Sun,
-  Users,
-} from "lucide-react";
+import { BarChart3, Bell, Building2, Command, Inbox, LayoutDashboard, LogOut, Mail, Moon, Plus, Search, Settings, Shield, Sun, Users } from "lucide-react";
 
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +36,7 @@ const NAV_ITEMS: {
   { href: "/app", label: "Dashboard", icon: LayoutDashboard, active: true },
   { href: "/app/inbox", label: "Inbox", icon: Inbox },
   { href: "/app/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/app/deliverability", label: "Deliverability", icon: Shield },
   { href: "/app/campaigns", label: "Campaigns", icon: BarChart3 },
   { href: "/app/leads", label: "Leads", icon: Users },
   { href: "/app/email-accounts", label: "Email Accounts", icon: Mail },
