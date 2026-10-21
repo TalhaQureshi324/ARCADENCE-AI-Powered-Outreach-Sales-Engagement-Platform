@@ -99,7 +99,7 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 2026-10-11 | **Phase 0 complete** — promoted to `main` | Tag `phase-0`; see `docs/HANDOFF.md` for hashes |
 | 2026-10-16 | **Phase 3 complete** — promoted to `main` | Tag `phase-3`; Scala 188/188, Playwright 12/12; see `docs/HANDOFF.md` |
 | 2026-10-16 | **Phase 4 complete** — promoted to `main` | Tag `phase-4`; Scala 223/223, Playwright 15/15; see `docs/HANDOFF.md` |
-| 2026-10-21 | **Phase 10 complete** — promoted to `main` | Tag `phase-10`; Scala 201/201, Playwright 16/16; see `docs/HANDOFF.md` |
+| 2026-10-21 | **Phase 10 complete** — promoted to `main` | Tag `phase-10`; Scala 267/267 (75 core + 2 worker + 190 api), Playwright 16/16; see `docs/HANDOFF.md` |
 
 ## Known blockers
 
