@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BadgeCheck, Bookmark, Search, ShieldAlert, Sparkles, Trash2, TriangleAlert } from "lucide-react";
+import {
+  BadgeCheck,
+  Bookmark,
+  Search,
+  ShieldAlert,
+  Sparkles,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
 
 import { Alert } from "@/components/ui/alert";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
@@ -25,9 +33,7 @@ import {
 } from "@/lib/api/client";
 
 type LoadState<T> =
-  | { kind: "loading" }
-  | { kind: "loaded"; data: T }
-  | { kind: "error"; message: string };
+  { kind: "loading" } | { kind: "loaded"; data: T } | { kind: "error"; message: string };
 
 type SavedSearch = { id: string; name: string; filters: Record<string, string> };
 
@@ -58,7 +64,9 @@ export function LeadFinderContent() {
   const workspaceId = selected?.id ?? "";
   const { toast } = useToast();
 
-  const [providers, setProviders] = useState<LoadState<LeadFinderProviderDto[]>>({ kind: "loading" });
+  const [providers, setProviders] = useState<LoadState<LeadFinderProviderDto[]>>({
+    kind: "loading",
+  });
   const [credits, setCredits] = useState<LoadState<number>>({ kind: "loading" });
   const [lists, setLists] = useState<LoadState<LeadListDto[]>>({ kind: "loading" });
   const [searches, setSearches] = useState<LoadState<LeadFinderSearchDto[]>>({ kind: "loading" });
@@ -209,9 +217,7 @@ export function LeadFinderContent() {
 
   const eligibleCount =
     results.kind === "loaded"
-      ? results.data.filter(
-          (c) => c.email && c.permittedUse !== "sandbox_only",
-        ).length
+      ? results.data.filter((c) => c.email && c.permittedUse !== "sandbox_only").length
       : 0;
 
   return (
@@ -255,7 +261,10 @@ export function LeadFinderContent() {
                   <span className="text-muted-foreground mb-1 block text-xs font-medium">
                     {f.label}
                     {unsupported && (
-                      <span className="ml-1 text-warning" title={`${f.label} is not supported by the active provider`}>
+                      <span
+                        className="text-warning ml-1"
+                        title={`${f.label} is not supported by the active provider`}
+                      >
                         · unsupported
                       </span>
                     )}
@@ -265,7 +274,11 @@ export function LeadFinderContent() {
                     onChange={(e) => setFilters({ ...filters, [f.key]: e.target.value })}
                     placeholder={f.placeholder}
                     disabled={unsupported}
-                    title={unsupported ? `The active provider does not support filtering by ${f.label}` : undefined}
+                    title={
+                      unsupported
+                        ? `The active provider does not support filtering by ${f.label}`
+                        : undefined
+                    }
                   />
                 </label>
               );
@@ -346,8 +359,8 @@ export function LeadFinderContent() {
                 {results.data.some((c) => c.permittedUse === "sandbox_only") && (
                   <Alert variant="warning">
                     <TriangleAlert size={14} className="mr-1.5 inline" />
-                    Some results are sandbox data (sandbox-only). They are labeled for testing and can
-                    never be added to outreach lists.
+                    Some results are sandbox data (sandbox-only). They are labeled for testing and
+                    can never be added to outreach lists.
                   </Alert>
                 )}
                 <Table>
@@ -385,7 +398,8 @@ export function LeadFinderContent() {
                         <TD>
                           <div className="text-sm">{c.companyName ?? "—"}</div>
                           <div className="text-muted-foreground text-xs">
-                            {[c.industry, c.region, c.companySize].filter(Boolean).join(" · ") || "—"}
+                            {[c.industry, c.region, c.companySize].filter(Boolean).join(" · ") ||
+                              "—"}
                           </div>
                         </TD>
                         <TD>
@@ -401,14 +415,19 @@ export function LeadFinderContent() {
                           ) : (
                             <Badge tone="primary">licensed</Badge>
                           )}
-                          <div className="text-muted-foreground mt-0.5 text-xs">via {c.provider}</div>
+                          <div className="text-muted-foreground mt-0.5 text-xs">
+                            via {c.provider}
+                          </div>
                         </TD>
                       </TR>
                     ))}
                   </TBody>
                 </Table>
                 <div className="mt-4 flex justify-end">
-                  <Button onClick={() => setAddOpen(true)} disabled={eligibleCount === 0 || !activeSearchId}>
+                  <Button
+                    onClick={() => setAddOpen(true)}
+                    disabled={eligibleCount === 0 || !activeSearchId}
+                  >
                     Add eligible to list ({eligibleCount})
                   </Button>
                 </div>
@@ -439,14 +458,24 @@ export function LeadFinderContent() {
                       title="Load results"
                     >
                       <div className="flex items-center gap-2">
-                        <Badge tone={s.status === "done" ? "success" : s.status === "failed" ? "danger" : "neutral"}>
+                        <Badge
+                          tone={
+                            s.status === "done"
+                              ? "success"
+                              : s.status === "failed"
+                                ? "danger"
+                                : "neutral"
+                          }
+                        >
                           {s.status}
                         </Badge>
                         <span className="text-muted-foreground text-xs">
                           {s.resultsCount} results · {s.creditsCharged} credits
                         </span>
                       </div>
-                      {s.error && <div className="text-danger mt-0.5 truncate text-xs">{s.error}</div>}
+                      {s.error && (
+                        <div className="text-danger mt-0.5 truncate text-xs">{s.error}</div>
+                      )}
                     </button>
                   </li>
                 ))}
@@ -468,7 +497,9 @@ export function LeadFinderContent() {
           )}
           {lists.kind === "loaded" && lists.data.length > 0 && (
             <label className="block">
-              <span className="text-muted-foreground mb-1 block text-xs font-medium">Target list</span>
+              <span className="text-muted-foreground mb-1 block text-xs font-medium">
+                Target list
+              </span>
               <select
                 value={chosenListId}
                 onChange={(e) => setChosenListId(e.target.value)}
