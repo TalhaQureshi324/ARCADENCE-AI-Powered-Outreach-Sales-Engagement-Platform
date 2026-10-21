@@ -17,6 +17,7 @@ import {
   Search,
   Settings,
   Shield,
+  Sparkles,
   Sun,
   Users,
 } from "lucide-react";
@@ -55,6 +56,7 @@ const NAV_ITEMS: {
   { href: "/app/deliverability", label: "Deliverability", icon: Shield },
   { href: "/app/campaigns", label: "Campaigns", icon: BarChart3 },
   { href: "/app/leads", label: "Leads", icon: Users },
+  { href: "/app/leadfinder", label: "Lead Finder", icon: Sparkles },
   { href: "/app/email-accounts", label: "Email Accounts", icon: Mail },
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];

@@ -2,7 +2,7 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-10-20 (10 — Phase 10 in progress)
+**Last updated:** 2026-10-21 (10 — Phase 10 complete)
 
 ---
 
@@ -25,13 +25,13 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 2 | Email account connections — Gmail OAuth, Microsoft OAuth, SMTP/IMAP, credential storage | **complete** (`phase-2`) |
 | 3 | Lead management — leads, lists, import/export, verification hooks, suppression | **complete** (`phase-3`) |
 | 4 | Campaigns & sequences — builder, scheduling, personalization | **complete** (`phase-4`) |
-| 5 | Sending engine — durable send queue, provider submission, tracking, bounce handling | planned (next) |
+| 5 | Sending engine — durable send queue, provider submission, tracking, bounce handling | **complete** (`phase-5`) |
 | 6 | Unified inbox — two-way sync, threading, realtime updates | **complete** (phase-6) |
 | 8 | Deliverability intelligence — monitoring, reputation signals, guidance | **complete** (phase-8) |
-| 7 | CRM — accounts, contacts, deals, pipelines, activity timeline | planned |
-| 8 | Deliverability intelligence — monitoring, reputation signals, guidance | planned |
-| 9 | Analytics & reporting | planned |
-| 10 | Lead Finder, data enrichment and verification marketplace | **in-progress** |
+| 7 | CRM — accounts, contacts, deals, pipelines, activity timeline | **complete** (`phase-7`) |
+| 8 | Deliverability intelligence — monitoring, reputation signals, guidance | **complete** (`phase-8`) |
+| 9 | Analytics & reporting | **complete** (`phase-9`) |
+| 10 | Lead Finder, data enrichment and verification marketplace | **complete** (`phase-10`) |
 | 11 | Billing & plans — Stripe subscriptions, usage limits | planned |
 | 12 | Agency management — multi-client workspaces, team roles, reporting | planned |
 | 13 | Hardening & launch — performance, security audit, production cutover | planned |
@@ -99,6 +99,7 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 2026-10-11 | **Phase 0 complete** — promoted to `main` | Tag `phase-0`; see `docs/HANDOFF.md` for hashes |
 | 2026-10-16 | **Phase 3 complete** — promoted to `main` | Tag `phase-3`; Scala 188/188, Playwright 12/12; see `docs/HANDOFF.md` |
 | 2026-10-16 | **Phase 4 complete** — promoted to `main` | Tag `phase-4`; Scala 223/223, Playwright 15/15; see `docs/HANDOFF.md` |
+| 2026-10-21 | **Phase 10 complete** — promoted to `main` | Tag `phase-10`; Scala 201/201, Playwright 16/16; see `docs/HANDOFF.md` |
 
 ## Known blockers
 
@@ -107,6 +108,17 @@ None.
 ## Manual setup queue
 
 See [`docs/MANUAL_SETUP.md`](MANUAL_SETUP.md) — no items block Phase 3; carried items (Google OAuth client 6a, Entra app 7, EMAIL_ENCRYPTION_KEY backup, branch protection #3, staging DB password rotation) remain pending on the product owner.
+
+### Subphase detail — Phase 10
+
+| # | Subphase | Status | Notes |
+| --- | --- | --- | --- |
+| 10.1 | Lead provider framework — `LeadProvider.Provider` trait in core (search with normalized filters + pagination, enrich, `supportedFilters` capability set); provider errors modeled as values (Timeout/RateLimited/QuotaExceeded/Unauthorized/BadRequest/Unavailable); SandboxProvider with 3 deterministic fixtures all labeled `sandbox_only`; no live provider is fabricated — only agreement-backed adapters are wired (`provider_configs` ready for credentials via env/secret store, never in DB) | **tested** | Exercise through LeadFinderSpec against the sandbox adapter |
+| 10.2 | Waterfall enrichment — providers tried in configured order, first match wins; strictly preview-only (nothing is written to the contact without approval), per-contact enrichment history in `provenance_records`; conflicts impossible to miss because existing values are never overwritten | **tested** | LeadFinderSpec: enrich returns preview fields + provenance rows while `contact.job_title` stays untouched |
+| 10.3 | Credit accounting — append-only `credit_transactions` ledger (reserve/release/charge/refund/grant); balance-checked reservation inside a per-workspace `pg_advisory_xact_lock` (concurrent searches cannot overdraw); deterministic idempotency keys make retries never double-charge or double-refund; reservation released then exact charge applied; refunds on failure or zero results; starter grant (50 credits) via DB trigger until Phase 11 billing replaces it | **tested** | LeadFinderSpec: exact balance math after success (20-3=17), timeout refund (unchanged balance), insufficient credits 402 with zero rows written, two concurrent searches on a 7-credit workspace -> exactly one 402 and no negative balance |
+| 10.4 | Lead Finder UI + saved searches — /app/leadfinder with provider-supported filters (unsupported filters disabled with an explanation), credit balance card, results table with per-contact verification badge, confidence, provider provenance and permitted-use labeling, add-to-list with dedupe/suppression/licensing enforcement reported per category, saved searches in localStorage per workspace, recent-searches history | **tested** | Playwright leadfinder.spec: signup -> search -> provenance labels visible -> sandbox-only blocked from lists (0 eligible) -> balance 50-2 after 2 delivered results |
+
+**Phase 10 milestone** — develop promoted to `main`, tag `phase-10`. Acceptance: an authorized user can search licensed datasets (sandbox today; real providers only after signed agreements), preview provenance, estimate costs, enrich with preview/approval, and only permitted records can ever reach outreach lists.
 
 ### Subphase detail — Phase 5
 
