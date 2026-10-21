@@ -28,6 +28,13 @@ final class DeliverabilitySpec extends CatsEffectSuite:
     logHandler = None
   )
 
+  override def beforeEach(context: munit.BeforeEach): Unit =
+    assume(
+      dbUrl.nonEmpty,
+      "TEST_DATABASE_URL not set — integration checks skipped"
+    )
+    super.beforeEach(context)
+
   private val org = UUID.randomUUID()
   private val ws = UUID.randomUUID()
 
