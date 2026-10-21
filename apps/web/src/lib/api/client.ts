@@ -1086,10 +1086,14 @@ export const analyticsApi = {
 
 export const deliverabilityApi = {
   checkDomain: (workspaceId: string, domain: string, provider: string, dkimSelectors: string[]) =>
-    apiFetch<{ domain: string; overall: string; findings: { record: string; ok: boolean; message: string; remediation: string }[] }>(
-      `/api/v1/workspaces/${workspaceId}/deliverability/domains/check`,
-      { method: "POST", body: JSON.stringify({ domain, provider, dkimSelectors }) },
-    ),
+    apiFetch<{
+      domain: string;
+      overall: string;
+      findings: { record: string; ok: boolean; message: string; remediation: string }[];
+    }>(`/api/v1/workspaces/${workspaceId}/deliverability/domains/check`, {
+      method: "POST",
+      body: JSON.stringify({ domain, provider, dkimSelectors }),
+    }),
   domainHistory: (workspaceId: string, domain: string) =>
     apiFetch<{ history: { checkedAt: string; status: string; reasons: unknown }[] }>(
       `/api/v1/workspaces/${workspaceId}/deliverability/domains/${encodeURIComponent(domain)}/history`,
@@ -1099,7 +1103,12 @@ export const deliverabilityApi = {
       `/api/v1/workspaces/${workspaceId}/deliverability/accounts/${accountId}/health`,
       { method: "POST" },
     ),
-  createPlacementTest: (workspaceId: string, emailAccountId: string, sampleSize: number, seedAddresses: string[]) =>
+  createPlacementTest: (
+    workspaceId: string,
+    emailAccountId: string,
+    sampleSize: number,
+    seedAddresses: string[],
+  ) =>
     apiFetch<{ id: string; status: string; statusReason: string | null; sampleSize: number }>(
       `/api/v1/workspaces/${workspaceId}/deliverability/placement-tests`,
       { method: "POST", body: JSON.stringify({ emailAccountId, sampleSize, seedAddresses }) },
