@@ -75,7 +75,7 @@ create table public.crm_task (
 );
 create table public.crm_task_assignment (
   task_id uuid not null references public.crm_task (id) on delete cascade,
-  user_id uuid not null references auth.users (id) on delete cascade,
+  user_id uuid not null,                       -- = auth.users.id (FK added conditionally below)
   primary key (task_id, user_id)
 );
 create table public.crm_reminder (
@@ -106,3 +106,14 @@ create policy crm_activity_select_for_members on public.crm_activity for select 
 create policy crm_task_select_for_members on public.crm_task for select using (public.is_workspace_member(workspace_id));
 create policy crm_reminder_select_for_members on public.crm_reminder for select using (
   exists (select 1 from public.crm_task t where t.id = task_id and public.is_workspace_member(t.workspace_id)));
+
+-- Conditional FKs to Supabase auth (skipped on plain PostgreSQL in CI)
+do $$
+begin
+  if exists (select 1 from information_schema.schemata where schema_name = 'auth') then
+    alter table public.crm_task_assignment
+      add constraint crm_task_assignment_user_fkey foreign key (user_id)
+      references auth.users (id) on delete cascade;
+  end if;
+end
+$$;
