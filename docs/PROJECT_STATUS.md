@@ -2,7 +2,7 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-10-20 (8.4 — Phase 8 complete)
+**Last updated:** 2026-10-20 (10 — Phase 10 in progress)
 
 ---
 
@@ -31,7 +31,7 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 7 | CRM — accounts, contacts, deals, pipelines, activity timeline | planned |
 | 8 | Deliverability intelligence — monitoring, reputation signals, guidance | planned |
 | 9 | Analytics & reporting | planned |
-| 10 | AI workflows — assisted copy, replies, lead scoring | planned |
+| 10 | Lead Finder, data enrichment and verification marketplace | **in-progress** |
 | 11 | Billing & plans — Stripe subscriptions, usage limits | planned |
 | 12 | Agency management — multi-client workspaces, team roles, reporting | planned |
 | 13 | Hardening & launch — performance, security audit, production cutover | planned |
