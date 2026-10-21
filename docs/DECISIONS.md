@@ -314,3 +314,23 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
 - Adapter contract (Handler) lives in core so the worker process can dispatch API-defined handlers without a module cycle.
 
 **Consequences.** No unintended duplicates across crash/ambiguity paths at the cost of holding ambiguous actions for operator/reconciler review; 5.5 load tests verify these guarantees under concurrency.
+
+## ADR-0031 — Credit ledger: reserve → release → charge, not mutable balances (Phase 10.3)
+
+**Context.** Lead data providers bill per result; searches can fail, return nothing, or race. A single mutable balance column loses the audit trail and invites double-charging under retries and concurrency.
+
+**Decision.** `credit_transactions` is an append-only ledger; a workspace's balance is `sum(delta)`. Every search reserves an estimated amount in a balance-checked transaction guarded by a per-workspace `pg_advisory_xact_lock` (concurrent reserves cannot both pass the check). On completion the reservation is released and the exact delivered amount is charged; failures and empty results refund. Every entry carries a deterministic idempotency key (lf-reserve/release/charge/refund:{searchId}) protected by a unique partial index — retries are free of double effects. There is no mutable balance to corrupt.
+
+**Consequences.** Auditable by construction; Stripe (Phase 11) simply adds purchase-kind entries. Trade-off: the balance check serializes searches per workspace (acceptable — provider calls dominate latency).
+
+## ADR-0032 — Licensing is enforced at the boundary, not by convention (Phase 10)
+
+**Context.** Provider agreements restrict which records may be contacted. Sandbox fixtures must never leak into outreach, and unlicensed providers must not be callable even by crafted requests.
+
+**Decision.** `permitted_use` is stored per contact (licensed | sandbox_only) and enforced in add-to-list: sandbox-only rows are skipped and reported (sandboxOnlyBlocked), never inserted. Provider resolution accepts only wired, agreement-backed adapters — unknown providers get a 422 explaining the licensing posture. The UI mirrors this: permitted-use badges on every row and a disabled add-to-list when nothing is eligible.
+
+**Consequences.** A future signed provider is one adapter + a providers-map entry; the enforcement path does not change. `unique (workspace_id, provider, provider_contact_id)` scopes fixture identity per tenant (a global key would hide results from the second workspace).
+
+## ADR-0033 — Starter credit grant (Phase 10, superseded by Phase 11)
+
+**Decision.** A DB trigger grants 50 credits to each newly created workspace so Lead Finder is genuinely usable before billing exists. **Phase 11 replaces this with purchased credits**; the trigger is then dropped.
