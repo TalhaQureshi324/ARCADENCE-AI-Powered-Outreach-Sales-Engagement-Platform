@@ -1118,3 +1118,71 @@ export const deliverabilityApi = {
       `/api/v1/workspaces/${workspaceId}/deliverability/placement-tests`,
     ),
 };
+
+export interface LeadFinderSearchDto {
+  id: string;
+  provider: string;
+  status: string;
+  resultsCount: number;
+  estimatedCredits: number;
+  creditsCharged: number;
+  error: string | null;
+}
+
+export interface LeadFinderDiscoveredDto {
+  id: string;
+  provider: string;
+  email: string | null;
+  emailVerification: string;
+  firstName: string | null;
+  lastName: string | null;
+  jobTitle: string | null;
+  companyName: string | null;
+  industry: string | null;
+  region: string | null;
+  companySize: string | null;
+  confidence: number;
+  permittedUse: string;
+}
+
+export interface LeadFinderProviderDto {
+  name: string;
+  supportedFilters: string[];
+}
+
+export const leadFinderApi = {
+  providers: (workspaceId: string) =>
+    apiFetch<LeadFinderProviderDto[]>(`/api/v1/workspaces/${workspaceId}/leadfinder/providers`),
+  estimate: (workspaceId: string, maxResults: number) =>
+    apiFetch<{ estimatedCredits: number; creditsPerLead: number; note: string }>(
+      `/api/v1/workspaces/${workspaceId}/leadfinder/estimate?maxResults=${maxResults}`,
+      { method: "POST" },
+    ),
+  search: (workspaceId: string, filters: Record<string, string>) =>
+    apiFetch<LeadFinderSearchDto>(`/api/v1/workspaces/${workspaceId}/leadfinder/search`, {
+      method: "POST",
+      body: JSON.stringify({ filters }),
+    }),
+  results: (workspaceId: string, searchId: string) =>
+    apiFetch<LeadFinderDiscoveredDto[]>(
+      `/api/v1/workspaces/${workspaceId}/leadfinder/searches/${searchId}/results`,
+    ),
+  searches: (workspaceId: string) =>
+    apiFetch<LeadFinderSearchDto[]>(`/api/v1/workspaces/${workspaceId}/leadfinder/searches`),
+  credits: (workspaceId: string) =>
+    apiFetch<{
+      balance: number;
+      history: { kind: string; delta: number; reason: string; at: string }[];
+    }>(`/api/v1/workspaces/${workspaceId}/leadfinder/credits`),
+  addToList: (workspaceId: string, searchRequestId: string, listId: string) =>
+    apiFetch<{
+      added: number;
+      skippedDuplicates: number;
+      skippedSuppressed: number;
+      sandboxOnlyBlocked: boolean;
+      note: string;
+    }>(`/api/v1/workspaces/${workspaceId}/leadfinder/add-to-list`, {
+      method: "POST",
+      body: JSON.stringify({ searchRequestId, listId }),
+    }),
+};

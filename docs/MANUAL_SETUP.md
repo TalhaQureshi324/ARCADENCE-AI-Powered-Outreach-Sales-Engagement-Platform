@@ -30,6 +30,7 @@
 | 10 | VPS / container host + container registry choice | Deployment phase | later | |
 | 11 | Stripe account (test mode first) | Billing phase | later | |
 | 12 | AI provider account + API key policy (which provider(s), spend limits) | AI phase | later | Key is added via server-side env config, never in chat |
+| 13 | Signed data-provider agreements (e.g. Apollo, ZoomInfo, Snov) with per-seat/API terms | Lead Finder live providers | later | Until signed, only the labeled sandbox provider is wired — the product never fabricates live leads. API keys go to server-side env config per provider adapter |
 
 ## Working agreement
 
