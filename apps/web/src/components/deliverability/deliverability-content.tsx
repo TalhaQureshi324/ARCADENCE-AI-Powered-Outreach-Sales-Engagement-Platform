@@ -16,10 +16,10 @@ function errorMessage(e: unknown): string {
 }
 
 /** Deliverability Command Center (Phase 8): DNS auth diagnostics with
-  * copyable instructions, sender-health snapshots with automatic pause
-  * notices, and permission-gated placement tests (honest "unavailable"
-  * until an external provider is configured).
-  */
+ * copyable instructions, sender-health snapshots with automatic pause
+ * notices, and permission-gated placement tests (honest "unavailable"
+ * until an external provider is configured).
+ */
 export function DeliverabilityContent() {
   const { selected } = useWorkspaces();
   const workspaceId = selected?.id ?? "";
@@ -27,14 +27,18 @@ export function DeliverabilityContent() {
 
   const [domain, setDomain] = useState("");
   const [provider, setProvider] = useState("smtp_imap");
-  const [selectors, setSelectors] = useState("google._domainkey, selector1._domainkey, selector2._domainkey");
+  const [selectors, setSelectors] = useState(
+    "google._domainkey, selector1._domainkey, selector2._domainkey",
+  );
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<{
     domain: string;
     overall: string;
     findings: { record: string; ok: boolean; message: string; remediation: string }[];
   } | null>(null);
-  const [history, setHistory] = useState<{ checkedAt: string; status: string; reasons: unknown }[]>([]);
+  const [history, setHistory] = useState<{ checkedAt: string; status: string; reasons: unknown }[]>(
+    [],
+  );
   const [accountId, setAccountId] = useState("");
   const [health, setHealth] = useState<{
     status: string;
@@ -71,7 +75,10 @@ export function DeliverabilityContent() {
           workspaceId,
           domain.trim(),
           provider,
-          selectors.split(",").map((s) => s.trim()).filter(Boolean),
+          selectors
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
         ),
       );
       setResult(r);
@@ -107,7 +114,10 @@ export function DeliverabilityContent() {
           workspaceId,
           accountId,
           Math.min(5, seedAddresses.split(",").filter((s) => s.trim()).length) || 2,
-          seedAddresses.split(",").map((s) => s.trim()).filter(Boolean),
+          seedAddresses
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
         ),
       );
       toast("success", "Placement test recorded.");
@@ -128,7 +138,12 @@ export function DeliverabilityContent() {
           subtitle="SPF/DKIM/DMARC checks with provider-aware interpretation. A DNS pass does NOT guarantee inbox placement."
         />
         <div className="flex flex-wrap items-center gap-2 px-6">
-          <Input aria-label="Sending domain" placeholder="yourdomain.com" value={domain} onChange={(e) => setDomain(e.target.value)} />
+          <Input
+            aria-label="Sending domain"
+            placeholder="yourdomain.com"
+            value={domain}
+            onChange={(e) => setDomain(e.target.value)}
+          />
           <select
             aria-label="Provider"
             value={provider}
@@ -139,14 +154,26 @@ export function DeliverabilityContent() {
             <option value="gmail">Gmail</option>
             <option value="microsoft">Microsoft 365</option>
           </select>
-          <Input aria-label="DKIM selectors" value={selectors} onChange={(e) => setSelectors(e.target.value)} />
+          <Input
+            aria-label="DKIM selectors"
+            value={selectors}
+            onChange={(e) => setSelectors(e.target.value)}
+          />
           <Button onClick={() => void check()} disabled={!domain.trim() || checking}>
             {checking ? "Checking…" : "Check DNS"}
           </Button>
         </div>
         {result && (
-          <div className="space-y-2 px-6 pb-6 pt-4">
-            <Badge tone={result.overall === "pass" ? "success" : result.overall === "warn" ? "warning" : "danger"}>
+          <div className="space-y-2 px-6 pt-4 pb-6">
+            <Badge
+              tone={
+                result.overall === "pass"
+                  ? "success"
+                  : result.overall === "warn"
+                    ? "warning"
+                    : "danger"
+              }
+            >
               {result.overall.toUpperCase()}
             </Badge>
             {result.findings.map((f, i) => (
@@ -156,9 +183,7 @@ export function DeliverabilityContent() {
                   <span className="text-foreground">{f.message}</span>
                 </div>
                 {f.remediation && (
-                  <div className="text-muted-foreground mt-1 text-xs">
-                    Fix: {f.remediation}
-                  </div>
+                  <div className="text-muted-foreground mt-1 text-xs">Fix: {f.remediation}</div>
                 )}
               </div>
             ))}
@@ -179,14 +204,31 @@ export function DeliverabilityContent() {
           subtitle="Transparent thresholds: risk at hard-bounce >= 10% of accepted, >= 5 auth failures, or suppression >= 15%; warning at half those."
         />
         <div className="flex items-center gap-2 px-6 pb-4">
-          <Input aria-label="Sending account ID" placeholder="Account UUID" value={accountId} onChange={(e) => setAccountId(e.target.value)} />
-          <Button variant="secondary" onClick={() => void checkHealth()} disabled={!accountId.trim()}>
+          <Input
+            aria-label="Sending account ID"
+            placeholder="Account UUID"
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+          />
+          <Button
+            variant="secondary"
+            onClick={() => void checkHealth()}
+            disabled={!accountId.trim()}
+          >
             Snapshot health
           </Button>
         </div>
         {health && (
           <div className="space-y-2 px-6 pb-6">
-            <Badge tone={health.status === "healthy" ? "success" : health.status === "warning" ? "warning" : "danger"}>
+            <Badge
+              tone={
+                health.status === "healthy"
+                  ? "success"
+                  : health.status === "warning"
+                    ? "warning"
+                    : "danger"
+              }
+            >
               {health.status.toUpperCase()}
             </Badge>
             {health.reasons.map((r, i) => (
@@ -195,7 +237,8 @@ export function DeliverabilityContent() {
               </Alert>
             ))}
             <div className="text-muted-foreground text-xs">
-              Hard-bounce rate: {health.bounceHardRate.toFixed(1)}% · auth failures: {health.authFailures}
+              Hard-bounce rate: {health.bounceHardRate.toFixed(1)}% · auth failures:{" "}
+              {health.authFailures}
             </div>
           </div>
         )}
@@ -208,9 +251,22 @@ export function DeliverabilityContent() {
           subtitle="Permission-gated (admin+), limited to 20 seeds and 5 active tests. Seed results represent only the tested mailboxes — NOT a universal inbox-placement guarantee."
         />
         <div className="flex items-center gap-2 px-6 pb-4">
-          <Input aria-label="Sending account ID for placement test" placeholder="Account UUID" value={accountId} onChange={(e) => setAccountId(e.target.value)} />
-          <Input aria-label="Seed addresses" value={seedAddresses} onChange={(e) => setSeedAddresses(e.target.value)} />
-          <Button variant="secondary" onClick={() => void createPlacementTest()} disabled={!accountId.trim()}>
+          <Input
+            aria-label="Sending account ID for placement test"
+            placeholder="Account UUID"
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+          />
+          <Input
+            aria-label="Seed addresses"
+            value={seedAddresses}
+            onChange={(e) => setSeedAddresses(e.target.value)}
+          />
+          <Button
+            variant="secondary"
+            onClick={() => void createPlacementTest()}
+            disabled={!accountId.trim()}
+          >
             Create test
           </Button>
         </div>
@@ -219,12 +275,22 @@ export function DeliverabilityContent() {
             {tests.map((t) => (
               <div key={t.id} className="border-border bg-surface rounded-lg border p-3 text-sm">
                 <div className="flex items-center justify-between">
-                  <Badge tone={t.status === "done" ? "success" : t.status === "unavailable" ? "warning" : "primary"}>
+                  <Badge
+                    tone={
+                      t.status === "done"
+                        ? "success"
+                        : t.status === "unavailable"
+                          ? "warning"
+                          : "primary"
+                    }
+                  >
                     {t.status}
                   </Badge>
                   <span className="text-muted-foreground text-xs">seeds: {t.sampleSize}</span>
                 </div>
-                {t.statusReason && <div className="text-muted-foreground mt-1 text-xs">{t.statusReason}</div>}
+                {t.statusReason && (
+                  <div className="text-muted-foreground mt-1 text-xs">{t.statusReason}</div>
+                )}
               </div>
             ))}
           </div>
