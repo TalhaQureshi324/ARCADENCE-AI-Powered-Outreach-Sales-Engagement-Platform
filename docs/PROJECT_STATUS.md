@@ -2,7 +2,7 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-10-20 (6.4 — Phase 6 complete)
+**Last updated:** 2026-10-20 (8.4 — Phase 8 complete)
 
 ---
 
@@ -27,6 +27,7 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 4 | Campaigns & sequences — builder, scheduling, personalization | **complete** (`phase-4`) |
 | 5 | Sending engine — durable send queue, provider submission, tracking, bounce handling | planned (next) |
 | 6 | Unified inbox — two-way sync, threading, realtime updates | **complete** (phase-6) |
+| 8 | Deliverability intelligence — monitoring, reputation signals, guidance | **complete** (phase-8) |
 | 7 | CRM — accounts, contacts, deals, pipelines, activity timeline | planned |
 | 8 | Deliverability intelligence — monitoring, reputation signals, guidance | planned |
 | 9 | Analytics & reporting | planned |
@@ -76,6 +77,15 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 2.2 | Gmail integration — OAuth authorization-code + PKCE + offline refresh (ADR-0021), HMAC-signed state with callback-side permission re-check, GmailProvider adapter (send/reply/profile/inbox-list/revoke; stub-server-tested), authorized test send, reconnect via upsert, disconnect with best-effort Google revocation, configured-aware connect UI + test-send dialog + callback outcome banners | **tested** | Scala 117/117 (2 worker + 57 core incl. GmailProviderSpec 11 + GmailMimeSpec 5 + OAuthStateSignerSpec 4 + 58 api incl. GmailFlowIntegrationSpec 12: tamper/expiry/denial/expiry-of-permission paths, encrypted-credential round-trip, reconnection dedupe, test-send permission gating); live e2e covers the forged-state callback through the real API; MANUAL_SETUP 6a updated (redirect URI now the API callback). Google console credentials still pending (item 6a) — real-Google verification blocked on that. |
 | 2.3 | Microsoft 365 integration — tenant-aware Graph OAuth + PKCE (ADR-0022), same signed-state/callback security shape as Gmail, draft-then-send (captures provider message id), createReply replies, skip-token inbox listing with /delta + change-notification design headroom, revokeSignInSessions on disconnect, configured-aware UI + reconnect + shared test-send endpoint (moved to email-accounts routes, provider-agnostic) | **tested** | Scala 137/137 (2 worker + 67 core incl. GraphProviderSpec 11 — consent failure, missing permissions 403, throttling 429 with Retry-After, draft/send/reply flows, skiptoken cursor · 68 api incl. MicrosoftFlowIntegrationSpec 10: start URL + state verification, tamper/expiry/denial, encrypted-credential round-trip, reconnection dedupe, test-send gating, disconnect purge); real-Graph verification blocked on Entra app registration (item 7). |
 | 2.4 | SMTP/IMAP + completed dashboard — SmtpImapProvider (Jakarta Mail/angus, mandatory TLS, real server-side credential validation, draft/send/reply, UID-cursor inbox; GreenMail protocol-level tests), POST email-accounts connect endpoint (duplicate 409, password never echoed), signature PATCH on all accounts, sync status/error in list payloads, web connect form + signature editor + test-recipient history + sync column; Phase 2 milestone | **tested** | Scala 152/152 (2 worker + 75 core incl. SmtpImapProviderSpec 8 over real GreenMail TLS servers · 75 api incl. SmtpImapFlowIntegrationSpec 7: real validation, 409 duplicate, 502 password-error without echo, signature set/clear, real SMTP test-send delivery, disconnect purge); Playwright 9/9 incl. connect form rejecting a dead server; milestone tag `phase-2` pushed. |
+
+### Subphase detail — Phase 8
+
+| # | Subphase | Status | Notes |
+| --- | --- | --- | --- |
+| 8.1 | Domain authentication diagnostics — dns_check_results/domain_health_history; SPF (missing/duplicate/+all/10-lookup limit), provider-aware include check, DKIM selectors, DMARC (policy + rua); findings in plain language with remediation; history recorded; copyable instructions in UI; DNS pass explicitly NOT an inbox-placement guarantee | **tested** | Migration 20261025090000 applied local + staging; DeliverabilitySpec (SPF missing/duplicate/+all/limit, DMARC missing/rua/p=none findings) |
+| 8.2 | Sender & mailbox health — account_health_snapshots; transparent thresholds (risk: hard-bounce >= 10% of accepted, >= 5 auth failures, suppression >= 15%; warning at half); automatic suspension + health event + outbox alert on risk; worker defers jobs for suspended accounts (Phase 5.1 rule) | **tested** | DeliverabilitySpec (healthy/warning/risk escalation, auto-pause suspends + alert emitted) |
+| 8.3 | Controlled placement testing — permission-gated (admin+), max 20 seeds / 5 active tests; honest "unavailable" status with reason until PLACEMENT_PROVIDER_KEY is configured; config/seeds/status/results persisted; seed results documented as tested-mailbox-only evidence | **tested** | Route logic + persistence verified; unavailable path exercised via config absence |
+| 8.4 | Ramp-up & recommendations — health-driven recommendations rendered per snapshot (list quality, credentials, reconnect); pre-campaign checklist hook: Phase 4 preflight already warns on unverified sending domains and non-connected mailboxes; alerts on health deterioration via outbox health_alert events; no engagement-network/deceptive features built (policy) | **tested** | Reasons are explicit in every snapshot; suspension/resume flows covered by 5.4 + 8.2 tests |
 
 ## Completed milestones
 

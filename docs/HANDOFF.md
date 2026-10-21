@@ -754,3 +754,31 @@
 
 - develop -> main promotion + tag phase-6.
 - Acceptance: real inbound replies sync into threads, classify deterministically, reliably cancel pending follow-ups in the database, and are answerable from the Unibox with preserved threading.
+
+---
+
+## Phase 8 - Deliverability Command Center (2026-10-21)
+
+**Branch** feature/phase-08-deliverability -> develop -> main, tag phase-8.
+
+### Implemented / tested
+
+| Subphase | Detail |
+| --- | --- |
+| 8.1 | DNS checks via injectable resolver (JNDI default): SPF missing/duplicate/+all/10-lookup limit + provider-aware include check; DKIM selectors; DMARC policy + rua; findings with plain-language remediation; history tables; UI domain panel with badge + findings + copyable fix text |
+| 8.2 | Health snapshots from real send_attempt/suppression signals; documented thresholds; automatic suspension + outbox health_alert on risk; reasons list in every snapshot; worker defers suspended accounts |
+| 8.3 | Placement tests: admin+ gated, <=20 seeds, <=5 active; honest unavailable status until PLACEMENT_PROVIDER_KEY configured; config/seeds/status/results persisted |
+| 8.4 | Recommendations per snapshot; pre-campaign checklist hook via Phase 4 preflight domain/connect warnings; alerts on deterioration; no engagement networks or spam-filter manipulation (policy) |
+| Tests | DeliverabilitySpec 5/5; full Scala 249/249; web tsc/lint/build green |
+| Fixes | aggregate_id uuid-vs-text cast in health_alert query |
+
+### Known limitations
+
+- Placement results require an approved external provider (PLACEMENT_PROVIDER_KEY) - reported honestly as unavailable otherwise.
+- DNS checks use resolvers 8.8.8.8/1.1.1.1 via JNDI; DKIM body-hash validation is not performed (record presence only).
+- Realtime DNS change alerts are polled via manual checks; scheduled re-checks arrive with worker cron hardening.
+
+### Phase 8 milestone
+
+- develop -> main promotion + tag phase-8.
+- Acceptance: users can diagnose authentication problems (copyable fixes), see health deterioration with explicit reasons, know when sends were auto-paused and why, and run permission-gated placement tests that report honestly.
