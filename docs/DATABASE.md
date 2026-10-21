@@ -341,3 +341,14 @@ Canonical state machines live in `docs/ARCHITECTURE.md` §7. Schema mapping:
 ## Phase 4.4 — scheduling rules (`20261020090000`)
 
 - `campaign.send_window_start` / `send_window_end` (time, default 09:00/17:00, midnight-spanning allowed) and `business_days_only` (default true). Draft-only edits — changing scheduling identity mid-flight is rejected like structural changes.
+
+## Phase 10 — lead discovery, enrichment and credits (`20261027090000`-`20261027120000`)
+
+- `provider_configs` — per-workspace provider enablement + config (credentials live in env/secret store, never here); unique (workspace_id, provider).
+- `search_requests` — one row per Lead Finder search: provider, filters jsonb, status (pending/running/done/failed/cancelled), estimated/charged credits, error.
+- `discovered_contacts` — normalized provider results; unique **per workspace** (workspace_id, provider, provider_contact_id); verification, confidence 0-100, `permitted_use` (licensed | sandbox_only), `added_to_list_id` for idempotent add-to-list.
+- `provenance_records` — per-field source/confidence/retrieval history for discovered results and contact enrichment previews (contact_id or discovered_contact_id).
+- `provider_usage` — units + cost per provider operation (auditable provider spend).
+- `credit_transactions` — append-only ledger (reserve/charge/refund/grant) with unique partial index on `idempotency_key` (retry-safe); balance = sum(delta); workspace reservations serialized by `pg_advisory_xact_lock`.
+- `grant_starter_credits()` — trigger granting 50 credits on workspace insert until Phase 11 billing replaces it.
+- `source_provenance.source` now admits `'leadfinder'`.

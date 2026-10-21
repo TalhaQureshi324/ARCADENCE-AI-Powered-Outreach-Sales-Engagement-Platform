@@ -2,6 +2,17 @@
 
 > Running record of what was implemented, tested, committed, and pushed. One entry per subphase, newest first. Matches the implementation reports given in chat.
 
+
+
+## Phase 10 — Lead discovery and enrichment (`20261027090000`-`20261027120000`)
+
+- **10.1 Provider framework** - core `LeadProvider.Provider` (search/enrich/supportedFilters), provider errors as values, SandboxProvider with three deterministic `sandbox_only` fixtures. No live provider integration is faked: only agreement-backed adapters may be wired, and the API rejects unknown providers with a licensing explanation.
+- **10.2 Waterfall enrichment** - providers tried in configured order, first match wins; strictly preview-only (contact values are never overwritten without approval); provenance history per contact in `provenance_records`.
+- **10.3 Credit accounting** - append-only `credit_transactions` (reserve/release/charge/refund/grant) with deterministic idempotency keys (unique partial index); balance-checked reservation under a per-workspace `pg_advisory_xact_lock`; reservation released, then exact charge applied; refunds on failure or zero results. Starter grant (50 credits) via trigger until Phase 11 billing.
+- **10.4 Lead Finder UI** - /app/leadfinder: provider-capability-aware filters (unsupported disabled with explanation), credit balance, results with verification/confidence/provider/permitted-use labels, add-to-list with per-category dedupe/suppression/sandbox-block counts, saved searches (localStorage per workspace), recent searches.
+- Migrations applied local + staging: 20261027090000_leadfinder, 20261027100000_source_provenance_leadfinder, 20261027110000_discovered_contacts_ws_unique, 20261027120000_starter_credits.
+- Tests: LeadFinderSpec 11/11 (search pricing + provenance, timeout refund, unknown-provider rejection, insufficient credits 402, concurrent-reservation overdraft impossibility, sandbox licensing block, dedupe/suppression/idempotent re-run, preview-only enrichment, tenant isolation); full Scala 267/267 (75 core + 2 worker + 190 api); web lint 0 errors, Vitest 25/25, production build green; Playwright 16/16 including new leadfinder e2e (search -> provenance labels -> sandbox blocked -> credits settled).
+
 ---
 
 ---

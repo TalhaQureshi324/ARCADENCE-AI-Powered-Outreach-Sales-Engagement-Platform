@@ -151,7 +151,17 @@ Planned:
 - ⬜ `GET .../analytics/overview` (workspace rollups)
 - ⬜ `GET .../deliverability/connections/{connId}` (reputation signals, guidance)
 
-### 3.9 AI — Phase 10
+### 3.9 Lead Finder — Phase 10 (implemented)
+
+- ✅ `POST .../leadfinder/estimate?maxResults=N` — credit estimate before running (EditContent)
+- ✅ `GET .../leadfinder/providers` — integrated providers with supported filter keys (ViewWorkspace)
+- ✅ `POST .../leadfinder/search` — credit reserve → provider search → charge/refund; returns the search request (EditContent)
+- ✅ `GET .../leadfinder/searches` · `GET .../leadfinder/searches/{id}/results` — history + normalized contacts with provenance/verification/permitted-use (ViewWorkspace)
+- ✅ `GET .../leadfinder/credits` — balance + last 50 ledger entries (ViewWorkspace)
+- ✅ `POST .../leadfinder/enrich/{contactId}` — waterfall preview, never writes without approval (EditContent)
+- ✅ `POST .../leadfinder/add-to-list` — dedupe + suppression + licensing enforcement with per-category counts (EditContent)
+
+### 3.9b AI — later phase
 
 - ⬜ `POST /api/v1/ai/generate` (kind: campaign_copy | reply_draft | lead_summary; returns generation id + output; every call audited in `ai_generation`)
 - ⬜ `GET .../ai/generations/{generationId}`
