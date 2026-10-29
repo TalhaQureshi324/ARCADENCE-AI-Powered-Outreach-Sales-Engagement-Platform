@@ -299,9 +299,5 @@ object AiGateway:
         calls += 1
         val f = failures.pollFirst()
         if f != null then Left(f)
-        else
-          val text = if jsonMode then
-            """{"ok":true,"note":"""" + responseText + """"}"""
-          else responseText
-          Right(Completion(text, Usage(11, 7), model, "stop"))
+        else Right(Completion(responseText, Usage(11, 7), model, "stop"))
       }

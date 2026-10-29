@@ -22,6 +22,15 @@
 - **Endpoints** — /ai/config (honest gateway+budget status), agents CRUD, templates (auto-versioning), usage rollup, /ai/complete (budget-checked, run+usage+step logging), runs list/detail/cancel, approvals create/list/decide.
 - Tests: AiGatewaySpec 8/8; AiRoutesSpec 8/8; full Scala 283/283 (83 core + 2 worker + 198 api). Blocked on owner action for live model calls: AI provider account + API key policy (MANUAL_SETUP #12) — **simulated** via stub until then.
 
+
+## Phase 11.2 — AI email writer and lead researcher (`20261030100000`)
+
+- `AiWriter` core: deterministic prompt assembly (facts passed with stable keys + source URLs + retrieval timestamps; model instructed to cite keys and never invent facts), strict JSON output schema with hand-written decoders, unsupported-claim detection, deception phrase scan, unknown-variable detection, and final-variable rendering that fails loudly on unrenderable/missing variables (ADR-0026 quoteReplacement).
+- `ai_research_items` — approved research facts (claim, source URL, source kind, retrieved_at, verified); grounding comes only from these, never from model invention.
+- Endpoints: `/ai/research` CRUD, `/ai/write` (1-3 drafts with per-draft evaluation flags stored in `ai_messages.evidence`), `/ai/messages` list + edit (final_* fields, status edited) + approve/reject + `/render` deterministic preview.
+- Drafts are proposals only: sending and suppression remain exclusively in the deterministic campaign/inbox paths (Phase 5/6); approved drafts would be consumed by the composer, never by the model.
+- Tests: AiWriterSpec 7/7; AiWriterRoutesSpec 6/6; full Scala 296/296.
+
 ---
 
 ---

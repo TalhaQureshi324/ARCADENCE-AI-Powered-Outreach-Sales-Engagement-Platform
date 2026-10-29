@@ -2,7 +2,7 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-10-29 (11 — Phase 11 in progress: 11.1 complete)
+**Last updated:** 2026-10-29 (11 — Phase 11 in progress: 11.1+11.2 complete)
 
 ---
 
@@ -114,6 +114,7 @@ See [`docs/MANUAL_SETUP.md`](MANUAL_SETUP.md) — no items block Phase 3; carrie
 | # | Subphase | Status | Notes |
 | --- | --- | --- | --- |
 | 11.1 | AI infrastructure and model gateway — provider-agnostic `AiGateway` in core (chat completions, structured-output validation, bounded retries with backoff+jitter on transient errors only, timeouts, secrets redaction for stored previews); OpenAI-compatible HTTP adapter (any provider speaking that API shape, configured via `AI_API_KEY`/`AI_BASE_URL`/`AI_MODEL`/`AI_TIMEOUT_MS`/`AI_MAX_RETRIES` env — no key, no gateway, endpoints report `ai_not_configured` honestly); schemas ai_agents, ai_runs, ai_run_steps, ai_messages, ai_templates (versioned), ai_usage (tokens + micro-USD cost), ai_approvals, ai_tool_invocations; workspace budgets on `workspace` (monthly token/spend caps, enforced before any provider call); runs carry sha256 prompt digest + redacted input/output previews only | **tested** | Migration 20261029090000 applied local + staging; AiGatewaySpec 8/8 (retries, no-retry on auth errors, structured validation, redaction, cost estimate, response parsing); AiRoutesSpec 8/8 (config honesty, run/usage logging with redaction, zero-budget 402 before provider call, agents CRUD + kind validation, template versioning, approvals lifecycle, tenant isolation); full Scala 283/283 (83 core + 2 worker + 198 api) |
+| 11.2 | AI email writer + lead researcher — `AiWriter` core (deterministic prompt assembly with versioned system prompt, fact keys + provenance in-prompt, strict JSON output schema); research facts store (`ai_research_items`: claim + source URL + retrieval time + kind, user-approved only); `/ai/write` generates 1-3 drafts grounded ONLY in supplied facts; deterministic evaluations flag unsupported claims (uncited fact keys), unknown template variables, deceptive pressure phrases, empty fields — stored in ai_messages evidence; approval/edit lifecycle (draft→edited→approved/rejected); deterministic render fails loudly on unrenderable or missing variables (never ships leftover placeholders); drafts never touch suppression/sending paths | **tested** | Migration 20261030100000 applied local + staging; AiWriterSpec 7/7 (prompt grounding, unsupported claims, deception scan, render safety incl. replacement-hostile values); AiWriterRoutesSpec 6/6 (research CRUD, flagged vs clean drafts, edit/approve/reject lifecycle, deterministic render + failure, zero-budget 402, tenant isolation); full Scala 296/296 (90 core + 2 worker + 204 api) |
 
 ### Subphase detail — Phase 10
 
