@@ -364,3 +364,5 @@ Canonical state machines live in `docs/ARCHITECTURE.md` §7. Schema mapping:
 - `ai_usage` — append-only token/cost ledger (cost in micro-USD, conservative estimate).
 - `ai_approvals` — human-approval workflow for AI-proposed actions.
 - `ai_tool_invocations` — schema-validated agent tool calls (executed by later subphases through existing Scala services only).
+
+- Phase 11.2 (`20261030100000`): `ai_research_items` — approved company/lead research facts (contact/company_domain scope, claim, source_url, source_kind manual|leadfinder|imported, retrieved_at, verified) that ground AI drafts; claims citing absent facts are flagged unsupported in `ai_messages.evidence`.

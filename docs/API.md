@@ -171,6 +171,12 @@ Planned:
 - ✅ `GET .../ai/runs` · `GET .../ai/runs/{id}` · `POST .../ai/runs/{id}/cancel` — execution logs (View/EditContent)
 - ✅ `GET|POST .../ai/approvals` · `POST .../ai/approvals/{id}/decide` — human approvals (View/EditContent)
 
+### 3.9c AI writer — Phase 11.2 (implemented)
+
+- ✅ `GET|POST .../ai/research` · `DELETE .../ai/research/{id}` — approved research facts with source URLs + timestamps (View/EditContent)
+- ✅ `POST .../ai/write` — grounded campaign drafts with deterministic evaluation flags (EditContent)
+- ✅ `GET .../ai/messages` · `PATCH .../ai/messages/{id}` · `POST .../ai/messages/{id}/approve|reject` · `POST .../ai/messages/{id}/render` — draft lifecycle + deterministic render preview (View/EditContent)
+
 - ⬜ `POST /api/v1/ai/generate` (kind: campaign_copy | reply_draft | lead_summary; returns generation id + output; every call audited in `ai_generation`)
 - ⬜ `GET .../ai/generations/{generationId}`
 
