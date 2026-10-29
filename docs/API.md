@@ -175,6 +175,7 @@ Planned:
 
 - ✅ `GET|POST .../ai/research` · `DELETE .../ai/research/{id}` — approved research facts with source URLs + timestamps (View/EditContent)
 - ✅ `POST .../ai/write` — grounded campaign drafts with deterministic evaluation flags (EditContent)
+- ✅ `POST .../ai/reply/draft` — reply-agent proposal (intent, draft, next actions, evidence) with deterministic unsubscribe/bounce short-circuit and mandatory approval (EditContent)
 - ✅ `GET .../ai/messages` · `PATCH .../ai/messages/{id}` · `POST .../ai/messages/{id}/approve|reject` · `POST .../ai/messages/{id}/render` — draft lifecycle + deterministic render preview (View/EditContent)
 
 - ⬜ `POST /api/v1/ai/generate` (kind: campaign_copy | reply_draft | lead_summary; returns generation id + output; every call audited in `ai_generation`)
