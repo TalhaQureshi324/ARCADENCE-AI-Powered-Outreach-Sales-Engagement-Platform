@@ -31,6 +31,14 @@
 - Drafts are proposals only: sending and suppression remain exclusively in the deterministic campaign/inbox paths (Phase 5/6); approved drafts would be consumed by the composer, never by the model.
 - Tests: AiWriterSpec 7/7; AiWriterRoutesSpec 6/6; full Scala 296/296.
 
+
+## Phase 11.3 — AI Reply Agent (`feature/phase-113-reply-agent`, no migration)
+
+- `AiReply` core: intent enum (interested/pricing/product_question/objection/meeting_request/out_of_office/not_interested/unsubscribe/ambiguous), whitelisted next actions, strict JSON proposal schema with hand-written decoders, deterministic validation (invalid intent/action = hard rejection; unknown evidence keys flagged; confidence enum).
+- `POST /ai/reply/draft` — loads thread + contact + campaign + approved knowledge (workspace-scoped), feeds the deterministic ReplyClassifier verdict as context, proposes intent + reply + next actions with evidence; stores `ai_messages` draft + pending `send_reply` approval + `ai_runs` awaiting_approval audit.
+- Deterministic precedence: unsubscribe/bounce threads never call the model (Phase 6 sync already applied suppression/hygiene); human approval gates every external response; sending remains the deterministic Phase 6 inbox path.
+- Tests: AiReplyRoutesSpec 5/5; full suite green by module (90 core + 2 worker + 209 api incl. this spec); WorkerQueueIntegrationSpec timing flakes under full-suite parallel load (green 6/6 isolated) — pre-existing sleep-based assertions, serialized run tracked as follow-up.
+
 ---
 
 ---
