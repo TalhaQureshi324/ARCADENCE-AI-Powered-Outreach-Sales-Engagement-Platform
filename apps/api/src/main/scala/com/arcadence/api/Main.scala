@@ -170,6 +170,41 @@ object Main extends IOApp:
                   authenticator = authenticator,
                   xa = transactor
                 )
+                // AI model gateway (Phase 11.1): real OpenAI-compatible adapter
+                // only when AI_API_KEY is configured; otherwise endpoints report
+                // ai_not_configured honestly.
+                val aiGateway: Option[com.arcadence.core.ai.AiGateway.Gateway] =
+                  sys.env.get("AI_API_KEY").map(_.trim).filter(_.nonEmpty).map {
+                    key =>
+                      val baseUrl = org.http4s.Uri.unsafeFromString(
+                        sys.env
+                          .getOrElse("AI_BASE_URL", "https://api.openai.com/v1")
+                          .trim
+                          .stripSuffix("/")
+                      )
+                      val timeout = java.time.Duration.ofMillis(
+                        sys.env.getOrElse("AI_TIMEOUT_MS", "30000").toLong
+                      )
+                      val raw =
+                        new com.arcadence.core.ai.AiGateway.OpenAiCompatible(
+                          httpClient,
+                          baseUrl,
+                          key,
+                          timeout
+                        )
+                      com.arcadence.core.ai.AiGateway.retried(
+                        raw,
+                        sys.env.getOrElse("AI_MAX_RETRIES", "2").toInt
+                      )
+                  }
+                val aiDefaultModel =
+                  sys.env.getOrElse("AI_MODEL", "gpt-4o-mini")
+                val aiRoutes = new AiRoutes(
+                  authenticator = authenticator,
+                  xa = transactor,
+                  gateway = aiGateway,
+                  defaultModel = aiDefaultModel
+                )
                 val deliverabilityRoutes = new DeliverabilityRoutes(
                   authenticator = authenticator,
                   xa = transactor,
@@ -230,7 +265,7 @@ object Main extends IOApp:
                   RateLimit(config.rateLimitPerMinute)(
                     SecurityHeaders(
                       workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http
-                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> inboxRoutes.http <+> analyticsRoutes.http <+> deliverabilityRoutes.http <+> crmRoutes.http <+> agencyRoutes.http <+> leadFinderRoutes.http <+> importRoutes.http
+                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> inboxRoutes.http <+> analyticsRoutes.http <+> deliverabilityRoutes.http <+> crmRoutes.http <+> agencyRoutes.http <+> leadFinderRoutes.http <+> aiRoutes.http <+> importRoutes.http
                     )
                   )
 

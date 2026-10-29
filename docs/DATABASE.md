@@ -352,3 +352,15 @@ Canonical state machines live in `docs/ARCHITECTURE.md` §7. Schema mapping:
 - `credit_transactions` — append-only ledger (reserve/charge/refund/grant) with unique partial index on `idempotency_key` (retry-safe); balance = sum(delta); workspace reservations serialized by `pg_advisory_xact_lock`.
 - `grant_starter_credits()` — trigger granting 50 credits on workspace insert until Phase 11 billing replaces it.
 - `source_provenance.source` now admits `'leadfinder'`.
+
+## Phase 11.1 — AI infrastructure (`20261029090000`)
+
+- `workspace.ai_monthly_token_limit` / `ai_monthly_spend_micros` — workspace-level AI budgets (enforced before provider calls).
+- `ai_agents` — per-workspace agent configs (kind: writer/researcher/reply_agent/sales_agent, model, requires_approval, max_credits, tool/behavior config jsonb).
+- `ai_runs` — execution records: kind, status (pending/running/awaiting_approval/completed/failed/cancelled), sha256 prompt digest, redacted input/output previews, token/cost totals.
+- `ai_run_steps` — per-step audit (model inference or named tool), redacted previews, durations.
+- `ai_messages` — AI drafts tied to contacts/threads with final (human-edited) variants, status and evidence (consumed by 11.2/11.3).
+- `ai_templates` — prompt templates, auto-versioned per name.
+- `ai_usage` — append-only token/cost ledger (cost in micro-USD, conservative estimate).
+- `ai_approvals` — human-approval workflow for AI-proposed actions.
+- `ai_tool_invocations` — schema-validated agent tool calls (executed by later subphases through existing Scala services only).

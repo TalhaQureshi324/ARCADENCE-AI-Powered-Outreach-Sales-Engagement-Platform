@@ -2,7 +2,7 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-10-21 (10 — Phase 10 complete)
+**Last updated:** 2026-10-29 (11 — Phase 11 in progress: 11.1 complete)
 
 ---
 
@@ -32,7 +32,7 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 8 | Deliverability intelligence — monitoring, reputation signals, guidance | **complete** (`phase-8`) |
 | 9 | Analytics & reporting | **complete** (`phase-9`) |
 | 10 | Lead Finder, data enrichment and verification marketplace | **complete** (`phase-10`) |
-| 11 | Billing & plans — Stripe subscriptions, usage limits | planned |
+| 11 | AI copilot and sales agents — model gateway, writer/researcher, reply agent, orchestration, AI Studio | **in-progress** (11.1 complete) |
 | 12 | Agency management — multi-client workspaces, team roles, reporting | planned |
 | 13 | Hardening & launch — performance, security audit, production cutover | planned |
 
@@ -108,6 +108,12 @@ None.
 ## Manual setup queue
 
 See [`docs/MANUAL_SETUP.md`](MANUAL_SETUP.md) — no items block Phase 3; carried items (Google OAuth client 6a, Entra app 7, EMAIL_ENCRYPTION_KEY backup, branch protection #3, staging DB password rotation) remain pending on the product owner.
+
+### Subphase detail — Phase 11
+
+| # | Subphase | Status | Notes |
+| --- | --- | --- | --- |
+| 11.1 | AI infrastructure and model gateway — provider-agnostic `AiGateway` in core (chat completions, structured-output validation, bounded retries with backoff+jitter on transient errors only, timeouts, secrets redaction for stored previews); OpenAI-compatible HTTP adapter (any provider speaking that API shape, configured via `AI_API_KEY`/`AI_BASE_URL`/`AI_MODEL`/`AI_TIMEOUT_MS`/`AI_MAX_RETRIES` env — no key, no gateway, endpoints report `ai_not_configured` honestly); schemas ai_agents, ai_runs, ai_run_steps, ai_messages, ai_templates (versioned), ai_usage (tokens + micro-USD cost), ai_approvals, ai_tool_invocations; workspace budgets on `workspace` (monthly token/spend caps, enforced before any provider call); runs carry sha256 prompt digest + redacted input/output previews only | **tested** | Migration 20261029090000 applied local + staging; AiGatewaySpec 8/8 (retries, no-retry on auth errors, structured validation, redaction, cost estimate, response parsing); AiRoutesSpec 8/8 (config honesty, run/usage logging with redaction, zero-budget 402 before provider call, agents CRUD + kind validation, template versioning, approvals lifecycle, tenant isolation); full Scala 283/283 (83 core + 2 worker + 198 api) |
 
 ### Subphase detail — Phase 10
 
