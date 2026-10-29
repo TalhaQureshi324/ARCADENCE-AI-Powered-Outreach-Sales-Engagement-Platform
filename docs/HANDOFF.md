@@ -13,6 +13,15 @@
 - Migrations applied local + staging: 20261027090000_leadfinder, 20261027100000_source_provenance_leadfinder, 20261027110000_discovered_contacts_ws_unique, 20261027120000_starter_credits.
 - Tests: LeadFinderSpec 11/11 (search pricing + provenance, timeout refund, unknown-provider rejection, insufficient credits 402, concurrent-reservation overdraft impossibility, sandbox licensing block, dedupe/suppression/idempotent re-run, preview-only enrichment, tenant isolation); full Scala 267/267 (75 core + 2 worker + 190 api); web lint 0 errors, Vitest 25/25, production build green; Playwright 16/16 including new leadfinder e2e (search -> provenance labels -> sandbox blocked -> credits settled).
 
+
+## Phase 11.1 — AI infrastructure and model gateway (`20261029090000`)
+
+- **Gateway (core)** — provider-agnostic `AiGateway`: chat completions with model selection and output-token caps; `structured[A]` validates machine-readable output against a Scala decoder before anything may act on it; `retried` wraps adapters with bounded exponential backoff + jitter, retrying only timeout/rate-limit/unavailable (never auth or bad-request); `Redact` strips emails/API keys/bearer tokens and truncates everything stored in logs.
+- **Adapter** — `OpenAiCompatible` HTTP adapter (works with OpenAI/Azure/OpenRouter/self-hosted gateways). Wired in Main from `AI_API_KEY` + `AI_BASE_URL` + `AI_MODEL` + `AI_TIMEOUT_MS` + `AI_MAX_RETRIES`. **No key configured = no gateway**: `/ai/complete` returns 503 `ai_not_configured` rather than pretending. Provider agreements must exclude training on customer data (MANUAL_SETUP #12); the gateway sends only explicit prompt content.
+- **Schemas** — ai_agents, ai_runs (sha256 input digest + redacted previews), ai_run_steps, ai_messages (drafts for 11.2/11.3), ai_templates (versioned), ai_usage (tokens + micro-USD), ai_approvals, ai_tool_invocations; workspace-level monthly token/spend budgets enforced before every call (402 insufficient_budget).
+- **Endpoints** — /ai/config (honest gateway+budget status), agents CRUD, templates (auto-versioning), usage rollup, /ai/complete (budget-checked, run+usage+step logging), runs list/detail/cancel, approvals create/list/decide.
+- Tests: AiGatewaySpec 8/8; AiRoutesSpec 8/8; full Scala 283/283 (83 core + 2 worker + 198 api). Blocked on owner action for live model calls: AI provider account + API key policy (MANUAL_SETUP #12) — **simulated** via stub until then.
+
 ---
 
 ---

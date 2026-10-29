@@ -334,3 +334,11 @@ Format: lightweight ADRs. Statuses: `Proposed` → `Accepted` → optionally `Su
 ## ADR-0033 — Starter credit grant (Phase 10, superseded by Phase 11)
 
 **Decision.** A DB trigger grants 50 credits to each newly created workspace so Lead Finder is genuinely usable before billing exists. **Phase 11 replaces this with purchased credits**; the trigger is then dropped.
+
+## ADR-0034 — AI stays behind a deterministic gateway; honesty when unconfigured (Phase 11.1)
+
+**Context.** LLMs are probabilistic; Arcadence's campaign orchestration, suppression and sending rules are safety-critical and must stay deterministic. No AI provider is contracted yet.
+
+**Decision.** All model access goes through the core `AiGateway` interface: bounded timeouts, bounded retries on transient errors only, output-token caps, structured-output validation before any machine-readable result is used, and secret/PII redaction for everything persisted to execution logs. The only adapter is OpenAI-compatible HTTP, configured from server-side env — and when no key is configured the API reports `ai_not_configured` (503) instead of degrading silently. Provider agreements must exclude training on customer data; the gateway transmits only explicit prompt content. Agent/tool execution (11.3/11.4) will run exclusively through existing Scala services with schema-validated arguments and approvals — the model proposes, services dispose.
+
+**Consequences.** Adding a provider is one adapter; nothing else changes. Budget enforcement (monthly token/spend caps per workspace, checked before every call) fails closed. Trade-off: AI features are unavailable until the owner completes MANUAL_SETUP #12 — reported honestly rather than faked.
