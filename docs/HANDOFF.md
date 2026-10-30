@@ -46,6 +46,13 @@
 - `POST /ai/agent/run`: model steps (brief, audience, campaign draft) via validated gateway calls; tool steps execute through existing services — sandbox provider search + enrichment recorded as `ai_tool_invocations` with `search_requests`/`discovered_contacts`/`provider_usage` rows; drafts stored as flagged `ai_messages`; run ends at pending `launch_campaign` approval (`ai_runs` awaiting_approval). No model planning freedom, no autonomous sends.
 - `POST /ai/agent/recommendations` + `/ai/agent/meetings`: real campaign stats / positive repliers into validated structured outputs with full run audit.
 - Tests: AiAgentRoutesSpec 5/5. Known: WorkerQueueIntegrationSpec + CrmIntegrationSpec timing-flake under full-suite parallel load (green in isolation; serialized run tracked as follow-up).
+
+## Phase 11.5 — AI Studio interface and evaluations (feature/phase-115-ai-studio, no migration)
+
+- **AI Studio UI** — /app/aistudio: agent configuration (create writer/researcher/reply/sales agents; approval-required + enabled defaults visible), monthly usage vs budget card, pending approvals with approve/reject, run audit table with per-run token/cost and budget-exhausted warning.
+- **Evaluation fixtures** — AiEvalSpec 6/6: prompt-injection content in knowledge stays data (validators unchanged), hallucinated personalization flagged as unsupported claims, ambiguous replies first-class with low-confidence handling, invalid intents/actions hard-rejected regardless of phrasing, leftover placeholders refuse to render, malformed model output never executes.
+- Tests: AiEvalSpec 6/6; Playwright 17/17 including aistudio e2e; web tsc/lint/prettier/build green.
+
 ---
 
 ---
