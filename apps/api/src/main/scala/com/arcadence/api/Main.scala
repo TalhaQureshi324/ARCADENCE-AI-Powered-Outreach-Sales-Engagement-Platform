@@ -217,6 +217,12 @@ object Main extends IOApp:
                   gateway = aiGateway,
                   defaultModel = aiDefaultModel
                 )
+                val aiAgentRoutes = new AiAgentRoutes(
+                  authenticator = authenticator,
+                  xa = transactor,
+                  gateway = aiGateway,
+                  defaultModel = aiDefaultModel
+                )
                 val deliverabilityRoutes = new DeliverabilityRoutes(
                   authenticator = authenticator,
                   xa = transactor,
@@ -277,7 +283,7 @@ object Main extends IOApp:
                   RateLimit(config.rateLimitPerMinute)(
                     SecurityHeaders(
                       workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http
-                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> inboxRoutes.http <+> analyticsRoutes.http <+> deliverabilityRoutes.http <+> crmRoutes.http <+> agencyRoutes.http <+> leadFinderRoutes.http <+> aiRoutes.http <+> aiWriterRoutes.http <+> aiReplyRoutes.http <+> importRoutes.http
+                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> inboxRoutes.http <+> analyticsRoutes.http <+> deliverabilityRoutes.http <+> crmRoutes.http <+> agencyRoutes.http <+> leadFinderRoutes.http <+> aiRoutes.http <+> aiWriterRoutes.http <+> aiReplyRoutes.http <+> aiAgentRoutes.http <+> importRoutes.http
                     )
                   )
 

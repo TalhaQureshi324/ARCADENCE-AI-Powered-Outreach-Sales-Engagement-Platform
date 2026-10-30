@@ -39,6 +39,13 @@
 - Deterministic precedence: unsubscribe/bounce threads never call the model (Phase 6 sync already applied suppression/hygiene); human approval gates every external response; sending remains the deterministic Phase 6 inbox path.
 - Tests: AiReplyRoutesSpec 5/5; full suite green by module (90 core + 2 worker + 209 api incl. this spec); WorkerQueueIntegrationSpec timing flakes under full-suite parallel load (green 6/6 isolated) — pre-existing sleep-based assertions, serialized run tracked as follow-up.
 
+
+## Phase 11.4 — AI Sales Agent orchestration (`feature/phase-114-sales-agent`, no migration)
+
+- `AiSalesAgent` core: fixed 7-step pipeline definition, structured slot schemas (BriefUnderstanding, AudienceSuggestion) with hand-written decoders, deterministic readiness verdict.
+- `POST /ai/agent/run`: model steps (brief, audience, campaign draft) via validated gateway calls; tool steps execute through existing services — sandbox provider search + enrichment recorded as `ai_tool_invocations` with `search_requests`/`discovered_contacts`/`provider_usage` rows; drafts stored as flagged `ai_messages`; run ends at pending `launch_campaign` approval (`ai_runs` awaiting_approval). No model planning freedom, no autonomous sends.
+- `POST /ai/agent/recommendations` + `/ai/agent/meetings`: real campaign stats / positive repliers into validated structured outputs with full run audit.
+- Tests: AiAgentRoutesSpec 5/5. Known: WorkerQueueIntegrationSpec + CrmIntegrationSpec timing-flake under full-suite parallel load (green in isolation; serialized run tracked as follow-up).
 ---
 
 ---
