@@ -1186,3 +1186,54 @@ export const leadFinderApi = {
       body: JSON.stringify({ searchRequestId, listId }),
     }),
 };
+
+export interface AiAgentDto {
+  id: string;
+  name: string;
+  kind: string;
+  provider: string;
+  model: string;
+  enabled: boolean;
+  requiresApproval: boolean;
+  maxCredits: number;
+  config: unknown;
+}
+
+export const aiApi = {
+  agents: (workspaceId: string) =>
+    apiFetch<AiAgentDto[]>(`/api/v1/workspaces/${workspaceId}/ai/agents`),
+  createAgent: (workspaceId: string, input: { name: string; kind: string }) =>
+    apiFetch<AiAgentDto>(`/api/v1/workspaces/${workspaceId}/ai/agents`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  runs: (workspaceId: string) =>
+    apiFetch<
+      {
+        id: string;
+        kind: string;
+        status: string;
+        inputTokens: number;
+        outputTokens: number;
+        costMicros: number;
+        error: string | null;
+      }[]
+    >(`/api/v1/workspaces/${workspaceId}/ai/runs`),
+  approvals: (workspaceId: string, status: string) =>
+    apiFetch<{ id: string; action: string; status: string }[]>(
+      `/api/v1/workspaces/${workspaceId}/ai/approvals?status=${status}`,
+    ),
+  usage: (workspaceId: string) =>
+    apiFetch<{ month: { totalTokens: number; costMicros: number }; budgetTokens: number }>(
+      `/api/v1/workspaces/${workspaceId}/ai/usage`,
+    ),
+  messages: (workspaceId: string, messageId: string, decision: "approve" | "reject") =>
+    apiFetch(`/api/v1/workspaces/${workspaceId}/ai/messages/${messageId}/${decision}`, {
+      method: "POST",
+    }),
+  decideApproval: (workspaceId: string, approvalId: string, decision: "approved" | "rejected") =>
+    apiFetch(`/api/v1/workspaces/${workspaceId}/ai/approvals/${approvalId}/decide`, {
+      method: "POST",
+      body: JSON.stringify({ decision }),
+    }),
+};
