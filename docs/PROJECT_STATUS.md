@@ -2,7 +2,7 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-10-21 (10 — Phase 10 complete)
+**Last updated:** 2026-10-30 (11 — Phase 11 COMPLETE)
 
 ---
 
@@ -32,7 +32,7 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 8 | Deliverability intelligence — monitoring, reputation signals, guidance | **complete** (`phase-8`) |
 | 9 | Analytics & reporting | **complete** (`phase-9`) |
 | 10 | Lead Finder, data enrichment and verification marketplace | **complete** (`phase-10`) |
-| 11 | Billing & plans — Stripe subscriptions, usage limits | planned |
+| 11 | AI copilot and sales agents — model gateway, writer/researcher, reply agent, orchestration, AI Studio | **complete** (`phase-11`) |
 | 12 | Agency management — multi-client workspaces, team roles, reporting | planned |
 | 13 | Hardening & launch — performance, security audit, production cutover | planned |
 
@@ -100,6 +100,7 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 2026-10-16 | **Phase 3 complete** — promoted to `main` | Tag `phase-3`; Scala 188/188, Playwright 12/12; see `docs/HANDOFF.md` |
 | 2026-10-16 | **Phase 4 complete** — promoted to `main` | Tag `phase-4`; Scala 223/223, Playwright 15/15; see `docs/HANDOFF.md` |
 | 2026-10-21 | **Phase 10 complete** — promoted to `main` | Tag `phase-10`; Scala 267/267 (75 core + 2 worker + 190 api), Playwright 16/16; see `docs/HANDOFF.md` |
+| 2026-10-30 | **Phase 11 complete** — promoted to `main` | Tag `phase-11`; Scala 317 by module (96 core, 2 worker, 219 api incl. AI specs), Playwright 17/17; see `docs/HANDOFF.md` |
 
 ## Known blockers
 
@@ -108,6 +109,16 @@ None.
 ## Manual setup queue
 
 See [`docs/MANUAL_SETUP.md`](MANUAL_SETUP.md) — no items block Phase 3; carried items (Google OAuth client 6a, Entra app 7, EMAIL_ENCRYPTION_KEY backup, branch protection #3, staging DB password rotation) remain pending on the product owner.
+
+### Subphase detail — Phase 11
+
+| # | Subphase | Status | Notes |
+| --- | --- | --- | --- |
+| 11.1 | AI infrastructure and model gateway — provider-agnostic `AiGateway` in core (chat completions, structured-output validation, bounded retries with backoff+jitter on transient errors only, timeouts, secrets redaction for stored previews); OpenAI-compatible HTTP adapter (any provider speaking that API shape, configured via `AI_API_KEY`/`AI_BASE_URL`/`AI_MODEL`/`AI_TIMEOUT_MS`/`AI_MAX_RETRIES` env — no key, no gateway, endpoints report `ai_not_configured` honestly); schemas ai_agents, ai_runs, ai_run_steps, ai_messages, ai_templates (versioned), ai_usage (tokens + micro-USD cost), ai_approvals, ai_tool_invocations; workspace budgets on `workspace` (monthly token/spend caps, enforced before any provider call); runs carry sha256 prompt digest + redacted input/output previews only | **tested** | Migration 20261029090000 applied local + staging; AiGatewaySpec 8/8 (retries, no-retry on auth errors, structured validation, redaction, cost estimate, response parsing); AiRoutesSpec 8/8 (config honesty, run/usage logging with redaction, zero-budget 402 before provider call, agents CRUD + kind validation, template versioning, approvals lifecycle, tenant isolation); full Scala 283/283 (83 core + 2 worker + 198 api) |
+| 11.2 | AI email writer + lead researcher — `AiWriter` core (deterministic prompt assembly with versioned system prompt, fact keys + provenance in-prompt, strict JSON output schema); research facts store (`ai_research_items`: claim + source URL + retrieval time + kind, user-approved only); `/ai/write` generates 1-3 drafts grounded ONLY in supplied facts; deterministic evaluations flag unsupported claims (uncited fact keys), unknown template variables, deceptive pressure phrases, empty fields — stored in ai_messages evidence; approval/edit lifecycle (draft→edited→approved/rejected); deterministic render fails loudly on unrenderable or missing variables (never ships leftover placeholders); drafts never touch suppression/sending paths | **tested** | Migration 20261030100000 applied local + staging; AiWriterSpec 7/7 (prompt grounding, unsupported claims, deception scan, render safety incl. replacement-hostile values); AiWriterRoutesSpec 6/6 (research CRUD, flagged vs clean drafts, edit/approve/reject lifecycle, deterministic render + failure, zero-budget 402, tenant isolation); full Scala 296/296 (90 core + 2 worker + 204 api) |
+| 11.3 | AI Reply Agent — `AiReply` core: 9-intent proposal enum, whitelisted next actions (create_deal/crm_note/schedule_meeting/none), strict JSON proposal schema; `/ai/reply/draft` loads the authorized thread, deterministic ReplyClassifier verdict (as context), campaign context, contact and approved knowledge facts; proposes intent + reply draft + next actions with fact-key evidence; DETERMINISTIC SHORT-CIRCUIT: unsubscribe/bounce threads never reach the model (Phase 6 sync already applied suppression — asserted modelCalled=false and zero drafts); invalid intents/actions are hard-rejected (422), unsupported evidence keys flagged; every proposal creates a pending `send_reply` approval — sending stays exclusively in the deterministic inbox path | **tested** | AiReplyRoutesSpec 5/5 (proposal + audit records, unsubscribe short-circuit with stub-call assertion, hard rejection, 404s); full Scala 296/296 by module; NOTE WorkerQueueIntegrationSpec (sleep-based Phase 5.5 timing spec) flakes under full-suite parallel load — green 6/6 in isolation; CI unaffected (DB specs self-skip). Follow-up: serialize that spec |
+| 11.4 | AI Sales Agent orchestration — `AiSalesAgent` core + `/ai/agent/run`: CONSTRAINED 7-step pipeline fixed in code (interpret_brief, suggest_audience, search_providers, enrich_leads, draft_campaign, validate_readiness, submit_approval); models fill validated structured slots only (hand-written decoders); provider tools run through the licensed-provider framework with sandbox labeling (search_requests/discovered_contacts/provider_usage rows + ai_tool_invocations audit); deterministic readiness verdict (no results/no drafts/flags/budget) recorded in the approval payload; run always ENDS at a pending launch_campaign approval — no autonomous external communication; `/ai/agent/recommendations` + `/ai/agent/meetings` (steps 8-10) run over real campaign stats and positive replies with awaiting_approval/completed run audit | **tested** | AiAgentRoutesSpec 5/5 (7 ok steps, 2 completed tool invocations, sandbox contacts stored, pending approval, recommendations over real stats, meeting qualification, 404s); full suite green by module (worker/Crm timing flakes under parallel load, green isolated — documented) |
+| 11.5 | AI Studio + evaluations — /app/aistudio: agent configuration (create, kind/model/approval defaults), monthly usage vs budget card, pending approvals with approve/reject, run audit with token/cost per execution; deterministic evaluation fixtures (AiEvalSpec 6/6): prompt-injection content stays DATA (validators unchanged), hallucinated personalization flagged as unsupported claims, ambiguous replies a first-class low-confidence intent, invalid intents/actions hard-rejected regardless of phrasing, leftover placeholders refuse to render, malformed model output never executes; Playwright aistudio e2e (signup -> budget card -> create agent -> governance defaults); full Playwright 17/17 | **tested** | Web tsc/lint/prettier/build green; AiEvalSpec 6/6 |
 
 ### Subphase detail — Phase 10
 

@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   BarChart3,
   Bell,
+  Bot,
   Building2,
   Command,
   Inbox,
@@ -57,6 +58,7 @@ const NAV_ITEMS: {
   { href: "/app/campaigns", label: "Campaigns", icon: BarChart3 },
   { href: "/app/leads", label: "Leads", icon: Users },
   { href: "/app/leadfinder", label: "Lead Finder", icon: Sparkles },
+  { href: "/app/aistudio", label: "AI Studio", icon: Bot },
   { href: "/app/email-accounts", label: "Email Accounts", icon: Mail },
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];

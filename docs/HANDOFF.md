@@ -13,6 +13,46 @@
 - Migrations applied local + staging: 20261027090000_leadfinder, 20261027100000_source_provenance_leadfinder, 20261027110000_discovered_contacts_ws_unique, 20261027120000_starter_credits.
 - Tests: LeadFinderSpec 11/11 (search pricing + provenance, timeout refund, unknown-provider rejection, insufficient credits 402, concurrent-reservation overdraft impossibility, sandbox licensing block, dedupe/suppression/idempotent re-run, preview-only enrichment, tenant isolation); full Scala 267/267 (75 core + 2 worker + 190 api); web lint 0 errors, Vitest 25/25, production build green; Playwright 16/16 including new leadfinder e2e (search -> provenance labels -> sandbox blocked -> credits settled).
 
+
+## Phase 11.1 — AI infrastructure and model gateway (`20261029090000`)
+
+- **Gateway (core)** — provider-agnostic `AiGateway`: chat completions with model selection and output-token caps; `structured[A]` validates machine-readable output against a Scala decoder before anything may act on it; `retried` wraps adapters with bounded exponential backoff + jitter, retrying only timeout/rate-limit/unavailable (never auth or bad-request); `Redact` strips emails/API keys/bearer tokens and truncates everything stored in logs.
+- **Adapter** — `OpenAiCompatible` HTTP adapter (works with OpenAI/Azure/OpenRouter/self-hosted gateways). Wired in Main from `AI_API_KEY` + `AI_BASE_URL` + `AI_MODEL` + `AI_TIMEOUT_MS` + `AI_MAX_RETRIES`. **No key configured = no gateway**: `/ai/complete` returns 503 `ai_not_configured` rather than pretending. Provider agreements must exclude training on customer data (MANUAL_SETUP #12); the gateway sends only explicit prompt content.
+- **Schemas** — ai_agents, ai_runs (sha256 input digest + redacted previews), ai_run_steps, ai_messages (drafts for 11.2/11.3), ai_templates (versioned), ai_usage (tokens + micro-USD), ai_approvals, ai_tool_invocations; workspace-level monthly token/spend budgets enforced before every call (402 insufficient_budget).
+- **Endpoints** — /ai/config (honest gateway+budget status), agents CRUD, templates (auto-versioning), usage rollup, /ai/complete (budget-checked, run+usage+step logging), runs list/detail/cancel, approvals create/list/decide.
+- Tests: AiGatewaySpec 8/8; AiRoutesSpec 8/8; full Scala 283/283 (83 core + 2 worker + 198 api). Blocked on owner action for live model calls: AI provider account + API key policy (MANUAL_SETUP #12) — **simulated** via stub until then.
+
+
+## Phase 11.2 — AI email writer and lead researcher (`20261030100000`)
+
+- `AiWriter` core: deterministic prompt assembly (facts passed with stable keys + source URLs + retrieval timestamps; model instructed to cite keys and never invent facts), strict JSON output schema with hand-written decoders, unsupported-claim detection, deception phrase scan, unknown-variable detection, and final-variable rendering that fails loudly on unrenderable/missing variables (ADR-0026 quoteReplacement).
+- `ai_research_items` — approved research facts (claim, source URL, source kind, retrieved_at, verified); grounding comes only from these, never from model invention.
+- Endpoints: `/ai/research` CRUD, `/ai/write` (1-3 drafts with per-draft evaluation flags stored in `ai_messages.evidence`), `/ai/messages` list + edit (final_* fields, status edited) + approve/reject + `/render` deterministic preview.
+- Drafts are proposals only: sending and suppression remain exclusively in the deterministic campaign/inbox paths (Phase 5/6); approved drafts would be consumed by the composer, never by the model.
+- Tests: AiWriterSpec 7/7; AiWriterRoutesSpec 6/6; full Scala 296/296.
+
+
+## Phase 11.3 — AI Reply Agent (`feature/phase-113-reply-agent`, no migration)
+
+- `AiReply` core: intent enum (interested/pricing/product_question/objection/meeting_request/out_of_office/not_interested/unsubscribe/ambiguous), whitelisted next actions, strict JSON proposal schema with hand-written decoders, deterministic validation (invalid intent/action = hard rejection; unknown evidence keys flagged; confidence enum).
+- `POST /ai/reply/draft` — loads thread + contact + campaign + approved knowledge (workspace-scoped), feeds the deterministic ReplyClassifier verdict as context, proposes intent + reply + next actions with evidence; stores `ai_messages` draft + pending `send_reply` approval + `ai_runs` awaiting_approval audit.
+- Deterministic precedence: unsubscribe/bounce threads never call the model (Phase 6 sync already applied suppression/hygiene); human approval gates every external response; sending remains the deterministic Phase 6 inbox path.
+- Tests: AiReplyRoutesSpec 5/5; full suite green by module (90 core + 2 worker + 209 api incl. this spec); WorkerQueueIntegrationSpec timing flakes under full-suite parallel load (green 6/6 isolated) — pre-existing sleep-based assertions, serialized run tracked as follow-up.
+
+
+## Phase 11.4 — AI Sales Agent orchestration (`feature/phase-114-sales-agent`, no migration)
+
+- `AiSalesAgent` core: fixed 7-step pipeline definition, structured slot schemas (BriefUnderstanding, AudienceSuggestion) with hand-written decoders, deterministic readiness verdict.
+- `POST /ai/agent/run`: model steps (brief, audience, campaign draft) via validated gateway calls; tool steps execute through existing services — sandbox provider search + enrichment recorded as `ai_tool_invocations` with `search_requests`/`discovered_contacts`/`provider_usage` rows; drafts stored as flagged `ai_messages`; run ends at pending `launch_campaign` approval (`ai_runs` awaiting_approval). No model planning freedom, no autonomous sends.
+- `POST /ai/agent/recommendations` + `/ai/agent/meetings`: real campaign stats / positive repliers into validated structured outputs with full run audit.
+- Tests: AiAgentRoutesSpec 5/5. Known: WorkerQueueIntegrationSpec + CrmIntegrationSpec timing-flake under full-suite parallel load (green in isolation; serialized run tracked as follow-up).
+
+## Phase 11.5 — AI Studio interface and evaluations (feature/phase-115-ai-studio, no migration)
+
+- **AI Studio UI** — /app/aistudio: agent configuration (create writer/researcher/reply/sales agents; approval-required + enabled defaults visible), monthly usage vs budget card, pending approvals with approve/reject, run audit table with per-run token/cost and budget-exhausted warning.
+- **Evaluation fixtures** — AiEvalSpec 6/6: prompt-injection content in knowledge stays data (validators unchanged), hallucinated personalization flagged as unsupported claims, ambiguous replies first-class with low-confidence handling, invalid intents/actions hard-rejected regardless of phrasing, leftover placeholders refuse to render, malformed model output never executes.
+- Tests: AiEvalSpec 6/6; Playwright 17/17 including aistudio e2e; web tsc/lint/prettier/build green.
+
 ---
 
 ---

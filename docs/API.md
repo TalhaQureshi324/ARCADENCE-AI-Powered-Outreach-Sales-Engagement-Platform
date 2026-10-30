@@ -161,7 +161,27 @@ Planned:
 - ✅ `POST .../leadfinder/enrich/{contactId}` — waterfall preview, never writes without approval (EditContent)
 - ✅ `POST .../leadfinder/add-to-list` — dedupe + suppression + licensing enforcement with per-category counts (EditContent)
 
-### 3.9b AI — later phase
+### 3.9b AI — Phase 11 (11.1 implemented; writer/researcher/agents in 11.2+)
+
+- ✅ `GET .../ai/config` — gateway configuration + budget/usage status (ViewWorkspace)
+- ✅ `GET|POST .../ai/agents` · `PATCH .../ai/agents/{id}` — agent configs (View/EditContent)
+- ✅ `GET|POST .../ai/templates` — versioned prompt templates (View/EditContent)
+- ✅ `GET .../ai/usage` — monthly token/cost rollup vs budget (ViewWorkspace)
+- ✅ `POST .../ai/complete` — budget-checked model call; logs run + usage + step with redacted previews (EditContent)
+- ✅ `GET .../ai/runs` · `GET .../ai/runs/{id}` · `POST .../ai/runs/{id}/cancel` — execution logs (View/EditContent)
+- ✅ `GET|POST .../ai/approvals` · `POST .../ai/approvals/{id}/decide` — human approvals (View/EditContent)
+
+### 3.9c AI writer — Phase 11.2 (implemented)
+
+- ✅ `GET|POST .../ai/research` · `DELETE .../ai/research/{id}` — approved research facts with source URLs + timestamps (View/EditContent)
+- ✅ `POST .../ai/write` — grounded campaign drafts with deterministic evaluation flags (EditContent)
+- ✅ `POST .../ai/reply/draft` — reply-agent proposal (intent, draft, next actions, evidence) with deterministic unsubscribe/bounce short-circuit and mandatory approval (EditContent)
+
+### 3.9d Sales agent — Phase 11.4 (implemented)
+
+- ✅ `POST .../ai/agent/run` — constrained 7-step orchestration ending at a pending launch approval (EditContent)
+- ✅ `POST .../ai/agent/recommendations` · `POST .../ai/agent/meetings` — monitor/recommend + meeting qualification over real campaign data (EditContent)
+- ✅ `GET .../ai/messages` · `PATCH .../ai/messages/{id}` · `POST .../ai/messages/{id}/approve|reject` · `POST .../ai/messages/{id}/render` — draft lifecycle + deterministic render preview (View/EditContent)
 
 - ⬜ `POST /api/v1/ai/generate` (kind: campaign_copy | reply_draft | lead_summary; returns generation id + output; every call audited in `ai_generation`)
 - ⬜ `GET .../ai/generations/{generationId}`
