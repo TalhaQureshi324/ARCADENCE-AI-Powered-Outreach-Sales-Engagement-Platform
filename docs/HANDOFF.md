@@ -53,6 +53,13 @@
 - **Evaluation fixtures** — AiEvalSpec 6/6: prompt-injection content in knowledge stays data (validators unchanged), hallucinated personalization flagged as unsupported claims, ambiguous replies first-class with low-confidence handling, invalid intents/actions hard-rejected regardless of phrasing, leftover placeholders refuse to render, malformed model output never executes.
 - Tests: AiEvalSpec 6/6; Playwright 17/17 including aistudio e2e; web tsc/lint/prettier/build green.
 
+
+
+## Phase 11 addendum - GLM provider configured (env-only, no code default changed)
+
+- Provider: Zhipu GLM via the OpenAI-compatible adapter (AI_BASE_URL=https://open.bigmodel.cn/api/paas/v4). Live-verified with curl: auth OK, glm-4.5-flash responds with valid JSON under response_format=json_object + thinking disabled (both sent by the adapter when AI_DISABLE_THINKING=true). glm-5.3-flash exists on the account but returns error 1113 (insufficient balance) until topped up - switch is one env line (AI_MODEL=glm-5.3-flash).
+- apps/api/.env.local (git-ignored) rebuilt with full local config: recovered Supabase/JWT values from apps/api/.env.example defaults, NEW EMAIL_ENCRYPTION_KEY (the previous local key was lost when the file was overwritten - locally stored email-account credentials must be reconnected; no production impact).
+- OpenAiCompatible gained an optional disableThinking flag (env AI_DISABLE_THINKING=true) - required for GLM 4.5+ reasoning models so structured outputs return content within token budgets.
 ---
 
 ---

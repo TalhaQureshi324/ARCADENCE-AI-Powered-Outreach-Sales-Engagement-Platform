@@ -149,7 +149,8 @@ object AiGateway:
       client: Client[IO],
       baseUrl: Uri,
       apiKey: String,
-      requestTimeout: Duration
+      requestTimeout: Duration,
+      disableThinking: Boolean = false
   ) extends Gateway:
     val name = "openai-compatible"
 
