@@ -12,6 +12,7 @@ import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.{HttpApp, HttpRoutes}
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.slf4j.Slf4jFactory
+import java.util.UUID
 
 import scala.concurrent.duration.*
 
@@ -164,6 +165,41 @@ object Main extends IOApp:
                 )
                 val webhookDispatcher =
                   new WebhookDispatcher(transactor, httpClient)
+                val accessTokenFor = (workspaceId: UUID, accountId: UUID) =>
+                  registry
+                    .credentialLoader(
+                      accountRepos,
+                      workspaceId,
+                      accountId,
+                      "gmail"
+                    )
+                    .flatMap {
+                      case Some(
+                            c: com.arcadence.core.email.gmail.GmailCredentials
+                          ) =>
+                        IO.pure(Some(c.accessToken))
+                      case _ =>
+                        registry
+                          .credentialLoader(
+                            accountRepos,
+                            workspaceId,
+                            accountId,
+                            "microsoft"
+                          )
+                          .flatMap {
+                            case Some(
+                                  c: com.arcadence.core.email.microsoft.MicrosoftCredentials
+                                ) =>
+                              IO.pure(Some(c.accessToken))
+                            case _ => IO.pure(None)
+                          }
+                    }
+                val integrationRoutes = new IntegrationRoutes(
+                  authenticator = authenticator,
+                  xa = transactor,
+                  client = httpClient,
+                  accessTokenFor = accessTokenFor
+                )
                 val crmRoutes = new CrmRoutes(
                   authenticator = authenticator,
                   xa = transactor,
@@ -246,7 +282,12 @@ object Main extends IOApp:
                   sync = new InboxSyncService(
                     transactor,
                     Some(registry),
-                    accountRepos
+                    accountRepos,
+                    slack = Some(
+                      new com.arcadence.core.integrations.Integrations.Slack(
+                        httpClient
+                      )
+                    )
                   ),
                   registry = Some(registry),
                   emailAccounts = accountRepos
@@ -297,7 +338,7 @@ object Main extends IOApp:
                   RateLimit(config.rateLimitPerMinute)(
                     SecurityHeaders(
                       workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http
-                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> inboxRoutes.http <+> analyticsRoutes.http <+> deliverabilityRoutes.http <+> crmRoutes.http <+> agencyRoutes.http <+> leadFinderRoutes.http <+> aiRoutes.http <+> aiWriterRoutes.http <+> aiReplyRoutes.http <+> aiAgentRoutes.http <+> apiKeysRoutes.http <+> importRoutes.http
+                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> inboxRoutes.http <+> analyticsRoutes.http <+> deliverabilityRoutes.http <+> crmRoutes.http <+> agencyRoutes.http <+> leadFinderRoutes.http <+> integrationRoutes.http <+> aiRoutes.http <+> aiWriterRoutes.http <+> aiReplyRoutes.http <+> aiAgentRoutes.http <+> apiKeysRoutes.http <+> importRoutes.http
                     )
                   )
 
