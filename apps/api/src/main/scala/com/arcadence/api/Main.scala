@@ -162,9 +162,12 @@ object Main extends IOApp:
                   authenticator = authenticator,
                   xa = transactor
                 )
+                val webhookDispatcher =
+                  new WebhookDispatcher(transactor, httpClient)
                 val crmRoutes = new CrmRoutes(
                   authenticator = authenticator,
-                  xa = transactor
+                  xa = transactor,
+                  webhooks = Some(webhookDispatcher)
                 )
                 val leadFinderRoutes = new LeadFinderRoutes(
                   authenticator = authenticator,
@@ -219,7 +222,8 @@ object Main extends IOApp:
                 )
                 val apiKeysRoutes = new ApiKeysRoutes(
                   authenticator = authenticator,
-                  xa = transactor
+                  xa = transactor,
+                  dispatcher = Some(webhookDispatcher)
                 )
                 val aiAgentRoutes = new AiAgentRoutes(
                   authenticator = authenticator,
@@ -265,6 +269,12 @@ object Main extends IOApp:
                     .map(_.isRight)
 
                 val health = new HealthRoutes(identity, dbCheck = Some(dbReady))
+                val docs = new DocsRoutes
+                val dispatchLoop = webhookDispatcher
+                  .loop(30.seconds)
+                  .compile
+                  .drain
+                  .background
 
                 // Browser calls (localhost:3000) hit WorkspaceRoutes directly —
                 // CORS must cover the whole API surface, not just health.
@@ -292,7 +302,7 @@ object Main extends IOApp:
                   )
 
                 val allRoutes: HttpRoutes[IO] =
-                  corsPolicy(health.http <+> hardenedRoutes)
+                  corsPolicy(health.http <+> docs.routes <+> hardenedRoutes)
 
                 val routes =
                   new RequestContext(logger)(

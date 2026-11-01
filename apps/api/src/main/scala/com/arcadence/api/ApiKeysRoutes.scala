@@ -78,7 +78,8 @@ object ApiKeysDtos:
   */
 final class ApiKeysRoutes(
     authenticator: Authenticator,
-    xa: Transactor[IO]
+    xa: Transactor[IO],
+    dispatcher: Option[WebhookDispatcher] = None
 ):
 
   private val authorizer = new Authorizer(xa)
@@ -187,6 +188,26 @@ final class ApiKeysRoutes(
 
   private def deleteWebhook = endpoint.delete
     .in("api" / "v1" / "workspaces" / wspath / "webhooks" / path[UUID]("subId"))
+    .in(header[Option[String]]("Authorization"))
+    .out(jsonBody[Json])
+    .errorOut(errorOut)
+
+  private val listDeliveries = endpoint.get
+    .in(
+      "api" / "v1" / "workspaces" / wspath / "webhooks" / path[UUID](
+        "subId"
+      ) / "deliveries"
+    )
+    .in(header[Option[String]]("Authorization"))
+    .out(jsonBody[List[Json]])
+    .errorOut(errorOut)
+
+  private val replayDelivery = endpoint.post
+    .in(
+      "api" / "v1" / "workspaces" / wspath / "webhooks" / "deliveries" / path[
+        UUID
+      ]("deliveryId") / "replay"
+    )
     .in(header[Option[String]]("Authorization"))
     .out(jsonBody[Json])
     .errorOut(errorOut)
@@ -373,6 +394,76 @@ final class ApiKeysRoutes(
           )
         }
 
+  private def listDeliveriesLogic(
+      ws: UUID,
+      subId: UUID
+  ): IO[Either[(SttpStatus, Envelope), List[Json]]] =
+    sql"""select d.id::text, d.event, d.status, d.attempts, d.response_code, d.last_error,
+          d.created_at::text, d.delivered_at::text
+          from public.webhook_deliveries d
+          join public.webhook_subscriptions s on s.id = d.subscription_id
+          where d.workspace_id = $ws and d.subscription_id = $subId
+          order by d.created_at desc limit 50"""
+      .query[
+        (
+            String,
+            String,
+            String,
+            Int,
+            Option[Int],
+            Option[String],
+            String,
+            Option[String]
+        )
+      ]
+      .to[List]
+      .transact(xa)
+      .map(rows =>
+        Right(rows.map { t =>
+          Json.obj(
+            "id" -> Json.fromString(t._1),
+            "event" -> Json.fromString(t._2),
+            "status" -> Json.fromString(t._3),
+            "attempts" -> Json.fromInt(t._4),
+            "responseCode" -> t._5
+              .map(code => Json.fromInt(code))
+              .getOrElse(Json.Null),
+            "lastError" -> t._6.map(Json.fromString).getOrElse(Json.Null),
+            "createdAt" -> Json.fromString(t._7),
+            "deliveredAt" -> t._8.map(Json.fromString).getOrElse(Json.Null)
+          )
+        })
+      )
+
+  private def replayLogic(
+      ws: UUID,
+      deliveryId: UUID
+  ): IO[Either[(SttpStatus, Envelope), Json]] =
+    dispatcher match
+      case None =>
+        IO.pure(
+          Left(
+            (
+              SttpStatus.ServiceUnavailable,
+              Envelope("not_configured", "Webhook dispatcher is not running.")
+            )
+          )
+        )
+      case Some(d) =>
+        d.replay(deliveryId, ws).map { ok =>
+          if ok then Right(Json.obj("replayed" -> Json.fromBoolean(true)))
+          else
+            Left(
+              (
+                SttpStatus.NotFound,
+                Envelope(
+                  "not_found",
+                  "Delivery not found or not replayable (only dead/failed)."
+                )
+              )
+            )
+        }
+
   private def deleteWebhookLogic(
       ws: UUID,
       subId: UUID
@@ -443,6 +534,20 @@ final class ApiKeysRoutes(
       deleteWebhook.serverLogic((w, subId, auth) =>
         requireManage(auth, w).flatMap {
           case Right(_)    => deleteWebhookLogic(w, subId)
+          case l @ Left(_) =>
+            IO.pure(l.asInstanceOf[Either[(SttpStatus, Envelope), Json]])
+        }
+      ),
+      listDeliveries.serverLogic((w, subId, auth) =>
+        requireManage(auth, w).flatMap {
+          case Right(_)    => listDeliveriesLogic(w, subId)
+          case l @ Left(_) =>
+            IO.pure(l.asInstanceOf[Either[(SttpStatus, Envelope), List[Json]]])
+        }
+      ),
+      replayDelivery.serverLogic((w, deliveryId, auth) =>
+        requireManage(auth, w).flatMap {
+          case Right(_)    => replayLogic(w, deliveryId)
           case l @ Left(_) =>
             IO.pure(l.asInstanceOf[Either[(SttpStatus, Envelope), Json]])
         }

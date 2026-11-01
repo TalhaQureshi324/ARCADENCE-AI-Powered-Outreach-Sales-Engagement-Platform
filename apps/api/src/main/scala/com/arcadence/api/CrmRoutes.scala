@@ -15,11 +15,12 @@ import sttp.tapir.json.circe.*
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.http4s.Http4sServerInterpreter
 
+import io.circe.Json
 import java.time.{LocalDate, OffsetDateTime}
 import java.util.UUID
 
 object CrmDtos:
-  import io.circe.{Decoder, Encoder}
+  import io.circe.{Decoder, Encoder, Json}
   import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
   import sttp.tapir.Schema
 
@@ -99,7 +100,8 @@ object CrmDtos:
 
 final class CrmRoutes(
     authenticator: Authenticator,
-    xa: Transactor[IO]
+    xa: Transactor[IO],
+    webhooks: Option[WebhookDispatcher] = None
 ):
 
   private val authorizer = new Authorizer(xa)
@@ -582,9 +584,20 @@ final class CrmRoutes(
       createDeal.serverLogic((w, auth, req) =>
         requireEdit(auth, w).flatMap {
           case Right(actor) =>
-            createDealLogic(w, actor, req).map {
-              case Right(d)  => Right(d)
-              case Left(env) => Left((envStatus(env), env))
+            createDealLogic(w, actor, req).flatMap {
+              case Right(d) =>
+                webhooks.traverse_(
+                  _.enqueue(
+                    w,
+                    "deal.created",
+                    Json.obj(
+                      "dealId" -> Json.fromString(d.id.toString),
+                      "title" -> Json.fromString(d.title),
+                      "status" -> Json.fromString(d.status)
+                    )
+                  ).attempt.void
+                ) *> IO.pure(Right(d))
+              case Left(env) => IO.pure(Left((envStatus(env), env)))
             }
           case l @ Left(_) =>
             IO.pure(
