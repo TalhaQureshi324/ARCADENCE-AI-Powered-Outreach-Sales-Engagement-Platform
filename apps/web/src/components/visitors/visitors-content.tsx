@@ -22,7 +22,9 @@ export function VisitorsContent() {
   const workspaceId = selected?.id ?? "";
   const { toast } = useToast();
 
-  const [sites, setSites] = useState<{ id: string; domain: string; siteKey: string; active: boolean }[] | null>(null);
+  const [sites, setSites] = useState<
+    { id: string; domain: string; siteKey: string; active: boolean }[] | null
+  >(null);
   const [stats, setStats] = useState<{
     pageviews: number;
     conversions: number;
@@ -37,8 +39,14 @@ export function VisitorsContent() {
 
   const load = useCallback(() => {
     if (!workspaceId) return;
-    visitorApi.sites(workspaceId).then(setSites).catch(() => setSites([]));
-    visitorApi.analytics(workspaceId, 7).then(setStats).catch(() => setStats(null));
+    visitorApi
+      .sites(workspaceId)
+      .then(setSites)
+      .catch(() => setSites([]));
+    visitorApi
+      .analytics(workspaceId, 7)
+      .then(setStats)
+      .catch(() => setStats(null));
   }, [workspaceId]);
 
   useEffect(() => {
@@ -67,7 +75,8 @@ export function VisitorsContent() {
       <div>
         <h1 className="text-foreground text-xl font-semibold tracking-tight">Website visitors</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Anonymous, aggregated traffic from sites you control. Consent-gated — the script only fires after
+          Anonymous, aggregated traffic from sites you control. Consent-gated — the script only
+          fires after
           <code className="bg-surface-sunken mx-1 rounded px-1">window.__arcadenceConsent</code>
           is set by your consent flow.
         </p>
@@ -81,7 +90,12 @@ export function VisitorsContent() {
         />
         <div className="space-y-3 p-4 pt-0">
           <div className="flex flex-wrap items-center gap-2">
-            <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="yourdomain.com" className="w-64" />
+            <Input
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              placeholder="yourdomain.com"
+              className="w-64"
+            />
             <button
               onClick={createSite}
               disabled={creating || !domain.trim()}
@@ -93,7 +107,11 @@ export function VisitorsContent() {
           </div>
           {sites === null && <Skeleton className="h-20" />}
           {sites !== null && sites.length === 0 && (
-            <EmptyState icon={<Globe size={20} />} title="No sites tracked" description="Add your first domain to get a tracking snippet." />
+            <EmptyState
+              icon={<Globe size={20} />}
+              title="No sites tracked"
+              description="Add your first domain to get a tracking snippet."
+            />
           )}
           {sites !== null && sites.length > 0 && (
             <Table>
@@ -108,7 +126,9 @@ export function VisitorsContent() {
                 {sites.map((s) => (
                   <TR key={s.id}>
                     <TD>{s.domain}</TD>
-                    <TD className="text-muted-foreground font-mono text-xs">{s.siteKey.slice(0, 16)}…</TD>
+                    <TD className="text-muted-foreground font-mono text-xs">
+                      {s.siteKey.slice(0, 16)}…
+                    </TD>
                     <TD>{s.active ? "active" : "inactive"}</TD>
                   </TR>
                 ))}
@@ -125,7 +145,9 @@ export function VisitorsContent() {
               <div className="text-muted-foreground flex items-center gap-2 text-xs font-medium">
                 <Eye size={13} /> Pageviews (7d)
               </div>
-              <div className="text-foreground mt-1 text-2xl font-semibold">{stats.pageviews.toLocaleString()}</div>
+              <div className="text-foreground mt-1 text-2xl font-semibold">
+                {stats.pageviews.toLocaleString()}
+              </div>
             </div>
           </Card>
           <Card>
@@ -133,13 +155,17 @@ export function VisitorsContent() {
               <div className="text-muted-foreground flex items-center gap-2 text-xs font-medium">
                 <Target size={13} /> Conversions (7d)
               </div>
-              <div className="text-foreground mt-1 text-2xl font-semibold">{stats.conversions.toLocaleString()}</div>
+              <div className="text-foreground mt-1 text-2xl font-semibold">
+                {stats.conversions.toLocaleString()}
+              </div>
             </div>
           </Card>
           <Card>
             <div className="p-4">
               <div className="text-muted-foreground text-xs font-medium">Sessions (7d)</div>
-              <div className="text-foreground mt-1 text-2xl font-semibold">{stats.sessions.toLocaleString()}</div>
+              <div className="text-foreground mt-1 text-2xl font-semibold">
+                {stats.sessions.toLocaleString()}
+              </div>
             </div>
           </Card>
         </div>
@@ -150,7 +176,9 @@ export function VisitorsContent() {
           <CardHeader eyebrow="Behavior" title="Top paths" />
           <div className="p-4 pt-0">
             {stats === null && <Skeleton className="h-32" />}
-            {stats !== null && stats.topPaths.length === 0 && <p className="text-muted-foreground text-sm">No traffic yet.</p>}
+            {stats !== null && stats.topPaths.length === 0 && (
+              <p className="text-muted-foreground text-sm">No traffic yet.</p>
+            )}
             {stats !== null && stats.topPaths.length > 0 && (
               <Table>
                 <THead>
@@ -175,7 +203,9 @@ export function VisitorsContent() {
           <CardHeader eyebrow="Sources" title="Referrers" />
           <div className="p-4 pt-0">
             {stats === null && <Skeleton className="h-32" />}
-            {stats !== null && stats.referrers.length === 0 && <p className="text-muted-foreground text-sm">No traffic yet.</p>}
+            {stats !== null && stats.referrers.length === 0 && (
+              <p className="text-muted-foreground text-sm">No traffic yet.</p>
+            )}
             {stats !== null && stats.referrers.length > 0 && (
               <Table>
                 <THead>
@@ -200,7 +230,9 @@ export function VisitorsContent() {
           <CardHeader eyebrow="Campaigns" title="UTM campaigns" />
           <div className="p-4 pt-0">
             {stats === null && <Skeleton className="h-32" />}
-            {stats !== null && stats.utmCampaigns.length === 0 && <p className="text-muted-foreground text-sm">No tagged traffic yet.</p>}
+            {stats !== null && stats.utmCampaigns.length === 0 && (
+              <p className="text-muted-foreground text-sm">No tagged traffic yet.</p>
+            )}
             {stats !== null && stats.utmCampaigns.length > 0 && (
               <Table>
                 <THead>
@@ -225,7 +257,8 @@ export function VisitorsContent() {
 
       {stats && (
         <Alert variant="info">
-          Aggregated, anonymous traffic only — Arcadence does not identify individual visitors from anonymous traffic.
+          Aggregated, anonymous traffic only — Arcadence does not identify individual visitors from
+          anonymous traffic.
         </Alert>
       )}
     </div>
