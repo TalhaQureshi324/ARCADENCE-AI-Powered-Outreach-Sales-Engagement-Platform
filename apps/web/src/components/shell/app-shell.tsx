@@ -9,6 +9,7 @@ import {
   Bot,
   Building2,
   Command,
+  Globe,
   Inbox,
   LayoutDashboard,
   LogOut,
@@ -59,6 +60,7 @@ const NAV_ITEMS: {
   { href: "/app/leads", label: "Leads", icon: Users },
   { href: "/app/leadfinder", label: "Lead Finder", icon: Sparkles },
   { href: "/app/aistudio", label: "AI Studio", icon: Bot },
+  { href: "/app/visitors", label: "Visitors", icon: Globe },
   { href: "/app/email-accounts", label: "Email Accounts", icon: Mail },
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];

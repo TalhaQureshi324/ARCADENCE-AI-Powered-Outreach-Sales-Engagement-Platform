@@ -194,6 +194,7 @@ object Main extends IOApp:
                             case _ => IO.pure(None)
                           }
                     }
+                val visitorRoutes = new VisitorRoutes(authenticator, transactor)
                 val integrationRoutes = new IntegrationRoutes(
                   authenticator = authenticator,
                   xa = transactor,
@@ -338,7 +339,7 @@ object Main extends IOApp:
                   RateLimit(config.rateLimitPerMinute)(
                     SecurityHeaders(
                       workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http
-                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> inboxRoutes.http <+> analyticsRoutes.http <+> deliverabilityRoutes.http <+> crmRoutes.http <+> agencyRoutes.http <+> leadFinderRoutes.http <+> integrationRoutes.http <+> aiRoutes.http <+> aiWriterRoutes.http <+> aiReplyRoutes.http <+> aiAgentRoutes.http <+> apiKeysRoutes.http <+> importRoutes.http
+                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> inboxRoutes.http <+> analyticsRoutes.http <+> deliverabilityRoutes.http <+> crmRoutes.http <+> agencyRoutes.http <+> leadFinderRoutes.http <+> integrationRoutes.http <+> visitorRoutes.http <+> aiRoutes.http <+> aiWriterRoutes.http <+> aiReplyRoutes.http <+> aiAgentRoutes.http <+> apiKeysRoutes.http <+> importRoutes.http
                     )
                   )
 

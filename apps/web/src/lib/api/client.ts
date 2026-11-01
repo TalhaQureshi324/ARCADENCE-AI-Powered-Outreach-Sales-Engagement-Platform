@@ -1237,3 +1237,25 @@ export const aiApi = {
       body: JSON.stringify({ decision }),
     }),
 };
+
+export const visitorApi = {
+  sites: (workspaceId: string) =>
+    apiFetch<{ id: string; domain: string; siteKey: string; active: boolean; createdAt: string }[]>(
+      `/api/v1/workspaces/${workspaceId}/visitor-sites`,
+    ),
+  createSite: (workspaceId: string, domain: string) =>
+    apiFetch<{ id: string; domain: string; siteKey: string; snippet: string }>(
+      `/api/v1/workspaces/${workspaceId}/visitor-sites?domain=${encodeURIComponent(domain)}`,
+      { method: "POST" },
+    ),
+  analytics: (workspaceId: string, days = 7) =>
+    apiFetch<{
+      pageviews: number;
+      conversions: number;
+      sessions: number;
+      perDay: { date: string; pageviews: number; conversions: number }[];
+      topPaths: { name: string; count: number }[];
+      referrers: { name: string; count: number }[];
+      utmCampaigns: { name: string; count: number }[];
+    }>(`/api/v1/workspaces/${workspaceId}/visitor-analytics?days=${days}`),
+};
