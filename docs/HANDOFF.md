@@ -67,6 +67,12 @@
 - **12.2 Connectors** — integrations table (unique workspace+kind upsert); Slack incoming-webhook connector (status-based success), Google Calendar + Outlook Graph event creation (create-only — never overwrites external records) with OAuth tokens resolved through the Phase 2 registry (no duplicate credential storage), HubSpot contact push; positive-reply Slack trigger fired best-effort from InboxSyncService on interested/meeting_requested. IntegrationSpec 5/5 with live stub servers.
 - **12.3 Visitor intelligence** — site_keys + visitor_events; consent-gated tracking script served at /track.js (fires only after window.__arcadenceConsent); public anonymous event collection keyed by site key; aggregate analytics (pageviews/conversions/sessions, per-day, top paths, referrers, utm campaigns); /app/visitors dashboard. VisitorRoutesSpec 3/3. Anonymous aggregates only — no individual-visitor identification claims.
 - Phase 12 spec suite: 17/17. Remaining: 12.4 workflow builder, 12.5 multichannel.
+
+## Phase 12.4-12.5 — workflow automation + multichannel (migrations 20261102100000/100)
+
+- **12.4 Workflow automation** — automations table (trigger whitelist of 7 events, graph jsonb, version) + automation_runs (status, dry_run, per-step history). Core WorkflowAutomation: graph decode/validate — trigger and node-kind whitelists, duplicate-id/edge checks, cycle detection (loops structurally impossible), dead-end condition detection, bounded size — plus deterministic execution order and context-based condition evaluation. API: CRUD, run (dry: zero side effects; live: same deterministic path), version bump on graph change, run history, cancellation. AutomationRoutesSpec 6/6.
+- **12.5 Multichannel** — per-contact sms_consent/call_consent SEPARATE from email consent (timestamped); Channels core with SmsAdapter contract + generic JSON HTTP adapter and DbCallAdapter for call logging; consent enforced at the service boundary (403 without opt-in, zero adapter calls); no scraping/impersonation/ToS-violating automation. channel_interactions records phone/meeting activity for CRM. ChannelRoutesSpec 4/4 (unconfigured provider = honest 503).
+- Phase 12 spec totals: ApiKeys 6 + Webhooks 3 + Integrations 5 + Visitors 3 + Automations 6 + Channels 4 = 27/27. Milestone: develop -> main, tag phase-12.
 ---
 
 ---
