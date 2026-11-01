@@ -26,8 +26,54 @@ import java.util.UUID
 final class InboxSyncService(
     xa: Transactor[IO],
     registry: Option[ProviderRegistry],
-    emailAccounts: EmailAccountRepos
+    emailAccounts: EmailAccountRepos,
+    slack: Option[com.arcadence.core.integrations.Integrations.Slack] = None
 ):
+
+  /** Positive-reply workflow (Phase 12.2): notify connected Slack hooks.
+    * Best-effort - a Slack outage never affects sync or sending.
+    */
+  private def notifySlackIfPositive(
+      workspaceId: UUID,
+      threadId: UUID,
+      subject: String,
+      body: String,
+      fromAddress: String
+  ): IO[Unit] = {
+    slack match {
+      case None              => IO.unit
+      case Some(slackClient) => {
+        val cls =
+          com.arcadence.api.ReplyClassifier.classify(subject, body, fromAddress)
+        if cls == "interested" || cls == "meeting_requested" then {
+          sql"""select c.email from public.email_threads t
+                join public.contact c on c.id = t.contact_id
+                where t.id = $threadId and t.workspace_id = $workspaceId"""
+            .query[String]
+            .option
+            .transact(xa)
+            .flatMap {
+              case None        => IO.unit
+              case Some(email) => {
+                sql"""select coalesce(string_agg(config->>'webhookUrl', ','), '')
+                      from public.integrations
+                      where workspace_id = $workspaceId and kind = 'slack' and status = 'connected'"""
+                  .query[String]
+                  .unique
+                  .transact(xa)
+                  .flatMap { csv =>
+                    val hooks = csv.split(",").filter(_.nonEmpty).toList
+                    com.arcadence.core.integrations.Integrations
+                      .notifyPositiveReply(slackClient, hooks, email, subject)
+                      .attempt
+                      .void
+                  }
+              }
+            }
+        } else IO.unit
+      }
+    }
+  }
 
   def syncWorkspace(workspaceId: UUID): IO[Int] =
     connectedAccounts(workspaceId).flatMap { accounts =>
@@ -100,7 +146,7 @@ final class InboxSyncService(
       accountId: UUID,
       m: InboxMessage
   ): IO[Boolean] =
-    val tx: ConnectionIO[Boolean] =
+    val tx: ConnectionIO[(Boolean, UUID)] =
       for
         threadId <- resolveThreadId(workspaceId, accountId, m)
         msgId <-
@@ -137,11 +183,24 @@ final class InboxSyncService(
             where id = $threadId
           """.update.run.void
         _ <- ReplyClassifier.applyInboundEffectsT(threadId, m)
-      yield true
-    tx.transact(xa).handleError {
-      case _: DuplicateDelivery => false
-      case other                => throw other
-    }
+      yield (true, threadId)
+    tx.transact(xa)
+      .flatMap {
+        case (isNew @ true, threadId) =>
+          notifySlackIfPositive(
+            workspaceId,
+            threadId,
+            m.subject.getOrElse(""),
+            m.textBody.getOrElse(""),
+            m.fromAddress
+          ).attempt.void
+            .as(true)
+        case _ => IO.pure(false)
+      }
+      .handleError {
+        case _: DuplicateDelivery => false
+        case other                => throw other
+      }
 
   private class DuplicateDelivery
       extends RuntimeException("duplicate provider message")

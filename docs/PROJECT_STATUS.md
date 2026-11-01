@@ -2,7 +2,7 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-10-30 (11 — Phase 11 COMPLETE)
+**Last updated:** 2026-11-01 (12 — Phase 12 COMPLETE)
 
 ---
 
@@ -33,7 +33,7 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 9 | Analytics & reporting | **complete** (`phase-9`) |
 | 10 | Lead Finder, data enrichment and verification marketplace | **complete** (`phase-10`) |
 | 11 | AI copilot and sales agents — model gateway, writer/researcher, reply agent, orchestration, AI Studio | **complete** (`phase-11`) |
-| 12 | Agency management — multi-client workspaces, team roles, reporting | planned |
+| 12 | Public API, integrations and workflow automation — API keys, webhooks, connectors, visitor intel, workflows, multichannel | **complete** (`phase-12`) |
 | 13 | Hardening & launch — performance, security audit, production cutover | planned |
 
 ## Subphase detail — Phase 0

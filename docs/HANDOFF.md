@@ -60,6 +60,19 @@
 - Provider: Zhipu GLM via the OpenAI-compatible adapter (AI_BASE_URL=https://open.bigmodel.cn/api/paas/v4). Live-verified with curl: auth OK, glm-4.5-flash responds with valid JSON under response_format=json_object + thinking disabled (both sent by the adapter when AI_DISABLE_THINKING=true). glm-5.3-flash exists on the account but returns error 1113 (insufficient balance) until topped up - switch is one env line (AI_MODEL=glm-5.3-flash).
 - apps/api/.env.local (git-ignored) rebuilt with full local config: recovered Supabase/JWT values from apps/api/.env.example defaults, NEW EMAIL_ENCRYPTION_KEY (the previous local key was lost when the file was overwritten - locally stored email-account credentials must be reconnected; no production impact).
 - OpenAiCompatible gained an optional disableThinking flag (env AI_DISABLE_THINKING=true) - required for GLM 4.5+ reasoning models so structured outputs return content within token budgets.
+
+## Phase 12.1-12.3 — public API, integrations, visitor intel (migrations 20261101090000/120000/120100)
+
+- **12.1 Public API + webhooks** — api_keys (sha256 hash, one-time secret display, scope whitelist, expiry, revocation, last-used heartbeat; ApiKeys.authenticate for Bearer ak_ tokens); webhook_subscriptions + deliveries with HMAC-SHA256 signed envelopes (t=,v1=), exponential-backoff retries, dead-letter after 5 attempts, replay; dispatcher background loop (30s) in Main; deal.created wired from CRM; /openapi.json + /developers guide. ApiKeysSpec 6/6, WebhookDispatcherSpec 3/3 (live local HTTP stub, signature verified).
+- **12.2 Connectors** — integrations table (unique workspace+kind upsert); Slack incoming-webhook connector (status-based success), Google Calendar + Outlook Graph event creation (create-only — never overwrites external records) with OAuth tokens resolved through the Phase 2 registry (no duplicate credential storage), HubSpot contact push; positive-reply Slack trigger fired best-effort from InboxSyncService on interested/meeting_requested. IntegrationSpec 5/5 with live stub servers.
+- **12.3 Visitor intelligence** — site_keys + visitor_events; consent-gated tracking script served at /track.js (fires only after window.__arcadenceConsent); public anonymous event collection keyed by site key; aggregate analytics (pageviews/conversions/sessions, per-day, top paths, referrers, utm campaigns); /app/visitors dashboard. VisitorRoutesSpec 3/3. Anonymous aggregates only — no individual-visitor identification claims.
+- Phase 12 spec suite: 17/17. Remaining: 12.4 workflow builder, 12.5 multichannel.
+
+## Phase 12.4-12.5 — workflow automation + multichannel (migrations 20261102100000/100)
+
+- **12.4 Workflow automation** — automations table (trigger whitelist of 7 events, graph jsonb, version) + automation_runs (status, dry_run, per-step history). Core WorkflowAutomation: graph decode/validate — trigger and node-kind whitelists, duplicate-id/edge checks, cycle detection (loops structurally impossible), dead-end condition detection, bounded size — plus deterministic execution order and context-based condition evaluation. API: CRUD, run (dry: zero side effects; live: same deterministic path), version bump on graph change, run history, cancellation. AutomationRoutesSpec 6/6.
+- **12.5 Multichannel** — per-contact sms_consent/call_consent SEPARATE from email consent (timestamped); Channels core with SmsAdapter contract + generic JSON HTTP adapter and DbCallAdapter for call logging; consent enforced at the service boundary (403 without opt-in, zero adapter calls); no scraping/impersonation/ToS-violating automation. channel_interactions records phone/meeting activity for CRM. ChannelRoutesSpec 4/4 (unconfigured provider = honest 503).
+- Phase 12 spec totals: ApiKeys 6 + Webhooks 3 + Integrations 5 + Visitors 3 + Automations 6 + Channels 4 = 27/27. Milestone: develop -> main, tag phase-12.
 ---
 
 ---

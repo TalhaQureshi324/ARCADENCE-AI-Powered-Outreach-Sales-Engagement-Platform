@@ -12,6 +12,7 @@ import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.{HttpApp, HttpRoutes}
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.slf4j.Slf4jFactory
+import java.util.UUID
 
 import scala.concurrent.duration.*
 
@@ -162,9 +163,55 @@ object Main extends IOApp:
                   authenticator = authenticator,
                   xa = transactor
                 )
+                val webhookDispatcher =
+                  new WebhookDispatcher(transactor, httpClient)
+                val accessTokenFor = (workspaceId: UUID, accountId: UUID) =>
+                  registry
+                    .credentialLoader(
+                      accountRepos,
+                      workspaceId,
+                      accountId,
+                      "gmail"
+                    )
+                    .flatMap {
+                      case Some(
+                            c: com.arcadence.core.email.gmail.GmailCredentials
+                          ) =>
+                        IO.pure(Some(c.accessToken))
+                      case _ =>
+                        registry
+                          .credentialLoader(
+                            accountRepos,
+                            workspaceId,
+                            accountId,
+                            "microsoft"
+                          )
+                          .flatMap {
+                            case Some(
+                                  c: com.arcadence.core.email.microsoft.MicrosoftCredentials
+                                ) =>
+                              IO.pure(Some(c.accessToken))
+                            case _ => IO.pure(None)
+                          }
+                    }
+                val visitorRoutes = new VisitorRoutes(authenticator, transactor)
+                val automationRoutes =
+                  new AutomationRoutes(authenticator, transactor)
+                val channelRoutes = new ChannelRoutes(
+                  authenticator,
+                  transactor,
+                  smsAdapter = None
+                )
+                val integrationRoutes = new IntegrationRoutes(
+                  authenticator = authenticator,
+                  xa = transactor,
+                  client = httpClient,
+                  accessTokenFor = accessTokenFor
+                )
                 val crmRoutes = new CrmRoutes(
                   authenticator = authenticator,
-                  xa = transactor
+                  xa = transactor,
+                  webhooks = Some(webhookDispatcher)
                 )
                 val leadFinderRoutes = new LeadFinderRoutes(
                   authenticator = authenticator,
@@ -217,6 +264,11 @@ object Main extends IOApp:
                   gateway = aiGateway,
                   defaultModel = aiDefaultModel
                 )
+                val apiKeysRoutes = new ApiKeysRoutes(
+                  authenticator = authenticator,
+                  xa = transactor,
+                  dispatcher = Some(webhookDispatcher)
+                )
                 val aiAgentRoutes = new AiAgentRoutes(
                   authenticator = authenticator,
                   xa = transactor,
@@ -238,7 +290,12 @@ object Main extends IOApp:
                   sync = new InboxSyncService(
                     transactor,
                     Some(registry),
-                    accountRepos
+                    accountRepos,
+                    slack = Some(
+                      new com.arcadence.core.integrations.Integrations.Slack(
+                        httpClient
+                      )
+                    )
                   ),
                   registry = Some(registry),
                   emailAccounts = accountRepos
@@ -261,6 +318,12 @@ object Main extends IOApp:
                     .map(_.isRight)
 
                 val health = new HealthRoutes(identity, dbCheck = Some(dbReady))
+                val docs = new DocsRoutes
+                val dispatchLoop = webhookDispatcher
+                  .loop(30.seconds)
+                  .compile
+                  .drain
+                  .background
 
                 // Browser calls (localhost:3000) hit WorkspaceRoutes directly —
                 // CORS must cover the whole API surface, not just health.
@@ -283,12 +346,12 @@ object Main extends IOApp:
                   RateLimit(config.rateLimitPerMinute)(
                     SecurityHeaders(
                       workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http
-                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> inboxRoutes.http <+> analyticsRoutes.http <+> deliverabilityRoutes.http <+> crmRoutes.http <+> agencyRoutes.http <+> leadFinderRoutes.http <+> aiRoutes.http <+> aiWriterRoutes.http <+> aiReplyRoutes.http <+> aiAgentRoutes.http <+> importRoutes.http
+                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> inboxRoutes.http <+> analyticsRoutes.http <+> deliverabilityRoutes.http <+> crmRoutes.http <+> agencyRoutes.http <+> leadFinderRoutes.http <+> integrationRoutes.http <+> visitorRoutes.http <+> automationRoutes.http <+> channelRoutes.http <+> aiRoutes.http <+> aiWriterRoutes.http <+> aiReplyRoutes.http <+> aiAgentRoutes.http <+> apiKeysRoutes.http <+> importRoutes.http
                     )
                   )
 
                 val allRoutes: HttpRoutes[IO] =
-                  corsPolicy(health.http <+> hardenedRoutes)
+                  corsPolicy(health.http <+> docs.routes <+> hardenedRoutes)
 
                 val routes =
                   new RequestContext(logger)(

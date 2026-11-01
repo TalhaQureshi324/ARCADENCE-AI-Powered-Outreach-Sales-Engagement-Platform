@@ -1,0 +1,94 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Arcadence Public API",
+    "version": "1.0.0",
+    "description": "Workspace-scoped REST API. Authenticate with 'Authorization: Bearer ak_...' keys (create via POST /api/v1/workspaces/{workspaceId}/api-keys). All list endpoints are workspace-scoped; secrets are never returned after creation."
+  },
+  "servers": [{ "url": "/" }],
+  "paths": {
+    "/api/v1/workspaces/{workspaceId}/api-keys": {
+      "get": { "summary": "List API keys", "tags": ["api-keys"] },
+      "post": {
+        "summary": "Create an API key (secret shown exactly once)",
+        "tags": ["api-keys"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "scopes": { "type": "array", "items": { "type": "string" }, "example": ["leads:read", "crm:read"] },
+                  "expiresInDays": { "type": "integer" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/api-keys/{keyId}": {
+      "delete": { "summary": "Revoke an API key", "tags": ["api-keys"] }
+    },
+    "/api/v1/workspaces/{workspaceId}/webhooks": {
+      "get": { "summary": "List webhook subscriptions", "tags": ["webhooks"] },
+      "post": {
+        "summary": "Register a webhook subscription (signing secret shown exactly once)",
+        "tags": ["webhooks"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["url", "events"],
+                "properties": {
+                  "url": { "type": "string" },
+                  "events": {
+                    "type": "array",
+                    "items": { "type": "string", "enum": ["lead.created", "lead.added_to_list", "campaign.completed", "reply.received", "reply.classified", "deal.created", "deal.stage_changed", "approval.requested"] }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/webhooks/{subId}/deliveries": {
+      "get": { "summary": "Delivery attempts for a subscription", "tags": ["webhooks"] }
+    },
+    "/api/v1/workspaces/{workspaceId}/webhooks/deliveries/{deliveryId}/replay": {
+      "post": { "summary": "Replay a dead/failed delivery", "tags": ["webhooks"] }
+    },
+    "/api/v1/workspaces/{workspaceId}/contacts": {
+      "get": { "summary": "List contacts", "tags": ["leads"] },
+      "post": { "summary": "Create a contact", "tags": ["leads"] }
+    },
+    "/api/v1/workspaces/{workspaceId}/lead-lists": {
+      "get": { "summary": "List lead lists", "tags": ["leads"] }
+    },
+    "/api/v1/workspaces/{workspaceId}/campaigns": {
+      "get": { "summary": "List campaigns", "tags": ["campaigns"] }
+    },
+    "/api/v1/workspaces/{workspaceId}/campaigns/{campaignId}/summary": {
+      "get": { "summary": "Campaign summary metrics", "tags": ["campaigns"] }
+    },
+    "/api/v1/workspaces/{workspaceId}/crm/deals": {
+      "get": { "summary": "List CRM deals", "tags": ["crm"] }
+    },
+    "/api/v1/workspaces/{workspaceId}/inbox/threads": {
+      "get": { "summary": "List inbox conversations", "tags": ["inbox"] }
+    },
+    "/api/v1/workspaces/{workspaceId}/ai/config": {
+      "get": { "summary": "AI gateway configuration and budget", "tags": ["ai"] }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": { "type": "http", "scheme": "bearer", "description": "ak_... workspace API key" }
+    }
+  },
+  "security": [{ "ApiKeyAuth": [] }]
+}
