@@ -197,6 +197,24 @@ object Main extends IOApp:
                 val visitorRoutes = new VisitorRoutes(authenticator, transactor)
                 val automationRoutes =
                   new AutomationRoutes(authenticator, transactor)
+                val billingRoutes = new BillingRoutes(
+                  authenticator = authenticator,
+                  xa = transactor,
+                  httpClient = httpClient,
+                  stripeSecret = sys.env
+                    .get("STRIPE_SECRET_KEY")
+                    .map(_.trim)
+                    .filter(_.nonEmpty),
+                  webhookSecret = sys.env
+                    .get("STRIPE_WEBHOOK_SECRET")
+                    .map(_.trim)
+                    .filter(_.nonEmpty),
+                  priceMap = Map(
+                    "price_starter" -> "starter",
+                    "price_growth" -> "growth",
+                    "price_agency" -> "agency"
+                  )
+                )
                 val channelRoutes = new ChannelRoutes(
                   authenticator,
                   transactor,
@@ -346,7 +364,7 @@ object Main extends IOApp:
                   RateLimit(config.rateLimitPerMinute)(
                     SecurityHeaders(
                       workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http
-                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> inboxRoutes.http <+> analyticsRoutes.http <+> deliverabilityRoutes.http <+> crmRoutes.http <+> agencyRoutes.http <+> leadFinderRoutes.http <+> integrationRoutes.http <+> visitorRoutes.http <+> automationRoutes.http <+> channelRoutes.http <+> aiRoutes.http <+> aiWriterRoutes.http <+> aiReplyRoutes.http <+> aiAgentRoutes.http <+> apiKeysRoutes.http <+> importRoutes.http
+                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> inboxRoutes.http <+> analyticsRoutes.http <+> deliverabilityRoutes.http <+> crmRoutes.http <+> agencyRoutes.http <+> leadFinderRoutes.http <+> integrationRoutes.http <+> visitorRoutes.http <+> automationRoutes.http <+> channelRoutes.http <+> billingRoutes.http <+> aiRoutes.http <+> aiWriterRoutes.http <+> aiReplyRoutes.http <+> aiAgentRoutes.http <+> apiKeysRoutes.http <+> importRoutes.http
                     )
                   )
 
