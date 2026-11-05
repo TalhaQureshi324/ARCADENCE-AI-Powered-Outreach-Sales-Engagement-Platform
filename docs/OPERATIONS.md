@@ -24,3 +24,35 @@ Operational procedures for the sending engine (Phase 5.5). Update alongside the 
 4. **Campaign stuck with pending actions** — verify campaign status is `active` (cancelled/paused campaigns skip at send time) and enrollment `next_action_at` is not in the future.
 5. **Duplicate-send paranoia** — check `select action_id, count(*) from outbound_message group by action_id having count(*) > 1` (should always be 0; the unique partial index makes it structurally impossible).
 6. **Pool exhaustion** — "Connection is not available" from Hikari: increase pool size or reduce worker count; each in-flight send holds one connection per transaction briefly.
+
+
+## Scaling & performance (Phase 13.4)
+
+Measured with ReliabilityLoadSpec (20-50 jobs, 6 workers, pooled transactor):
+
+| Metric | Measured (local) | Production target |
+| --- | --- | --- |
+| Job throughput | ~8 jobs/s end-to-end incl. evidence writes | scale workers horizontally |
+| Job claim integrity | 0 double-claims, 6 workers concurrent | invariant (SKIP LOCKED) |
+| DB connections | Hikari 10 API + 6 worker | tune per Supabase plan |
+
+Scaling levers in order: worker count -> Hikari pool -> queue batching.
+Run the load harness against production-size data before publishing capacity
+numbers - local results are not production capacity.
+
+## Backup & disaster recovery
+
+- Supabase managed backups (plan-dependent) plus owner-run nightly
+  `pg_dump --schema=public` to object storage.
+- Restore drill: load dump into staging, run the migrations CI check to
+  verify schema, spot-check RLS policies.
+- Worker recovery: stateless restart; expired leases re-queue automatically.
+- Duplicate replay safety: webhook_deliveries.replay + idempotent billing_events.
+- Rollback: redeploy previous image tag; DB migrations are append-only -
+  roll back code, never schema.
+
+## Monitoring & alerts (owner to provision)
+
+- /health endpoints (API + worker) for uptime checks.
+- Alert on: repeated sms_failed / ai_provider_error / billing webhook failures;
+  bounce-rate (Phase 8 auto-pauses first); Hikari connection-wait timeouts.
