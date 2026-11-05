@@ -30,6 +30,7 @@ create index subscriptions_ws_idx on public.subscriptions (workspace_id);
 
 create table public.billing_events (
   id           uuid primary key default gen_random_uuid(),
+  workspace_id uuid references public.workspace (id) on delete cascade,
   stripe_event_id text not null unique,
   event_type   text not null,
   payload      jsonb not null default '{}'::jsonb,
