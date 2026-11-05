@@ -86,12 +86,13 @@ object Billing:
     * (proceed with handling); false for duplicates (skip).
     */
   def recordEvent(
+      workspaceId: Option[UUID],
       stripeEventId: String,
       eventType: String,
       payload: Json
   ): ConnectionIO[Boolean] =
-    sql"""insert into public.billing_events (stripe_event_id, event_type, payload)
-          values ($stripeEventId, $eventType, ${payload.noSpaces}::jsonb)
+    sql"""insert into public.billing_events (workspace_id, stripe_event_id, event_type, payload)
+          values ($workspaceId, $stripeEventId, $eventType, ${payload.noSpaces}::jsonb)
           on conflict (stripe_event_id) do nothing returning id"""
       .query[UUID]
       .option

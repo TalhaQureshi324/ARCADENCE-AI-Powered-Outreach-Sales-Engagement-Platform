@@ -391,7 +391,7 @@ final class BillingRoutes(
         case None =>
           // Non-subscription events are recorded but not acted on.
           Billing
-            .recordEvent(eventId, etype, event)
+            .recordEvent(None, eventId, etype, event)
             .transact(xa)
             .map(_ =>
               Json.obj(
@@ -433,7 +433,7 @@ final class BillingRoutes(
             obj.get[Boolean]("cancel_at_period_end").toOption.getOrElse(false)
           val apply: ConnectionIO[Boolean] =
             for
-              isFirst <- Billing.recordEvent(eventId, etype, event)
+              isFirst <- Billing.recordEvent(Some(ws), eventId, etype, event)
               _ <-
                 if isFirst then
                   status match
