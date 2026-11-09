@@ -74,6 +74,15 @@
 - **12.5 Multichannel** — per-contact sms_consent/call_consent SEPARATE from email consent (timestamped); Channels core with SmsAdapter contract + generic JSON HTTP adapter and DbCallAdapter for call logging; consent enforced at the service boundary (403 without opt-in, zero adapter calls); no scraping/impersonation/ToS-violating automation. channel_interactions records phone/meeting activity for CRM. ChannelRoutesSpec 4/4 (unconfigured provider = honest 503).
 - Phase 12 spec totals: ApiKeys 6 + Webhooks 3 + Integrations 5 + Visitors 3 + Automations 6 + Channels 4 = 27/27. Milestone: develop -> main, tag phase-12.
 
+
+## Phase 13 — billing, security, operations, launch readiness (migrations 20261103090000/100000)
+
+- **13.1 Stripe billing** - billing_customers/subscriptions/billing_events (unique stripe_event_id)/entitlements; plan catalog free/starter/growth/agency as code-level single source of truth; signature-verified idempotent webhook processing (duplicates skipped, re-order-safe); delinquency downgrades entitlements to free WITHOUT deleting data; Checkout session creation (honest 503 without STRIPE_SECRET_KEY). BillingSpec 4/4.
+- **13.2 Managed domains** - inventory with honest status (manual_setup/pending_provisioning/active/failed) — automatic provisioning NOT claimed. OpsRoutesSpec covers register/upsert/status lifecycle.
+- **13.3 Security** - privacy_requests (export/deletion workflows), security_audit_log, workspace data export endpoint; dependency scans clean; RLS applied to all new tables.
+- **13.4 Scaling/DR** - OPERATIONS.md: measured vs target workloads, backup/restore drills, worker recovery, monitoring/alert provisioning (owner actions documented).
+- **13.5 Launch** - DEPLOYMENT.md (Docker API/worker, Vercel frontend, env matrix, canary/rollback), LAUNCH_CHECKLIST.md (owner go-live actions + known limitations).
+- Fixes: billing_events gained workspace_id (RLS portability on plain PG); delivery regression suite green.
 ## Phase 14.2B — Founding 10,000 free-launch program (feature/phase-142b-founding-access, migration 20261106090000)
 
 - **Product decision recorded**: Stripe monetization deferred. Arcadence launches FREE — no pricing, payment CTAs, or upgrade prompts. Stripe wiring stays dormant (honest 503 without keys) for future monetization with explicit product-owner approval. LAUNCH_CHECKLIST updated: Stripe live keys are NOT a launch blocker.

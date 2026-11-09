@@ -2,7 +2,7 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-11-01 (12 — Phase 12 COMPLETE)
+**Last updated:** 2026-11-06 (13 — Phase 13 COMPLETE)
 
 ---
 
