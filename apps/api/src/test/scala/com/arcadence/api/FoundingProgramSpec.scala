@@ -19,8 +19,8 @@ import java.util.UUID
 
 /** Founding 10,000 (Phase 14.2B.1/2): capacity enforcement under parallel
   * claims, one-membership-per-user idempotency, unverified rejection, public
-  * status with real counter. Capacity is reset to 3 so the final-slot race
-  * and program_full semantics are exercised without inserting 10k users.
+  * status with real counter. Capacity is reset to 3 so the final-slot race and
+  * program_full semantics are exercised without inserting 10k users.
   */
 final class FoundingProgramSpec extends CatsEffectSuite:
 
@@ -38,15 +38,15 @@ final class FoundingProgramSpec extends CatsEffectSuite:
     logHandler = None
   )
 
-  private val orgId  = UUID.randomUUID()
-  private val ws     = UUID.randomUUID()
-  private val userA  = UUID.randomUUID()
+  private val orgId = UUID.randomUUID()
+  private val ws = UUID.randomUUID()
+  private val userA = UUID.randomUUID()
   private val suffix = ws.toString.take(8)
 
   private val unverifiedUser = UUID.randomUUID()
-  private val extra1         = UUID.randomUUID()
-  private val extra2         = UUID.randomUUID()
-  private val extra3         = UUID.randomUUID()
+  private val extra1 = UUID.randomUUID()
+  private val extra2 = UUID.randomUUID()
+  private val extra3 = UUID.randomUUID()
 
   private val tokens = Map(
     "token-A" -> AuthenticatedUser(userA, s"fp-$suffix@t.test"),
@@ -60,28 +60,41 @@ final class FoundingProgramSpec extends CatsEffectSuite:
       IO.pure(tokens.get(token).toRight(AuthError.Invalid))
 
   private lazy val routes = new FoundingRoutes(fakeAuth, xa)
-  private lazy val app    = routes.http.orNotFound
+  private lazy val app = routes.http.orNotFound
 
-  private def request(method: Method, path: String, token: String): IO[(Status, Json)] =
+  private def request(
+      method: Method,
+      path: String,
+      token: String
+  ): IO[(Status, Json)] =
     val req = Request[IO](method, Uri.unsafeFromString(path)).withHeaders(
       Header.Raw(org.typelevel.ci.CIString("Authorization"), s"Bearer $token")
     )
     app
       .run(req)
-      .flatMap(res => res.bodyText.compile.string.map(t => (res.status, parse(t).toOption.getOrElse(Json.Null))))
+      .flatMap(res =>
+        res.bodyText.compile.string
+          .map(t => (res.status, parse(t).toOption.getOrElse(Json.Null)))
+      )
 
-  private def jsonField(b: Json, f: String): String = b.hcursor.get[String](f).toOption.getOrElse("")
-  private def jsonInt(b: Json, f: String): Int      = b.hcursor.get[Int](f).toOption.getOrElse(-1)
-  private def jsonBool(b: Json, f: String): Boolean = b.hcursor.get[Boolean](f).toOption.getOrElse(false)
-
+  private def jsonField(b: Json, f: String): String =
+    b.hcursor.get[String](f).toOption.getOrElse("")
+  private def jsonInt(b: Json, f: String): Int =
+    b.hcursor.get[Int](f).toOption.getOrElse(-1)
+  private def jsonBool(b: Json, f: String): Boolean =
+    b.hcursor.get[Boolean](f).toOption.getOrElse(false)
 
   override def beforeEach(context: munit.BeforeEach): Unit =
-    assume(dbUrl.nonEmpty, "TEST_DATABASE_URL not set — integration checks skipped")
+    assume(
+      dbUrl.nonEmpty,
+      "TEST_DATABASE_URL not set — integration checks skipped"
+    )
     super.beforeEach(context)
 
-  test("setup: org, ws, owners, verified/unverified users, capacity 3, counter 1") {
-    for
-      _ <-
+  test(
+    "setup: org, ws, owners, verified/unverified users, capacity 3, counter 1"
+  ) {
+    for _ <-
         (sql"delete from public.workspace where id = $ws".update.run *>
           sql"delete from public.founding_members where program_id = (select id from public.founding_program where slug = 'founding-10000')".update.run *>
           sql"delete from public.founding_program where slug = 'founding-10000'".update.run *>
@@ -113,57 +126,76 @@ final class FoundingProgramSpec extends CatsEffectSuite:
 
   test("public status exposes the real counter without auth") {
     for
-      res     <- FoundingProgram.status(xa)
+      res <- FoundingProgram.status(xa)
       claimed = res.hcursor.get[Int]("claimedCount").toOption.getOrElse(-1)
-      _       = assertEquals(claimed, 1)
-      status  = res.hcursor.get[String]("status").toOption.getOrElse("")
-      _       = assertEquals(status, "active")
+      _ = assertEquals(claimed, 1)
+      status = res.hcursor.get[String]("status").toOption.getOrElse("")
+      _ = assertEquals(status, "active")
     yield ()
   }
 
   test("claim: verified user succeeds; 12-month expiry; repeat is idempotent") {
     for
-      me0    <- request(Method.GET, "/api/v1/founding-program/me", "token-A")
-      before  = me0._2.hcursor.get[Boolean]("claimed").toOption.getOrElse(true)
-      _       = assertEquals(before, false)
-      claimRes <- request(Method.POST, "/api/v1/founding-program/claim", "token-A")
-      _        = assertEquals(claimRes._1, Status.Created)
-      pos      = jsonInt(claimRes._2, "claimPosition")
-      _        = assert(pos >= 2 && pos <= 3, s"position $pos")
-      _        = assertEquals(jsonBool(claimRes._2, "autoBilling"), false)
-      me    <- request(Method.GET, "/api/v1/founding-program/me", "token-A")
-      _     = assertEquals(me._2.hcursor.get[String]("status").toOption.getOrElse(""), "founding_member")
+      me0 <- request(Method.GET, "/api/v1/founding-program/me", "token-A")
+      before = me0._2.hcursor.get[Boolean]("claimed").toOption.getOrElse(true)
+      _ = assertEquals(before, false)
+      claimRes <- request(
+        Method.POST,
+        "/api/v1/founding-program/claim",
+        "token-A"
+      )
+      _ = assertEquals(claimRes._1, Status.Created)
+      pos = jsonInt(claimRes._2, "claimPosition")
+      _ = assert(pos >= 2 && pos <= 3, s"position $pos")
+      _ = assertEquals(jsonBool(claimRes._2, "autoBilling"), false)
+      me <- request(Method.GET, "/api/v1/founding-program/me", "token-A")
+      _ = assertEquals(
+        me._2.hcursor.get[String]("status").toOption.getOrElse(""),
+        "founding_member"
+      )
       expires = me._2.hcursor.get[String]("expiresAt").toOption.getOrElse("")
-      _       = assert(expires.nonEmpty)
+      _ = assert(expires.nonEmpty)
       again <- request(Method.POST, "/api/v1/founding-program/claim", "token-A")
-      _      = assertEquals(again._1, Status.Conflict)
-      dup    = again._2.hcursor.get[String]("code").toOption.getOrElse("")
-      _      = assertEquals(dup, "already_claimed")
+      _ = assertEquals(again._1, Status.Conflict)
+      dup = again._2.hcursor.get[String]("code").toOption.getOrElse("")
+      _ = assertEquals(dup, "already_claimed")
     yield ()
   }
 
   test("unverified users are rejected with email_unverified") {
     for
       pair <- request(Method.POST, "/api/v1/founding-program/claim", "token-U")
-      _     = assertEquals(pair._1, Status.Forbidden)
-      _     = assertEquals(pair._2.hcursor.get[String]("code").toOption.getOrElse(""), "email_unverified")
+      _ = assertEquals(pair._1, Status.Forbidden)
+      _ = assertEquals(
+        pair._2.hcursor.get[String]("code").toOption.getOrElse(""),
+        "email_unverified"
+      )
     yield ()
   }
 
-  test("capacity: final-slot race yields one winner; others get program_full; counter == capacity") {
+  test(
+    "capacity: final-slot race yields one winner; others get program_full; counter == capacity"
+  ) {
     // deterministic start: counter at 2 of 3 -> exactly one slot remains
     sql"""update public.founding_program set claimed_count = 2, capacity = 3, status = 'active'
-          where slug = 'founding-10000'""".update.run.void.transact(xa).unsafeRunSync()
+          where slug = 'founding-10000'""".update.run.void
+      .transact(xa)
+      .unsafeRunSync()
     for
       r1 <- FoundingProgram.claim(extra1, verified = true, xa)
       r2 <- FoundingProgram.claim(extra2, verified = true, xa)
       r3 <- FoundingProgram.claim(extra3, verified = true, xa)
       winners = List(r1, r2, r3).collect { case FP.Claimed(pos, _) => pos }
       _ = assertEquals(winners.size, 1, s"expected 1 winner of the final slot")
-      fulls = List(r1, r2, r3).count { case FP.ProgramFull => true; case _ => false }
+      fulls = List(r1, r2, r3).count {
+        case FP.ProgramFull => true; case _ => false
+      }
       _ = assertEquals(fulls, 2)
-      row <- sql"select claimed_count, capacity from public.founding_program where slug = 'founding-10000'"
-        .query[(Int, Int)].unique.transact(xa)
+      row <-
+        sql"select claimed_count, capacity from public.founding_program where slug = 'founding-10000'"
+          .query[(Int, Int)]
+          .unique
+          .transact(xa)
       _ = assertEquals(row._1, row._2)
       _ = assert(row._1 <= row._2)
       // restore production defaults so e2e tests see a fresh program

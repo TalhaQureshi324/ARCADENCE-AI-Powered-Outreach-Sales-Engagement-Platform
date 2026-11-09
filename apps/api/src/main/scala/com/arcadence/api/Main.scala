@@ -198,7 +198,8 @@ object Main extends IOApp:
                 val automationRoutes =
                   new AutomationRoutes(authenticator, transactor)
                 val opsRoutes = new OpsRoutes(authenticator, transactor)
-                val foundingRoutes = new FoundingRoutes(authenticator, transactor)
+                val foundingRoutes =
+                  new FoundingRoutes(authenticator, transactor)
                 val billingRoutes = new BillingRoutes(
                   authenticator = authenticator,
                   xa = transactor,

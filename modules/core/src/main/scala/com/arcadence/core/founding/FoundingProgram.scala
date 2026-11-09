@@ -13,24 +13,25 @@ import java.util.UUID
 
 /** Founding 10,000 program (Phase 14.2B). Allocation is transactional: the
   * program row is locked FOR UPDATE and the capacity counter is incremented
-  * inside the claim transaction, so concurrent claims can never exceed the
-  * cap. One membership per user (unique user_id). Claims are idempotent
-  * (repeat claim returns AlreadyClaimed, no double allocation). Unverified
-  * users are rejected before any allocation. Expiry is activation plus 12
-  * calendar months; there is NEVER an automatic charge at expiry.
+  * inside the claim transaction, so concurrent claims can never exceed the cap.
+  * One membership per user (unique user_id). Claims are idempotent (repeat
+  * claim returns AlreadyClaimed, no double allocation). Unverified users are
+  * rejected before any allocation. Expiry is activation plus 12 calendar
+  * months; there is NEVER an automatic charge at expiry.
   */
 object FoundingProgram:
 
-  val slug           = "founding-10000"
-  val capacity       = 10000
+  val slug = "founding-10000"
+  val capacity = 10000
   val monthsComplimentary = 12
 
   sealed trait ClaimResult
-  case class Claimed(position: Int, expiresAt: OffsetDateTime) extends ClaimResult
-  case object AlreadyClaimed   extends ClaimResult
-  case object ProgramFull      extends ClaimResult
-  case object ProgramPaused    extends ClaimResult
-  case object UserUnverified   extends ClaimResult
+  case class Claimed(position: Int, expiresAt: OffsetDateTime)
+      extends ClaimResult
+  case object AlreadyClaimed extends ClaimResult
+  case object ProgramFull extends ClaimResult
+  case object ProgramPaused extends ClaimResult
+  case object UserUnverified extends ClaimResult
 
   /** Seed the single program row if absent (idempotent startup/bootstrap). */
   def seed: ConnectionIO[Unit] =
@@ -47,23 +48,31 @@ object FoundingProgram:
       .option
       .transact(xa)
       .map {
-        case None => Json.obj("status" -> Json.fromString("draft"), "claimedCount" -> Json.fromInt(0), "capacity" -> Json.fromInt(capacity))
+        case None =>
+          Json.obj(
+            "status" -> Json.fromString("draft"),
+            "claimedCount" -> Json.fromInt(0),
+            "capacity" -> Json.fromInt(capacity)
+          )
         case Some((status, cap, claimed, terms)) =>
           Json.obj(
-            "slug"          -> Json.fromString(slug),
-            "name"          -> Json.fromString("Arcadence Founding 10,000"),
-            "description"   -> Json.fromString(
+            "slug" -> Json.fromString(slug),
+            "name" -> Json.fromString("Arcadence Founding 10,000"),
+            "description" -> Json.fromString(
               "The first 10,000 verified users receive 12 months of complimentary Founding Access. No credit card. No automatic charges."
             ),
-            "status"        -> Json.fromString(status),
-            "capacity"      -> Json.fromInt(cap),
-            "claimedCount"  -> Json.fromInt(claimed),
-            "termsVersion"  -> Json.fromString(terms),
+            "status" -> Json.fromString(status),
+            "capacity" -> Json.fromInt(cap),
+            "claimedCount" -> Json.fromInt(claimed),
+            "termsVersion" -> Json.fromString(terms),
             "complimentaryMonths" -> Json.fromInt(monthsComplimentary)
           )
       }
 
-  def membershipOf(userId: UUID, xa: Transactor[IO]): IO[Option[(Int, String, String, String)]] =
+  def membershipOf(
+      userId: UUID,
+      xa: Transactor[IO]
+  ): IO[Option[(Int, String, String, String)]] =
     sql"""select claim_position, status, activated_at::text, expires_at::text
           from public.founding_members
           where user_id = $userId and status = 'active'"""
@@ -81,7 +90,11 @@ object FoundingProgram:
     * the single program row; every capacity/eligibility check happens inside
     * the lock, so the 10,000 cap can never be exceeded.
     */
-  def claim(userId: UUID, verified: Boolean, xa: Transactor[IO]): IO[ClaimResult] =
+  def claim(
+      userId: UUID,
+      verified: Boolean,
+      xa: Transactor[IO]
+  ): IO[ClaimResult] =
     if !verified then IO.pure(UserUnverified)
     else
       val tx: ConnectionIO[ClaimResult] =
@@ -97,10 +110,12 @@ object FoundingProgram:
               val memberQ =
                 sql"""select count(*) > 0 from public.founding_members
                       where user_id = $userId and status = 'active'"""
-                  .query[Boolean].unique
+                  .query[Boolean]
+                  .unique
               memberQ.flatMap { already =>
                 if already then FC.pure(AlreadyClaimed)
-                else if status == "paused" || status == "closed" then FC.pure(ProgramPaused)
+                else if status == "paused" || status == "closed" then
+                  FC.pure(ProgramPaused)
                 else if claimed >= rowCapacity then FC.pure(ProgramFull)
                 else
                   val position = claimed + 1
@@ -117,8 +132,7 @@ object FoundingProgram:
                         FC.pure(Claimed(pos, OffsetDateTime.parse(exp)))
                     }
               }
-        yield result
-      )
+        yield result)
       tx.transact(xa).handleErrorWith { err =>
         // unique_violation on user_id (duplicate) or claim_position (lost race) -> honest retry/skip signals
         if err.getMessage.contains("duplicate key") then IO.pure(AlreadyClaimed)
