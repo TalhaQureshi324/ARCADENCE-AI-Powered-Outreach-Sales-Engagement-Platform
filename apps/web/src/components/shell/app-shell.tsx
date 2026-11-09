@@ -38,6 +38,7 @@ import { useTheme } from "@/components/theme";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { CreateWorkspaceDialog } from "@/components/shell/create-workspace-dialog";
 import { useWorkspaces } from "@/components/shell/workspace-context";
+import { FoundingOfferModal } from "@/components/founding/founding-offer-modal";
 import type { WorkspaceDto } from "@/lib/api/client";
 
 interface ShellUser {
@@ -258,6 +259,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
         </nav>
 
         <main className="flex-1 p-4 md:p-6">{children}</main>
+        <FoundingOfferModal />
       </div>
 
       <CreateWorkspaceDialog
