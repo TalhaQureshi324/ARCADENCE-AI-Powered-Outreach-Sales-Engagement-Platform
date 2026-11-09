@@ -995,7 +995,13 @@ export interface InboxThreadDetailDto {
 export const inboxApi = {
   list: (
     workspaceId: string,
-    filters: { classification?: string; status?: string; unread?: boolean; q?: string } = {},
+    filters: {
+      classification?: string;
+      status?: string;
+      unread?: boolean;
+      q?: string;
+      cursor?: string;
+    } = {},
   ) => {
     const p = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => {
@@ -1023,6 +1029,20 @@ export const inboxApi = {
       method: "PATCH",
       body: JSON.stringify({ assignedTo }),
     }),
+  markRead: (workspaceId: string, threadId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/inbox/${threadId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ unread: false }),
+    }),
+  archive: (workspaceId: string, threadId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/inbox/${threadId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "archived" }),
+    }),
+  notes: (workspaceId: string, threadId: string) =>
+    apiFetch<{ id: string; authorId: string | null; body: string; createdAt: string }[]>(
+      `/api/v1/workspaces/${workspaceId}/inbox/${threadId}/notes`,
+    ),
   addNote: (workspaceId: string, threadId: string, body: string) =>
     apiFetch<void>(`/api/v1/workspaces/${workspaceId}/inbox/${threadId}/notes`, {
       method: "POST",
@@ -1258,4 +1278,56 @@ export const visitorApi = {
       referrers: { name: string; count: number }[];
       utmCampaigns: { name: string; count: number }[];
     }>(`/api/v1/workspaces/${workspaceId}/visitor-analytics?days=${days}`),
+};
+
+export interface FoundingStatus {
+  slug: string;
+  name: string;
+  description: string;
+  status: string;
+  capacity: number;
+  claimedCount: number;
+  termsVersion: string;
+  complimentaryMonths: number;
+}
+
+export interface FoundingMembership {
+  claimed: boolean;
+  status?: string;
+  membershipState?: string;
+  claimPosition?: number;
+  activatedAt?: string;
+  expiresAt?: string;
+  complimentaryMonths?: number;
+  autoBilling: boolean;
+  httpStatus?: number;
+  code?: string;
+  message?: string;
+}
+
+export const foundingApi = {
+  status: () => apiFetch<FoundingStatus>("/api/v1/founding-program"),
+  me: (workspaceId: string) =>
+    apiFetch<FoundingMembership & { claimed?: boolean }>(`/api/v1/founding-program/me`),
+  claim: (workspaceId: string) =>
+    apiFetch<FoundingMembership & { claimed?: boolean; note?: string }>(
+      `/api/v1/founding-program/claim`,
+      { method: "POST" },
+    ),
+  entitlements: () =>
+    apiFetch<{ profile: string; autoBilling: boolean; included?: Record<string, string> }>(
+      `/api/v1/me/entitlements`,
+    ),
+  prefs: (
+    workspaceId: string,
+    input: { dismissed?: boolean; snoozeHours?: number; emailUpdatesOptIn?: boolean },
+  ) =>
+    apiFetch<{
+      offerDismissedAt: string | null;
+      snoozedUntil: string | null;
+      emailUpdatesOptIn: boolean;
+    }>(`/api/v1/me/announcement-preferences`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
 };

@@ -26,8 +26,7 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 3 | Lead management — leads, lists, import/export, verification hooks, suppression | **complete** (`phase-3`) |
 | 4 | Campaigns & sequences — builder, scheduling, personalization | **complete** (`phase-4`) |
 | 5 | Sending engine — durable send queue, provider submission, tracking, bounce handling | **complete** (`phase-5`) |
-| 6 | Unified inbox — two-way sync, threading, realtime updates | **complete** (phase-6) |
-| 8 | Deliverability intelligence — monitoring, reputation signals, guidance | **complete** (phase-8) |
+| 6 | Unified inbox — two-way sync, threading, realtime updates | **complete** (`phase-6`) |
 | 7 | CRM — accounts, contacts, deals, pipelines, activity timeline | **complete** (`phase-7`) |
 | 8 | Deliverability intelligence — monitoring, reputation signals, guidance | **complete** (`phase-8`) |
 | 9 | Analytics & reporting | **complete** (`phase-9`) |

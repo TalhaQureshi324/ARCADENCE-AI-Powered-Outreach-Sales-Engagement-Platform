@@ -83,6 +83,15 @@
 - **13.4 Scaling/DR** - OPERATIONS.md: measured vs target workloads, backup/restore drills, worker recovery, monitoring/alert provisioning (owner actions documented).
 - **13.5 Launch** - DEPLOYMENT.md (Docker API/worker, Vercel frontend, env matrix, canary/rollback), LAUNCH_CHECKLIST.md (owner go-live actions + known limitations).
 - Fixes: billing_events gained workspace_id (RLS portability on plain PG); delivery regression suite green.
+## Phase 14.2B — Founding 10,000 free-launch program (feature/phase-142b-founding-access, migration 20261106090000)
+
+- **Product decision recorded**: Stripe monetization deferred. Arcadence launches FREE — no pricing, payment CTAs, or upgrade prompts. Stripe wiring stays dormant (honest 503 without keys) for future monetization with explicit product-owner approval. LAUNCH_CHECKLIST updated: Stripe live keys are NOT a launch blocker.
+- **Program model** — founding_program (slug founding-10000, capacity 10000, status draft/active/paused/filled/closed, claimed counter), founding_members (unique user_id across workspaces, unique claim_position, 12-calendar-month expiry, status), user_announcement_prefs (dismissal/snooze/email opt-in). RLS: program row publicly readable (real counter only); members/prefs strictly per-user via current_user_id().
+- **Transactional allocation** — FOR UPDATE lock on the program row; capacity/eligibility checks inside the lock (concurrent claims can never exceed the cap — proven by the final-slot race spec); unverified users rejected; repeat claims idempotent; expiry = activation + 12 calendar months; NEVER automatic billing at expiry.
+- **Access profiles** — FREE_LAUNCH (default) vs FOUNDING_ACCESS (member) surfaced via GET /me/entitlements, extending the existing entitlement architecture; FUTURE_PAID deliberately inactive.
+- **APIs** — GET /founding-program (public), GET /founding-program/me, POST /founding-program/claim, GET /me/entitlements, PATCH /me/announcement-preferences.
+- **Frontend** — FoundingOfferModal (post-onboarding, once-per-dismissal/snooze, real claim API, loading/success/error states, confirmation view with real activation/expiry from Supabase, accessible dialog), landing-page Founding banner (public), settings Founding membership card (member vs free-launch variants with no-auto-billing policy).
+- Tests: FoundingProgramSpec 5/5 (public counter, claim + expiry + idempotent repeat, unverified rejection, final-slot race with deterministic counter reset); Playwright founding.spec 2/2 (claim + confirmation + member card; dismiss persistence). Inbox repairs (14.2) verified: InboxSyncSpec 4/4, inbox-repairs e2e.
 ---
 
 ---

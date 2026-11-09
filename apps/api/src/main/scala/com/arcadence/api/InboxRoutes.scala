@@ -84,7 +84,11 @@ object InboxDtos:
     given Decoder[ReplyRequest] = deriveDecoder
     given Schema[ReplyRequest] = Schema.derived
 
-  final case class AssignRequest(assignedTo: Option[UUID])
+  final case class AssignRequest(
+      assignedTo: Option[UUID] = None,
+      status: Option[String] = None,
+      unread: Option[Boolean] = None
+  )
   object AssignRequest:
     given Encoder[AssignRequest] = deriveEncoder
     given Decoder[AssignRequest] = deriveDecoder
@@ -308,10 +312,20 @@ final class InboxRoutes(
     requirePermission(auth, ws, Permission.EditContent).flatMap {
       case Left(env)   => IO.pure(Left(env))
       case Right(user) =>
-        InboxLogic.patch(xa, ws, threadId, req.assignedTo, user.id).map {
-          case true  => Right(())
-          case false => Left(failed(ApiError.NotFound("conversation")))
-        }
+        InboxLogic
+          .patch(
+            xa,
+            ws,
+            threadId,
+            req.assignedTo,
+            req.status,
+            req.unread,
+            user.id
+          )
+          .map {
+            case true  => Right(())
+            case false => Left(failed(ApiError.NotFound("conversation")))
+          }
     }
 
   private def noteLogic(

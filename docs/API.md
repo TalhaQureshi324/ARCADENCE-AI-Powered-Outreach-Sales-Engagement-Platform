@@ -181,6 +181,9 @@ Planned:
 
 - ✅ `POST .../ai/agent/run` — constrained 7-step orchestration ending at a pending launch approval (EditContent)
 - ✅ `POST .../ai/agent/recommendations` · `POST .../ai/agent/meetings` — monitor/recommend + meeting qualification over real campaign data (EditContent)
+
+- ✅ `POST .../ai/agent/run` — constrained 7-step orchestration ending at a pending launch approval (EditContent)
+- ✅ `POST .../ai/agent/recommendations` · `POST .../ai/agent/meetings` — monitor/recommend + meeting qualification over real campaign data (EditContent)
 - ✅ `GET .../ai/messages` · `PATCH .../ai/messages/{id}` · `POST .../ai/messages/{id}/approve|reject` · `POST .../ai/messages/{id}/render` — draft lifecycle + deterministic render preview (View/EditContent)
 
 - ⬜ `POST /api/v1/ai/generate` (kind: campaign_copy | reply_draft | lead_summary; returns generation id + output; every call audited in `ai_generation`)
@@ -190,6 +193,13 @@ Planned:
 
 - ⬜ `GET /api/v1/organizations/{orgId}/subscription` · `POST .../checkout-session` (Stripe)
 - ⬜ `POST /internal/webhooks/stripe` (signature-verified, idempotent)
+
+### 3.10b Founding 10,000 — Phase 14.2B (implemented)
+
+- ✅ `GET /api/v1/founding-program` — public status with real allocation counter
+- ✅ `GET /api/v1/founding-program/me` · `POST /api/v1/founding-program/claim` — membership + transactional claim (verified users, capacity-locked, idempotent)
+- ✅ `GET /api/v1/me/entitlements` — FREE_LAUNCH vs FOUNDING_ACCESS access profile
+- ✅ `PATCH /api/v1/me/announcement-preferences` — offer dismissal/snooze/email opt-in
 
 ### 3.11 Developer platform (post-parity)
 

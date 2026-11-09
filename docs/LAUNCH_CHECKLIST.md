@@ -24,7 +24,7 @@
 - [ ] Real test send/receive through Gmail + Microsoft + SMTP round-trip on production accounts
 - [ ] Suppression and unsubscribe round-trip verified on production
 - [ ] Tenant isolation spot-check between two production workspaces
-- [ ] Stripe: live keys, live prices mapped, webhook endpoint registered, test payment + refund in live mode
+- [ ] ~~Stripe: live keys, live prices mapped, webhook endpoint registered, test payment + refund in live mode~~ — DEFERRED by product decision: Arcadence launches FREE (Founding 10,000 program). Stripe code remains dormant; monetization requires explicit product-owner approval and is not a launch blocker.
 - [ ] API key issued and exercised against production API
 - [ ] Monitoring/alerts provisioned (uptime, error rate, bounce rate)
 - [ ] Backup schedule verified; restore drill executed on staging

@@ -99,18 +99,30 @@ jobs:
             echo "::endgroup::"
           done
 
-      - name: Verify foundational schema + RLS
+      - name: Verify foundational schema + RLS (schema-wide)
         run: |
           set -euo pipefail
-          # every tenant table must be RLS-enabled
+          # SCHEMA-WIDE: every regular table in public must have RLS enabled.
+          # Deny-by-default (RLS on, zero policies) is the intended posture for
+          # worker-internal tables; the Scala API/worker bypass RLS as owner.
           psql -h localhost -U postgres -d arcadence -v ON_ERROR_STOP=1 -t -c "
             select c.relname from pg_class c
             join pg_namespace n on n.oid = c.relnamespace
             where n.nspname = 'public' and c.relkind = 'r'
-              and c.relname in ('profile','organization','workspace','workspace_member','invitation','audit_log','webhook_endpoint','webhook_delivery')
+              and c.relname not in ('schema_migrations')
               and c.relrowsecurity = false" | grep -q . && {
-            echo "ERROR: found tenant tables without RLS"; exit 1;
-          } || echo "RLS verified on all tenant tables"
+            echo "ERROR: found tables without RLS (cross-tenant exposure via PostgREST)"; exit 1;
+          } || echo "RLS verified on ALL public tables (schema-wide)"
+          # every RLS-enabled table must have a policy OR be intentional deny-by-default
+          psql -h localhost -U postgres -d arcadence -v ON_ERROR_STOP=1 -t -c "
+            select c.relname from pg_class c
+            join pg_namespace n on n.oid = c.relnamespace
+            left join (select pol.relid, count(*) cnt from pg_policies pol group by pol.relid) p on p.relid = c.oid
+            where n.nspname = 'public' and c.relkind = 'r'
+              and c.relrowsecurity = true and coalesce(p.cnt, 0) = 0
+              and c.relname not in ('account_credentials','billing_events','campaign_daily_stats','campaign_event','crm_task_assignment','event_outbox','inbound_events','job_attempt','job_queue','mailbox_sync_cursors','provider_message_refs','quota_reservation','send_attempt','sync_jobs','security_audit_log')" | grep -q . && {
+            echo "ERROR: RLS-enabled table has no policy and is not in the deny-by-default allowlist"; exit 1;
+          } || echo "Policy coverage verified (deny-by-default allowlist accounted for)"
           # helper functions exist
           psql -h localhost -U postgres -d arcadence -v ON_ERROR_STOP=1 -t -c "
             select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
