@@ -9,7 +9,7 @@ export default function Home() {
       <div className="border-primary/30 from-primary-soft to-surface mb-8 w-full max-w-2xl rounded-2xl border bg-gradient-to-br p-8 text-center">
         <div className="text-primary mb-2 flex items-center justify-center gap-2">
           <Sparkles size={16} />
-          <span className="text-xs font-semibold uppercase tracking-widest">
+          <span className="text-xs font-semibold tracking-widest uppercase">
             Introducing the Founding 10,000
           </span>
         </div>
@@ -35,8 +35,8 @@ export default function Home() {
           </a>
         </div>
         <p className="text-muted-foreground mt-3 text-xs">
-          Free-launch users keep full access to the current feature set. Paid plans are not
-          offered during the free launch period.
+          Free-launch users keep full access to the current feature set. Paid plans are not offered
+          during the free launch period.
         </p>
       </div>
       <HealthDashboard />

@@ -5,11 +5,13 @@ import { STRONG_PASSWORD, latestEmailLink, testEmail } from "./helpers/inbucket"
 const VERIFY_LINK = /https?:\/\/127\.0\.0\.1:54321\/auth\/v1\/verify\?[^\s"'<>]+/;
 
 /** Requires the Scala API on port 8080 with the founding program seeded
-  * (auto-seeded by API bootstrap via FoundingProgram.seed or manually via
-  * the seeding endpoint).
-  */
+ * (auto-seeded by API bootstrap via FoundingProgram.seed or manually via
+ * the seeding endpoint).
+ */
 test.describe("founding access program", () => {
-  test("verified user sees offer, claims membership, sees member card in settings", async ({ page }) => {
+  test("verified user sees offer, claims membership, sees member card in settings", async ({
+    page,
+  }) => {
     test.setTimeout(180_000);
     const email = testEmail("founding");
 
