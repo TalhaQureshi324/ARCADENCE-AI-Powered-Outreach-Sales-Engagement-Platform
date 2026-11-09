@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Archive, Check, RefreshCw, Send } from "lucide-react";
 
@@ -43,7 +43,7 @@ export function InboxContent() {
   const { workspaces, selected } = useWorkspaces();
   const workspaceId = selected?.id ?? "";
 
-  const [threads, setThreads] = useState<InboxThreadDto[] | null>(null);
+  const [threads, setThreads] = useState<InboxThreadDto[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [classification, setClassification] = useState("");
   const [q, setQ] = useState("");
@@ -53,13 +53,40 @@ export function InboxContent() {
   const [busy, setBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
+  const threadsRef = useRef<InboxThreadDto[]>([]);
+  useEffect(() => {
+    threadsRef.current = threads;
+  }, [threads]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   const load = useCallback(() => {
     if (!workspaceId) return;
     inboxApi
       .list(workspaceId, { classification: classification || undefined, q: q || undefined })
-      .then((page) => setThreads(page.items))
+      .then((page) => {
+        setThreads(page.items);
+        setNextCursor(page.nextCursor);
+      })
       .catch((e) => setLoadError(errorMessage(e)));
   }, [workspaceId, classification, q]);
+
+  const loadMore = useCallback(() => {
+    if (!workspaceId || !nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    inboxApi
+      .list(workspaceId, {
+        classification: classification || undefined,
+        q: q || undefined,
+        cursor: nextCursor,
+      })
+      .then((page) => {
+        setThreads([...threadsRef.current, ...page.items]);
+        setNextCursor(page.nextCursor);
+      })
+      .catch((e) => toast("error", errorMessage(e)))
+      .finally(() => setLoadingMore(false));
+  }, [workspaceId, nextCursor, loadingMore, classification, q]);
 
   useEffect(() => {
     Promise.resolve().then(load);
@@ -107,11 +134,24 @@ export function InboxContent() {
 
   async function archive(id: string) {
     try {
-      await inboxApi.assign(workspaceId, id, null);
+      await inboxApi.archive(workspaceId, id);
       toast("success", "Archived.");
       setSelectedId(null);
       setDetail(null);
       load();
+    } catch (e) {
+      toast("error", errorMessage(e));
+    }
+  }
+
+  async function markRead(id: string) {
+    try {
+      await inboxApi.markRead(workspaceId, id);
+      toast("success", "Marked as read.");
+      setThreads(threadsRef.current.map((t) => (t.id === id ? { ...t, unread: false } : t)));
+      if (detail && detail.thread.id === id) {
+        setDetail({ ...detail, thread: { ...detail.thread, unread: false } });
+      }
     } catch (e) {
       toast("error", errorMessage(e));
     }
@@ -210,6 +250,13 @@ export function InboxContent() {
                 </button>
               );
             })}
+            {nextCursor && (
+              <div className="mt-3 flex justify-center">
+                <Button variant="secondary" onClick={loadMore} disabled={loadingMore}>
+                  {loadingMore ? "Loading…" : "Load more"}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </Card>
@@ -245,6 +292,24 @@ export function InboxContent() {
               rows={4}
               className="border-border bg-surface text-foreground w-full rounded-lg border px-3 py-2 text-sm"
             />
+            {detail.notes.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                  Internal notes
+                </h4>
+                {detail.notes.map((n) => (
+                  <div
+                    key={n.id}
+                    className="border-border bg-surface-sunken rounded-lg border px-3 py-2"
+                  >
+                    <div className="text-foreground text-sm">{n.body}</div>
+                    <div className="text-muted-foreground mt-1 text-xs">
+                      {new Date(n.createdAt).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex gap-2">
               <Button onClick={() => void sendReply()} disabled={busy || !replyText.trim()}>
                 <Send size={14} /> {busy ? "Sending…" : "Send reply"}
@@ -259,7 +324,7 @@ export function InboxContent() {
               <Button
                 variant="ghost"
                 aria-label="Mark read"
-                onClick={() => toast("success", "Marked as read.")}
+                onClick={() => void markRead(detail.thread.id)}
               >
                 <Check size={14} /> Mark read
               </Button>

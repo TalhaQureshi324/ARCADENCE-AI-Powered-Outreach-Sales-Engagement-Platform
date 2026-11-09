@@ -995,7 +995,13 @@ export interface InboxThreadDetailDto {
 export const inboxApi = {
   list: (
     workspaceId: string,
-    filters: { classification?: string; status?: string; unread?: boolean; q?: string } = {},
+    filters: {
+      classification?: string;
+      status?: string;
+      unread?: boolean;
+      q?: string;
+      cursor?: string;
+    } = {},
   ) => {
     const p = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => {
@@ -1023,6 +1029,20 @@ export const inboxApi = {
       method: "PATCH",
       body: JSON.stringify({ assignedTo }),
     }),
+  markRead: (workspaceId: string, threadId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/inbox/${threadId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ unread: false }),
+    }),
+  archive: (workspaceId: string, threadId: string) =>
+    apiFetch<void>(`/api/v1/workspaces/${workspaceId}/inbox/${threadId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "archived" }),
+    }),
+  notes: (workspaceId: string, threadId: string) =>
+    apiFetch<{ id: string; authorId: string | null; body: string; createdAt: string }[]>(
+      `/api/v1/workspaces/${workspaceId}/inbox/${threadId}/notes`,
+    ),
   addNote: (workspaceId: string, threadId: string, body: string) =>
     apiFetch<void>(`/api/v1/workspaces/${workspaceId}/inbox/${threadId}/notes`, {
       method: "POST",
