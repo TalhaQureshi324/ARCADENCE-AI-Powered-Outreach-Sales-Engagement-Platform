@@ -21,11 +21,11 @@ import java.util.UUID
 
 /** Founding 10,000 program API (Phase 14.2B.2).
   *
-  * GET  /founding-program             public: real status + publishable terms
-  * GET  /founding-program/me          auth: caller's membership or not-claimed
-  * POST /founding-program/claim       auth: transactional allocation (201)
-  * GET  /me/entitlements              auth: FREE_LAUNCH vs FOUNDING_ACCESS profile
-  * PATCH /me/announcement-preferences auth: dismiss/snooze/email opt-in
+  * GET /founding-program public: real status + publishable terms GET
+  * /founding-program/me auth: caller's membership or not-claimed POST
+  * /founding-program/claim auth: transactional allocation (201) GET
+  * /me/entitlements auth: FREE_LAUNCH vs FOUNDING_ACCESS profile PATCH
+  * /me/announcement-preferences auth: dismiss/snooze/email opt-in
   *
   * No credits are debited and no payment is triggered by a claim. Capacity
   * comes from the locked DB counter — never from an untrusted frontend value.
@@ -83,42 +83,51 @@ final class FoundingRoutes(
     .out(jsonBody[Json])
     .errorOut(errorOut)
 
-  private def parseJsonb(s: String): Json = io.circe.parser.parse(s).getOrElse(Json.Null)
+  private def parseJsonb(s: String): Json =
+    io.circe.parser.parse(s).getOrElse(Json.Null)
 
   private def statusLogic: IO[Json] = FoundingProgram.status(xa)
 
-  private def membershipLogic(user: AuthenticatedUser): IO[Either[(SttpStatus, Envelope), Json]] =
+  private def membershipLogic(
+      user: AuthenticatedUser
+  ): IO[Either[(SttpStatus, Envelope), Json]] =
     FoundingProgram.membershipOf(user.id, xa).map {
       case None =>
         Right(
           Json.obj(
             "claimed" -> Json.fromBoolean(false),
-            "status"  -> Json.fromString("not_a_founding_member")
+            "status" -> Json.fromString("not_a_founding_member")
           )
         )
       case Some((pos, membershipState, activated, expires)) =>
         Right(
           Json.obj(
-            "claimed"             -> Json.fromBoolean(true),
-            "status"              -> Json.fromString("founding_member"),
-            "membershipState"     -> Json.fromString(membershipState),
-            "claimPosition"       -> Json.fromInt(pos),
-            "activatedAt"         -> Json.fromString(activated),
-            "expiresAt"           -> Json.fromString(expires),
-            "complimentaryMonths" -> Json.fromInt(FoundingProgram.monthsComplimentary),
-            "autoBilling"         -> Json.fromBoolean(false)
+            "claimed" -> Json.fromBoolean(true),
+            "status" -> Json.fromString("founding_member"),
+            "membershipState" -> Json.fromString(membershipState),
+            "claimPosition" -> Json.fromInt(pos),
+            "activatedAt" -> Json.fromString(activated),
+            "expiresAt" -> Json.fromString(expires),
+            "complimentaryMonths" -> Json
+              .fromInt(FoundingProgram.monthsComplimentary),
+            "autoBilling" -> Json.fromBoolean(false)
           )
         )
     }
 
-  private def claimLogic(user: AuthenticatedUser): IO[Either[(SttpStatus, Envelope), Json]] =
+  private def claimLogic(
+      user: AuthenticatedUser
+  ): IO[Either[(SttpStatus, Envelope), Json]] =
     FoundingProgram.isUserVerified(user.id, xa).flatMap {
       case Some(false) | None =>
         IO.pure(
           Left(
             (
               SttpStatus.Forbidden,
-              Envelope("email_unverified", "Verify your email address before claiming Founding Access.")
+              Envelope(
+                "email_unverified",
+                "Verify your email address before claiming Founding Access."
+              )
             )
           )
         )
@@ -127,39 +136,71 @@ final class FoundingRoutes(
           case FoundingProgram.Claimed(pos, exp) =>
             Right(
               Json.obj(
-                "claimed"             -> Json.fromBoolean(true),
-                "claimPosition"       -> Json.fromInt(pos),
-                "expiresAt"           -> Json.fromString(exp.toString),
-                "complimentaryMonths" -> Json.fromInt(FoundingProgram.monthsComplimentary),
-                "autoBilling"         -> Json.fromBoolean(false),
+                "claimed" -> Json.fromBoolean(true),
+                "claimPosition" -> Json.fromInt(pos),
+                "expiresAt" -> Json.fromString(exp.toString),
+                "complimentaryMonths" -> Json
+                  .fromInt(FoundingProgram.monthsComplimentary),
+                "autoBilling" -> Json.fromBoolean(false),
                 "note" -> Json.fromString(
                   "Founding Access confirmed. 12 months complimentary. No credit card on file and no automatic charges at expiry."
                 )
               )
             )
           case FoundingProgram.AlreadyClaimed =>
-            Left((SttpStatus.Conflict, Envelope("already_claimed", "This account already holds a Founding membership.")))
+            Left(
+              (
+                SttpStatus.Conflict,
+                Envelope(
+                  "already_claimed",
+                  "This account already holds a Founding membership."
+                )
+              )
+            )
           case FoundingProgram.ProgramFull =>
             Left(
-              (SttpStatus.Conflict, Envelope("program_full", "The Founding 10,000 is fully allocated. The free launch tier remains available."))
+              (
+                SttpStatus.Conflict,
+                Envelope(
+                  "program_full",
+                  "The Founding 10,000 is fully allocated. The free launch tier remains available."
+                )
+              )
             )
           case FoundingProgram.ProgramPaused =>
-            Left((SttpStatus.Conflict, Envelope("program_paused", "Claiming is temporarily paused.")))
+            Left(
+              (
+                SttpStatus.Conflict,
+                Envelope("program_paused", "Claiming is temporarily paused.")
+              )
+            )
           case FoundingProgram.UserUnverified =>
-            Left((SttpStatus.Forbidden, Envelope("email_unverified", "Verify your email address first.")))
+            Left(
+              (
+                SttpStatus.Forbidden,
+                Envelope("email_unverified", "Verify your email address first.")
+              )
+            )
         }
     }
 
-  private def myEntitlementsLogic(user: AuthenticatedUser): IO[Either[(SttpStatus, Envelope), Json]] =
+  private def myEntitlementsLogic(
+      user: AuthenticatedUser
+  ): IO[Either[(SttpStatus, Envelope), Json]] =
     FoundingProgram.membershipOf(user.id, xa).map {
       case Some(_) =>
         Right(
           Json.obj(
             "profile" -> Json.fromString("FOUNDING_ACCESS"),
             "included" -> Json.obj(
-              "workspaces" -> Json.fromString("agency-tier workspace allowances during the complimentary period"),
-              "aiTokens"   -> Json.fromString("fair-use monthly allowance (terms v1)"),
-              "enrichment" -> Json.fromString("licensed-provider credits where available; sandbox-labeled otherwise")
+              "workspaces" -> Json.fromString(
+                "agency-tier workspace allowances during the complimentary period"
+              ),
+              "aiTokens" -> Json
+                .fromString("fair-use monthly allowance (terms v1)"),
+              "enrichment" -> Json.fromString(
+                "licensed-provider credits where available; sandbox-labeled otherwise"
+              )
             ),
             "autoBilling" -> Json.fromBoolean(false),
             "note" -> Json.fromString(
@@ -173,7 +214,9 @@ final class FoundingRoutes(
             "profile" -> Json.fromString("FREE_LAUNCH"),
             "included" -> Json.obj(
               "workspaces" -> Json.fromString("free-launch limits apply"),
-              "note"       -> Json.fromString("Paid plans are not offered during the free launch period.")
+              "note" -> Json.fromString(
+                "Paid plans are not offered during the free launch period."
+              )
             ),
             "autoBilling" -> Json.fromBoolean(false)
           )
@@ -184,8 +227,8 @@ final class FoundingRoutes(
       user: AuthenticatedUser,
       body: Json
   ): IO[Either[(SttpStatus, Envelope), Json]] =
-    val dismissed  = body.hcursor.get[Boolean]("dismissed").toOption
-    val snoozeH    = body.hcursor.get[Int]("snoozeHours").toOption
+    val dismissed = body.hcursor.get[Boolean]("dismissed").toOption
+    val snoozeH = body.hcursor.get[Int]("snoozeHours").toOption
     val emailOptIn = body.hcursor.get[Boolean]("emailUpdatesOptIn").toOption
     val sets = List(
       dismissed.map {
@@ -201,7 +244,9 @@ final class FoundingRoutes(
         sql"""insert into public.user_announcement_prefs (user_id) values (${user.id})
               on conflict (user_id) do nothing""".update.run
       _ <-
-        (fr"update public.user_announcement_prefs set" ++ sets.intercalate(fr",") ++
+        (fr"update public.user_announcement_prefs set" ++ sets.intercalate(
+          fr","
+        ) ++
           fr"where user_id = ${user.id}").update.run
       row <-
         sql"""select offer_dismissed_at::text, snoozed_until::text, email_updates_opt_in
@@ -210,13 +255,16 @@ final class FoundingRoutes(
           .unique
     yield Right(
       Json.obj(
-        "offerDismissedAt"  -> row._1.map(Json.fromString).getOrElse(Json.Null),
-        "snoozedUntil"      -> row._2.map(Json.fromString).getOrElse(Json.Null),
+        "offerDismissedAt" -> row._1.map(Json.fromString).getOrElse(Json.Null),
+        "snoozedUntil" -> row._2.map(Json.fromString).getOrElse(Json.Null),
         "emailUpdatesOptIn" -> Json.fromBoolean(row._3)
       )
     ): Either[(SttpStatus, Envelope), Json]).transact(xa)
 
-  private def requireViewForMe[A](auth: Option[String], run: AuthenticatedUser => IO[A]): IO[A] =
+  private def requireViewForMe[A](
+      auth: Option[String],
+      run: AuthenticatedUser => IO[A]
+  ): IO[A] =
     auth match
       case Some(token) if token.stripPrefix("Bearer ").nonEmpty =>
         authenticator.verify(token.stripPrefix("Bearer ").trim).flatMap {
@@ -256,4 +304,3 @@ final class FoundingRoutes(
       )
     )
   )
-
