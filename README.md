@@ -2,7 +2,7 @@
 
 **AI-powered outreach & sales engagement platform** — a production-oriented, multi-tenant SaaS for cold-email outreach, B2B lead management, campaign automation, unified inbox, CRM, deliverability intelligence, analytics, and AI-assisted sales workflows.
 
-> **Status:** Phase 0 foundation in progress — monorepo scaffolded, both applications build/run/test (see [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)).
+> **Status:** Phases 0–13 complete — full platform implemented and tested (auth/multi-tenancy, email accounts, leads, campaigns, sending engine, unified inbox, analytics, deliverability, CRM, lead discovery, AI copilot, public API/integrations, billing model, workflows). Currently in Phase 14 release verification: free-launch Founding 10,000 program is live in code; paid billing deferred. See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) and [docs/LAUNCH_CHECKLIST.md](docs/LAUNCH_CHECKLIST.md).
 
 ---
 

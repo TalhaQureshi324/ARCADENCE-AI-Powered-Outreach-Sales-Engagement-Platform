@@ -46,7 +46,9 @@
 - All input validated at the edge (Tapir request decoding) and at the domain boundary; parameterized SQL only (Doobie) — no string-built queries.
 - Uniform error responses without internal detail leakage; correlation IDs for supportability.
 - Audit trail tables for security-relevant actions (membership/role changes, credential add/remove, exports, workspace deletion).
-- Rate limiting and webhook signature verification land with the respective phases and are recorded here.
+- Rate limiting per caller (sliding window) enforced at the API edge; webhook payloads HMAC-signed (Stripe + Arcadence format) with retry/dead-letter/replay.
+- Schema-wide RLS assertion runs in CI: every public table must have RLS enabled; deny-by-default tables (credential blobs, event ledgers) are allowlisted. (Phase 14.1 audit remediation.)
+- AI data boundary: the model gateway sends only explicit prompt content; provider agreements must exclude training on customer data.
 - Dependency vulnerability scanning (sbt/Scala + npm audits) in CI from Phase 0 CI onward; secrets scanning (e.g. gitleaks) planned alongside.
 
 ## 7. Operational security
