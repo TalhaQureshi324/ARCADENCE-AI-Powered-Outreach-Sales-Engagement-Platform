@@ -1279,3 +1279,55 @@ export const visitorApi = {
       utmCampaigns: { name: string; count: number }[];
     }>(`/api/v1/workspaces/${workspaceId}/visitor-analytics?days=${days}`),
 };
+
+export interface FoundingStatus {
+  slug: string;
+  name: string;
+  description: string;
+  status: string;
+  capacity: number;
+  claimedCount: number;
+  termsVersion: string;
+  complimentaryMonths: number;
+}
+
+export interface FoundingMembership {
+  claimed: boolean;
+  status?: string;
+  membershipState?: string;
+  claimPosition?: number;
+  activatedAt?: string;
+  expiresAt?: string;
+  complimentaryMonths?: number;
+  autoBilling: boolean;
+  httpStatus?: number;
+  code?: string;
+  message?: string;
+}
+
+export const foundingApi = {
+  status: () => apiFetch<FoundingStatus>("/api/v1/founding-program"),
+  me: (workspaceId: string) =>
+    apiFetch<FoundingMembership & { claimed?: boolean }>(`/api/v1/founding-program/me`),
+  claim: (workspaceId: string) =>
+    apiFetch<FoundingMembership & { claimed?: boolean; note?: string }>(
+      `/api/v1/founding-program/claim`,
+      { method: "POST" },
+    ),
+  entitlements: () =>
+    apiFetch<{ profile: string; autoBilling: boolean; included?: Record<string, string> }>(
+      `/api/v1/me/entitlements`,
+    ),
+  prefs: (
+    workspaceId: string,
+    input: { dismissed?: boolean; snoozeHours?: number; emailUpdatesOptIn?: boolean },
+  ) =>
+    apiFetch<{
+      offerDismissedAt: string | null;
+      snoozedUntil: string | null;
+      emailUpdatesOptIn: boolean;
+    }>(`/api/v1/me/announcement-preferences`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+};

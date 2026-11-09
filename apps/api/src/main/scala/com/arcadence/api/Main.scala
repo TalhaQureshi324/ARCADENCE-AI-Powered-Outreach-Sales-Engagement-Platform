@@ -198,6 +198,7 @@ object Main extends IOApp:
                 val automationRoutes =
                   new AutomationRoutes(authenticator, transactor)
                 val opsRoutes = new OpsRoutes(authenticator, transactor)
+                val foundingRoutes = new FoundingRoutes(authenticator, transactor)
                 val billingRoutes = new BillingRoutes(
                   authenticator = authenticator,
                   xa = transactor,
@@ -365,7 +366,7 @@ object Main extends IOApp:
                   RateLimit(config.rateLimitPerMinute)(
                     SecurityHeaders(
                       workspaceRoutes.http <+> emailAccountRoutes.http <+> gmailRoutes.http <+> microsoftRoutes.http
-                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> inboxRoutes.http <+> analyticsRoutes.http <+> deliverabilityRoutes.http <+> crmRoutes.http <+> agencyRoutes.http <+> leadFinderRoutes.http <+> integrationRoutes.http <+> visitorRoutes.http <+> automationRoutes.http <+> opsRoutes.http <+> channelRoutes.http <+> billingRoutes.http <+> aiRoutes.http <+> aiWriterRoutes.http <+> aiReplyRoutes.http <+> aiAgentRoutes.http <+> apiKeysRoutes.http <+> importRoutes.http
+                        <+> segmentRoutes.http <+> campaignRoutes.http <+> composerRoutes.http <+> leadsRoutes.http <+> inboxRoutes.http <+> analyticsRoutes.http <+> deliverabilityRoutes.http <+> crmRoutes.http <+> agencyRoutes.http <+> leadFinderRoutes.http <+> integrationRoutes.http <+> visitorRoutes.http <+> automationRoutes.http <+> opsRoutes.http <+> foundingRoutes.http <+> channelRoutes.http <+> billingRoutes.http <+> aiRoutes.http <+> aiWriterRoutes.http <+> aiReplyRoutes.http <+> aiAgentRoutes.http <+> apiKeysRoutes.http <+> importRoutes.http
                     )
                   )
 

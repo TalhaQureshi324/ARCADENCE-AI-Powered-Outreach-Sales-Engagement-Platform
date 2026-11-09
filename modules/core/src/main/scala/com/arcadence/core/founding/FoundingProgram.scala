@@ -42,7 +42,7 @@ object FoundingProgram:
 
   def status(xa: Transactor[IO]): IO[Json] =
     sql"""select status, capacity, claimed_count, terms_version from public.founding_program
-          where slug = '$slug'"""
+          where slug = ${slug}"""
       .query[(String, Int, Int, String)]
       .option
       .transact(xa)
@@ -87,13 +87,13 @@ object FoundingProgram:
       val tx: ConnectionIO[ClaimResult] =
         (for
           programIdOpt <-
-            sql"""select id, status, claimed_count from public.founding_program
-                  where slug = '$slug' order by created_at limit 1 for update"""
-              .query[(UUID, String, Int)]
+            sql"""select id, status, claimed_count, capacity from public.founding_program
+                  where slug = ${slug} order by created_at limit 1 for update"""
+              .query[(UUID, String, Int, Int)]
               .option
           result <- programIdOpt match
             case None => FC.pure(ProgramPaused)
-            case Some((programId, status, claimed)) =>
+            case Some((programId, status, claimed, rowCapacity)) =>
               val memberQ =
                 sql"""select count(*) > 0 from public.founding_members
                       where user_id = $userId and status = 'active'"""
@@ -101,14 +101,14 @@ object FoundingProgram:
               memberQ.flatMap { already =>
                 if already then FC.pure(AlreadyClaimed)
                 else if status == "paused" || status == "closed" then FC.pure(ProgramPaused)
-                else if claimed >= capacity then FC.pure(ProgramFull)
+                else if claimed >= rowCapacity then FC.pure(ProgramFull)
                 else
                   val position = claimed + 1
                   sql"""insert into public.founding_members
                         (program_id, user_id, claim_position, status, expires_at, terms_version)
                         values ($programId, $userId, $position, 'active',
                                 now() + interval '12 months', 'v1')
-                        returning claim_position, expires_at::text"""
+                        returning claim_position, to_char(expires_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MSOF')"""
                     .query[(Int, String)]
                     .unique
                     .flatMap { case (pos, exp) =>

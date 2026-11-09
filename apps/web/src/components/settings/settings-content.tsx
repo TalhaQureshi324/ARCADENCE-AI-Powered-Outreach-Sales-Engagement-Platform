@@ -11,6 +11,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FoundingMembershipCard } from "@/components/founding/founding-membership-card";
 import { TBody, TD, TH, THead, TR, Table } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
@@ -61,6 +62,7 @@ export function SettingsContent({ email }: { email: string }) {
 
   return (
     <div className="space-y-6">
+      <FoundingMembershipCard />
       <Card>
         <CardHeader
           eyebrow={`Workspace · /${selected.slug}`}
