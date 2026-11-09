@@ -383,10 +383,17 @@ object InboxLogic:
       workspaceId: UUID,
       threadId: UUID,
       assignedTo: Option[UUID],
+      status: Option[String],
+      unread: Option[Boolean],
       userId: UUID
   ): IO[Boolean] =
-    sql"""update public.email_threads set assigned_to = $assignedTo
-          where workspace_id = $workspaceId and id = $threadId""".update.run
+    val sets = List(
+      Some(fr"assigned_to = $assignedTo"),
+      status.map(s => fr"status = $s"),
+      unread.map(u => fr"unread = $u")
+    ).flatten
+    (fr"update public.email_threads set" ++ sets.intercalate(fr",") ++
+      fr"where workspace_id = $workspaceId and id = $threadId").update.run
       .map(_ > 0)
       .transact(xa)
 
