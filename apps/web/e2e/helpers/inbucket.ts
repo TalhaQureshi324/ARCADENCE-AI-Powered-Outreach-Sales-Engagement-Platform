@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 
-const MAILPIT_API = process.env.MAILPIT_API ?? "http://127.0.0.1:54324/api/v1";
+const MAILPIT_API = process.env.MAILPIT_API ?? "http://127.0.0.1:44324/api/v1";
 
 interface MailpitSummary {
   messages: { ID: string; To: { Address: string }[]; Subject: string }[];

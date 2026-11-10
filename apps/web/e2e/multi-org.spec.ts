@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { STRONG_PASSWORD, latestEmailLink, testEmail } from "./helpers/inbucket";
 
-const VERIFY_LINK = /https?:\/\/127\.0\.0\.1:54321\/auth\/v1\/verify\?[^\s"'<>]+/;
+const VERIFY_LINK = /https?:\/\/127\.0\.0\.1:44321\/auth\/v1\/verify\?[^\s"'<>]+/;
 
 async function signUpAndOnboard(page: Page, name: string): Promise<string> {
   const email = testEmail(name.toLowerCase().replace(/\s+/g, "-"));
@@ -27,7 +27,23 @@ async function createWorkspace(page: Page, name: string) {
   await expect(page.getByRole("heading", { name, level: 3 })).toBeVisible();
 }
 
+/** The Founding 10,000 offer modal (Phase 14.2B) covers the app for fresh
+ * unclaimed users ~1.2s after mount and blocks clicks behind it — wait for
+ * it briefly and dismiss when it shows. Absent = claimed/dismissed/inactive.
+ */
+async function dismissFoundingOffer(page: Page) {
+  const maybeLater = page.getByRole("button", { name: "Maybe later" });
+  try {
+    await maybeLater.waitFor({ state: "visible", timeout: 6000 });
+    await maybeLater.click();
+    await expect(maybeLater).toBeHidden();
+  } catch {
+    // modal never appeared — nothing to dismiss
+  }
+}
+
 async function openSettings(page: Page) {
+  await dismissFoundingOffer(page);
   await page.getByRole("link", { name: "Settings" }).click();
   await expect(page.getByText("Your role:")).toBeVisible();
 }
@@ -58,6 +74,11 @@ test.describe("multi-organization administration", () => {
     const emailB = await signUpAndOnboard(pageB, "Org B Owner");
     await createWorkspace(pageA, "Org A Workspace");
     await createWorkspace(pageB, "Org B Workspace");
+    // The founding offer only evaluates once a workspace exists (unclaimed
+    // users) — dismiss it here so it is deterministically gone for the rest
+    // of the flow (snoozed 7 days per browser context).
+    await dismissFoundingOffer(pageA);
+    await dismissFoundingOffer(pageB);
 
     // A's list contains ONLY A's workspace; B's only B's.
     await expect(pageA.getByRole("heading", { name: "Org A Workspace", level: 3 })).toBeVisible();

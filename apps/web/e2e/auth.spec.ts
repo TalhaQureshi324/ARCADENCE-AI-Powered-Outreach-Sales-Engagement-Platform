@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { STRONG_PASSWORD, expectVisibleText, latestEmailLink, testEmail } from "./helpers/inbucket";
 
-const VERIFY_LINK = /https?:\/\/127\.0\.0\.1:54321\/auth\/v1\/verify\?[^\s"'<>]+/;
+const VERIFY_LINK = /https?:\/\/127\.0\.0\.1:44321\/auth\/v1\/verify\?[^\s"'<>]+/;
 
 async function signUp(page: Page, name: string, email: string) {
   await page.goto("/signup");

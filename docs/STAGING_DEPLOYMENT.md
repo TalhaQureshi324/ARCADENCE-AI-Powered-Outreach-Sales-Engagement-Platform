@@ -69,6 +69,8 @@ No JavaScript reimplementation of Scala functionality; no shared process boundar
 
 ## 4. Frontend origin and routing (Vercel)
 
+> **Phase 15.4:** the click-by-click deployment runbook now lives in **`docs/VERCEL_DEPLOYMENT.md`** (project settings, env vars, deployment protection, Supabase Auth URL wiring, post-deploy smoke checklist, URL record). The summary below remains valid.
+
 - Project root: `apps/web` (monorepo; Next.js framework auto-detected; install `npm ci`, build `npm run build`).
 - Routes: everything is served by Next.js; no rewrites needed (API is called cross-origin by the client via `NEXT_PUBLIC_API_URL`).
 - **Deployment Protection:** enable Vercel Authentication (or password) so the staging UI is private — the 15.5 browser tests run behind it.
