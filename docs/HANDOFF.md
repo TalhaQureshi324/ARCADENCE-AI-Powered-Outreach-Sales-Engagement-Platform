@@ -903,3 +903,33 @@
 - VPS provisioning + DNS (MANUAL_SETUP #10) and staging `DATABASE_URL` credentials.
 - Supabase staging backups toggle (MANUAL_SETUP #16).
 - Remote smoke (`/ready` over TLS, worker heartbeat on the host) — runs at deployment, only on owner authorization.
+
+
+---
+
+## Phase 15.4 — Next.js Vercel deployment preparation (2026-11-10)
+
+**Branch** feature/phase-154-vercel -> develop.
+
+### Implemented / tested
+
+| Item | Detail |
+| --- | --- |
+| Project config | `apps/web/vercel.json` (framework nextjs, `npm ci`, `npm run build`); monorepo verified self-contained (no root workspace tooling; Root Directory = `apps/web` is the only structural setting) |
+| Runbook | `docs/VERCEL_DEPLOYMENT.md`: owner click-by-click, 4 PUBLIC env vars, Vercel Authentication + protection-bypass guidance for 15.5, Supabase Auth URL wiring, `APP_ORIGIN` API wiring, post-deploy smoke checklist, URL record table |
+| Env template | `.env.example` gains `NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED` (was missing; source-verified) |
+| e2e ports | 12 spec files re-pointed from the pre-remap local ports (54321/54324) to 44321/44324 (15.3 stack remap) |
+| Founding-modal race | multi-org spec: the offer modal only evaluates once a workspace exists and blocks clicks behind it — spec now dismisses it deterministically after workspace creation (product snooze logic verified correct: 7-day localStorage flag, modal stays hidden on navigation) |
+| Production-build verification | `npm run build` green; `next start` + real local stack: Playwright **auth.spec 6/6** (signup→confirm→onboarding→dashboard, session refresh, logout, recovery, expired-link) and **multi-org.spec 1/1** (two-tenant isolation, invite accept, member gating on all tabs, removal + instant revocation) — full frontend→Scala-API round-trip on the exact artifact Vercel will serve |
+| Mobile check | 390×844: login/signup render without overflow (2 minor cosmetic paddings noted for 15.5) |
+| Security headers | verified present on the production server responses |
+
+| Tests | Result |
+| --- | --- |
+| Playwright auth.spec (production build) | 6/6 |
+| Playwright multi-org.spec (production build) | 1/1 (after founding-modal race fix) |
+| Frontend production build | exit 0 |
+
+### Blocked (owner)
+
+Deployment itself requires the owner's Vercel account (MANUAL_SETUP #9) — runbook ready; URL recorded in `docs/VERCEL_DEPLOYMENT.md` §6 after first deploy.
