@@ -169,6 +169,34 @@ final class BillingSpec extends CatsEffectSuite:
     yield ()
   }
 
+  private def stripeSigFor(payload: String, ts: String): String = {
+    val m = Mac.getInstance("HmacSHA256")
+    m.init(new SecretKeySpec("whsec_test".getBytes("UTF-8"), "HmacSHA256"))
+    m.doFinal(s"$ts.$payload".getBytes("UTF-8")).map("%02x".format(_)).mkString
+  }
+
+  private def signedStripeRequest(
+      payload: String,
+      header: String
+  ): Request[IO] =
+    Request[IO](Method.POST, Uri.unsafeFromString("/api/v1/stripe/webhook"))
+      .withHeaders(
+        Header.Raw(
+          org.typelevel.ci.CIString("Stripe-Signature"),
+          header
+        ),
+        Header
+          .Raw(org.typelevel.ci.CIString("Content-Type"), "application/json")
+      )
+      .withEntity(payload)
+
+  private def runRequest(req: Request[IO]): IO[(Status, Json)] =
+    routes.http.orNotFound
+      .run(req)
+      .flatMap(r =>
+        r.bodyText.compile.string
+          .map(t => (r.status, parse(t).toOption.getOrElse(Json.Null)))
+      )
   test("stripe webhook: signature required, event processed idempotently") {
     val payloadJson = payload(ws)
     val wirePayload = payloadJson.noSpaces
@@ -177,7 +205,7 @@ final class BillingSpec extends CatsEffectSuite:
       m.init(new SecretKeySpec("whsec_test".getBytes("UTF-8"), "HmacSHA256"))
       m
     }
-    val ts = "1700000000"
+    val ts = (System.currentTimeMillis() / 1000L).toString
     val sig = mac
       .doFinal(s"$ts.$wirePayload".getBytes("UTF-8"))
       .map("%02x".format(_))
@@ -245,3 +273,38 @@ final class BillingSpec extends CatsEffectSuite:
       }}
     }"""
   ).toOption.get
+
+  test(
+    "stripe webhook: stale signature timestamps are rejected (replay window)"
+  ) {
+    val wirePayload = payload(ws).noSpaces
+    val staleTs = (System.currentTimeMillis() / 1000L - 3600L).toString
+    val sig = stripeSigFor(wirePayload, staleTs)
+    for
+      res <- runRequest(signedStripeRequest(wirePayload, s"t=$staleTs,v1=$sig"))
+      _ = assertEquals(res._1, Status.BadRequest)
+      events <-
+        sql"select count(*) from public.billing_events where stripe_event_id = ${s"evt_$suffix"}"
+          .query[Long]
+          .unique
+          .transact(xa)
+      _ = assertEquals(events, 1L) // replayed payload left no trace
+    yield ()
+  }
+
+  test("stripe webhook: signature is bound to the exact payload bytes") {
+    val pA = payload(ws).noSpaces
+    val pB = pA + " " // tampered body carrying signature computed over A
+    val freshTs = (System.currentTimeMillis() / 1000L).toString
+    val sig = stripeSigFor(pA, freshTs)
+    for
+      res <- runRequest(signedStripeRequest(pB, s"t=$freshTs,v1=$sig"))
+      _ = assertEquals(res._1, Status.BadRequest)
+      events <-
+        sql"select count(*) from public.billing_events where stripe_event_id = ${s"evt_$suffix"}"
+          .query[Long]
+          .unique
+          .transact(xa)
+      _ = assertEquals(events, 1L)
+    yield ()
+  }

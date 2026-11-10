@@ -365,3 +365,34 @@ final class WorkspaceAuthIntegrationSpec extends CatsEffectSuite:
       .unsafeRunSync()
     assertEquals(status, Status.Unauthorized)
   }
+
+  test("invitation acceptance is bound to the invited email address") {
+    // Owner invites a third email with the admin role.
+    val (created, inviteBody) = request(
+      Method.POST,
+      s"/api/v1/workspaces/$workspaceId/invitations",
+      "token-A",
+      Some(
+        Json.obj(
+          "email" -> Json.fromString(s"other-$emailB"),
+          "role" -> Json.fromString("admin")
+        )
+      )
+    ).unsafeRunSync()
+    assertEquals(created, Status.Created)
+    val inviteUrl = jsonField(inviteBody, "inviteUrl")
+    val token =
+      UUID.fromString(inviteUrl.substring(inviteUrl.lastIndexOf('/') + 1))
+
+    // A different authenticated user who obtains the token cannot consume it
+    // and gains no membership.
+    val (hijack, _) =
+      request(Method.POST, s"/api/v1/invitations/$token/accept", "token-B")
+        .unsafeRunSync()
+    assertEquals(hijack, Status.NotFound)
+
+    val (stillOutsider, _) =
+      request(Method.GET, s"/api/v1/workspaces/$workspaceId", "token-B")
+        .unsafeRunSync()
+    assertEquals(stillOutsider, Status.NotFound)
+  }
