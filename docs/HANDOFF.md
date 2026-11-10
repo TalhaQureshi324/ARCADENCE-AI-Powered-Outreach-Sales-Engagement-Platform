@@ -872,3 +872,34 @@
 
 - develop -> main promotion + tag phase-8.
 - Acceptance: users can diagnose authentication problems (copyable fixes), see health deterioration with explicit reasons, know when sends were auto-paused and why, and run permission-gated placement tests that report honestly.
+
+
+---
+
+## Phase 15.3 — Staging Supabase & Scala backend preparation (2026-11-10)
+
+**Branch** feature/phase-153-staging-prep -> develop.
+
+### Implemented / tested
+
+| Item | Detail |
+| --- | --- |
+| Staging identity | Linked ref `kryxwfjaafcedtqruges` = `arcadence-staging` verified against MANUAL_SETUP |
+| Migration gap | Staging lacked the last 4 migrations (billing, domains_security, **rls_hardening**, founding_access) — applied forward-only (`supabase db push --remote`, purely additive; no reset/no data change). All 43 now recorded |
+| RLS on staging | Phase 14.1 hardening had never reached staging; post-push anon probes confirm deny-by-default live (hardened tables now return empty sets to anon; `founding_program` public counter readable by design) |
+| Worker safety (code) | `SENDING_ENABLED` switch (claim gate — disabled = queue paused, pending jobs untouched, lease recovery continues; invalid values warn at startup), `TEST_RECIPIENT_ALLOWLIST` enforced in SendHandler before any provider contact (rejects without retry); wired in worker Main |
+| Images | `arcadence/arcadence-api` + `arcadence/arcadence-worker` via sbt-native-packager; **non-root uid 1001:0** verified; SHA-tagged (`1f6608f`) |
+| Staging config | `infrastructure/docker-compose.staging.yml` (Caddy TLS + api + worker; healthchecks, mem limits 1g/768m/256m, log rotation, stop grace periods, `JAVA_OPTS` RAM percentage), `infrastructure/Caddyfile` (TLS + HSTS), `infrastructure/staging.env.example` (no secrets), infrastructure/README rewritten (build/tag/distribute + queue-health SQL) |
+| Container smoke (local) | API container: `/health` 200, `/ready` 200 with `database: ok` against the local stack. Worker container: banner `sending DISABLED — queue paused`, heartbeats every 30s, **zero claim activity** with SENDING_ENABLED=false |
+
+| Tests | Result |
+| --- | --- |
+| SendWorkerConfigSpec (new, 6) | 6/6 |
+| SendDeliverySpec (5 + 1 new allowlist test) | 6/6 |
+| Full regression | **368/368 green** (core 99, worker 8, api 261), scalafmt clean |
+
+### Owner actions outstanding (staging deployment gate)
+
+- VPS provisioning + DNS (MANUAL_SETUP #10) and staging `DATABASE_URL` credentials.
+- Supabase staging backups toggle (MANUAL_SETUP #16).
+- Remote smoke (`/ready` over TLS, worker heartbeat on the host) — runs at deployment, only on owner authorization.

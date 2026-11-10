@@ -151,6 +151,14 @@ Staging minimum (owner action): uptime monitor on `GET /ready` (API) and the fro
 | Database | Supabase staging PITR/backups (owner enables scheduled backups); migrations are forward-only — a bad migration is reverted by a corrective forward migration |
 | Worker safety | Rollout rule: deploy worker and API from the same commit; the worker refuses sends when campaign state changed under it (pre-send guards, verified) |
 
-## 16. What 15.3 will do on top of this spec
+## 16. Phase 15.3 execution status (2026-11-10)
 
-Build/publish the two images from the existing sbt packaging (non-root already), apply migrations to the verified staging Supabase project, wire the staging env, run `/ready` + worker-heartbeat smoke tests, and add the staging sending-safety configuration. **No deployment happens until the owner provides VPS credentials and explicitly authorizes it.**
+- **Staging Supabase identity verified:** linked ref `kryxwfjaafcedtqruges` = `arcadence-staging` (ap-northeast-1), matching `MANUAL_SETUP.md`.
+- **Migration gap found and closed:** staging was missing the last 4 migrations (`billing`, `domains_security`, **`rls_hardening`**, `founding_access`) — applied forward-only via `supabase db push --remote` (purely additive; no reset, no data touched). Staging now records all 43 migrations.
+  - ⚠️ Notably the **Phase 14.1 RLS hardening had never reached staging** — the 12 engine tables were still RLS-off there. Post-push anon probes confirm the deny-by-default posture is live (`send_attempt`, `job_queue`, `inbound_events` now return empty arrays to anon instead of being readable).
+- **Post-push verification:** `founding_program` exists with the intentional public counter policy (200, zero rows); member-scoped tables filter anon to empty sets (correct RLS behavior); `billing_*` tables created (plans catalog is code-level, not a table).
+- **Images built:** `arcadence/arcadence-api` + `arcadence/arcadence-worker` via sbt-native-packager (non-root uid 1001); SHA-tagging convention documented in `infrastructure/README.md`.
+- **Staging configuration shipped:** `infrastructure/docker-compose.staging.yml` (healthchecks, memory limits, log rotation, graceful-stop periods), `infrastructure/Caddyfile` (TLS + HSTS), `infrastructure/staging.env.example` (no secrets).
+- **Worker staging safety shipped (env-gated, tested):** `SENDING_ENABLED` switch (default **false on staging** via compose — pending jobs stay queued, never failed; lease recovery continues), `TEST_RECIPIENT_ALLOWLIST` enforcement in the send handler (rejects non-allowlisted recipients before any provider contact), conservative `WORKER_BATCH_SIZE=2` / `WORKER_POLL_SECONDS=10`. Idempotency and suppression guards pre-existed (verified 15.1).
+- **Container-level smoke executed locally** (see the 15.3 commit message / HANDOFF for recorded results): API image serves `/health` + `/ready` against the local stack; worker image starts, announces `sending DISABLED — queue paused`, heartbeats, and claims nothing.
+- **Not done (blocked on owner):** VPS provisioning + DNS (MANUAL_SETUP #10), real staging `DATABASE_URL` credentials, remote deployment + `/ready` smoke over TLS, Supabase staging backups toggle (MANUAL_SETUP #16).
