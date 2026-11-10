@@ -1,5 +1,11 @@
 # Arcadence — Production Deployment (Phase 13.5)
 
+> **Phase 15.2 update:** the private-testing deployment architecture is decided and
+> specified in **`docs/STAGING_DEPLOYMENT.md`** (Vercel frontend + Docker-hosted Scala
+> API/worker, same topology as the future Hostinger VPS). The environment-variable
+> inventory lives in **`docs/ENVIRONMENT.md`**. This document remains the production
+> reference; where they overlap, the staging spec governs private testing.
+
 ## Environments
 
 | Environment | Frontend | API + Worker | Database |
