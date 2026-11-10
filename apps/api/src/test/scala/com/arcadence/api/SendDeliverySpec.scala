@@ -134,6 +134,16 @@ final class SendDeliverySpec extends CatsEffectSuite:
     events
   )
 
+  /** Staging-safety variant (15.3): only allowed@t.test may be emailed. */
+  private lazy val handlerAllowlisted = new SendHandler(
+    xa,
+    Some(new StubRegistry(stub)),
+    emailAccounts,
+    guard,
+    events,
+    recipientAllowlist = Some(Set("allowed@t.test"))
+  )
+
   private var campaignId: UUID = null
   private var step2Id: UUID = null
   private var accountId: UUID = null
@@ -169,7 +179,9 @@ final class SendDeliverySpec extends CatsEffectSuite:
     * contact + enrollment due now; enqueues a send action and runs the handler
     * on it. Returns the action id.
     */
-  private def seedAndRun(): IO[(UUID, JobQueue.Outcome)] =
+  private def seedAndRun(
+      h: com.arcadence.core.jobs.JobQueue.Handler = handler
+  ): IO[(UUID, JobQueue.Outcome)] =
     for
       cid <-
         sql"""
@@ -224,7 +236,7 @@ final class SendDeliverySpec extends CatsEffectSuite:
             .noSpaces}::jsonb, now() - interval '1 second')
         """.update.run.transact(xa)
       claimed <- queue.claimBatchFor(actionId, "spec-worker")
-      outcome <- handler.run(claimed.get)
+      outcome <- h.run(claimed.get)
     yield (actionId, outcome)
 
   test("accepted send: evidence persisted, enrollment advanced to step 2") {
@@ -419,6 +431,46 @@ final class SendDeliverySpec extends CatsEffectSuite:
         assert(outcome.isInstanceOf[JobQueue.Fail])
         assertEquals(status, "failed")
         assertEquals(attempt, Some("outcome_unknown"))
+      }
+    yield ()
+  }
+
+  test(
+    "staging allowlist: non-allowlisted recipient rejected without submission"
+  ) {
+    for
+      submitsBefore <- IO(
+        stub.submitted.get()
+      ) // counter is shared across tests
+      r <- seedAndRun(handlerAllowlisted)
+      actionId = r._1
+      outcome = r._2
+      submitsAfter = stub.submitted.get()
+      msg <-
+        sql"select count(*) from public.outbound_message where action_id = $actionId"
+          .query[Long]
+          .unique
+          .transact(xa)
+      events <-
+        sql"""select event_type, payload::text from public.event_outbox
+              where aggregate_id = ${actionId.toString}"""
+          .query[(String, String)]
+          .to[List]
+          .transact(xa)
+      _ <- IO {
+        assertEquals(outcome, JobQueue.Done)
+        assertEquals(
+          submitsAfter,
+          submitsBefore,
+          "no provider submission may occur"
+        )
+        assertEquals(msg, 0L, "no outbound message may be recorded")
+        assert(
+          events.exists((t, p) =>
+            t == "rejected" && p.contains("TEST_RECIPIENT_ALLOWLIST")
+          ),
+          s"expected a rejected event naming the allowlist, got $events"
+        )
       }
     yield ()
   }

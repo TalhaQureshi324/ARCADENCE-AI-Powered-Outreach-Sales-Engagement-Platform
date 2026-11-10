@@ -2,7 +2,7 @@
 
 > Tasks that require **your** external accounts, approvals, or clicks — things agents cannot do for you. Each item names the phase that needs it so you can prioritize. Agents never ask for credentials in chat or commit them anywhere.
 
-**Last updated:** 2026-11-10
+**Last updated:** 2026-11-10 (15.3 — staging migrations closed, safety switches shipped)
 
 ---
 
@@ -33,7 +33,7 @@
 | 13 | Signed data-provider agreements (e.g. Apollo, ZoomInfo, Snov) with per-seat/API terms | Lead Finder live providers | later | Until signed, only the labeled sandbox provider is wired — the product never fabricates live leads. API keys go to server-side env config per provider adapter |
 | 14 | Configure Supabase staging Auth URLs: Site URL + redirect allowlist = the Vercel frontend origin (and later the custom domain) | Phase 15.4 | **action needed for 15.5 browser tests** | Dashboard → Authentication → URL Configuration |
 | 15 | Add the staging OAuth callback URIs to the Google / Microsoft app registrations (see `docs/STAGING_DEPLOYMENT.md` §8) and set the redirect env vars on the VPS | Phase 15.5 | later | Needed only for live mailbox-connection tests; everything else stays BLOCKED-free |
-| 16 | Supabase staging backups: enable scheduled backups / confirm PITR on the staging project | Phase 15.3 | **action needed** | Staging holds real test data from 15.5 onward |
+| 16 | Supabase staging backups: enable scheduled backups / confirm PITR on the staging project | Phase 15.3 | **action needed** | Staging holds real test data from 15.5 onward. Note (15.3): the 4 missing migrations were applied to staging 2026-11-10 — RLS hardening + founding/billing/domain schema are now live there |
 | 17 | Confirm GLM account balance if live AI model evaluation is wanted during staging (currently honest 503 or glm-4.5-flash free tier) | Phase 15.5 | optional | See item 12 |
 
 ## Working agreement
