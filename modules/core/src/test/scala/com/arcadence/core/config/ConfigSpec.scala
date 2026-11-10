@@ -49,6 +49,7 @@ final class ConfigSpec extends FunSuite:
           jwtAudience = validEnv("SUPABASE_JWT_AUDIENCE"),
           jwksUrl = validEnv("SUPABASE_JWKS_URL"),
           rateLimitPerMinute = 120,
+          appOrigin = "http://localhost:3000",
           credentialEncryptionKey = testEncryptionKey,
           googleOAuthClientId = None,
           googleOAuthClientSecret = None,
@@ -75,6 +76,7 @@ final class ConfigSpec extends FunSuite:
           jwtAudience = validEnv("SUPABASE_JWT_AUDIENCE"),
           jwksUrl = validEnv("SUPABASE_JWKS_URL"),
           rateLimitPerMinute = 120,
+          appOrigin = "http://localhost:3000",
           credentialEncryptionKey = testEncryptionKey,
           googleOAuthClientId = None,
           googleOAuthClientSecret = None,
@@ -104,6 +106,31 @@ final class ConfigSpec extends FunSuite:
   test("ApiConfig.fromEnv treats blank values as unset") {
     val result = ApiConfig.fromEnv(validEnv + ("API_PORT" -> "   "))
     assert(result.right.exists(_.port == ApiConfig.Default.port))
+  }
+
+  test("ApiConfig.fromEnv defaults APP_ORIGIN to the local dev origin") {
+    val result = ApiConfig.fromEnv(validEnv)
+    val config = result.getOrElse(fail("expected valid config"))
+    assertEquals(config.appOrigin, "http://localhost:3000")
+  }
+
+  test("ApiConfig.fromEnv accepts APP_ORIGIN and strips a trailing slash") {
+    val result =
+      ApiConfig.fromEnv(
+        validEnv + ("APP_ORIGIN" -> "https://staging.arcadence.app/")
+      )
+    val config = result.getOrElse(fail("expected valid config"))
+    assertEquals(config.appOrigin, "https://staging.arcadence.app")
+  }
+
+  test("ApiConfig.fromEnv rejects a non-http APP_ORIGIN") {
+    val result =
+      ApiConfig.fromEnv(validEnv + ("APP_ORIGIN" -> "staging.arcadence.app"))
+    assert(result.isLeft)
+    assert(
+      result.left.getOrElse("").contains("APP_ORIGIN"),
+      "error must mention APP_ORIGIN"
+    )
   }
 
   test("ApiConfig.fromEnv rejects out-of-range ports") {

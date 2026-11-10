@@ -65,7 +65,7 @@ object Main extends IOApp:
             authenticator = authenticator,
             repos = repositories,
             authorizer = authorizer,
-            appOrigin = "http://localhost:3000"
+            appOrigin = config.appOrigin
           )
 
           // Provider adapters (Phase 2.2): Gmail when OAuth credentials exist.

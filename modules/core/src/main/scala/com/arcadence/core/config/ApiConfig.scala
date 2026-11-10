@@ -10,6 +10,7 @@ final case class ApiConfig(
     jwtAudience: String,
     jwksUrl: String,
     rateLimitPerMinute: Int,
+    appOrigin: String,
     credentialEncryptionKey: String,
     googleOAuthClientId: Option[String],
     googleOAuthClientSecret: Option[String],
@@ -29,6 +30,7 @@ object ApiConfig:
     jwtAudience = "",
     jwksUrl = "",
     rateLimitPerMinute = 120,
+    appOrigin = "http://localhost:3000",
     credentialEncryptionKey = "",
     googleOAuthClientId = None,
     googleOAuthClientSecret = None,
@@ -64,6 +66,7 @@ object ApiConfig:
       required(env, "SUPABASE_JWT_AUDIENCE"),
       required(env, "SUPABASE_JWKS_URL"),
       Parsers.port(env, "RATE_LIMIT_PER_MINUTE", 120),
+      appOrigin(env),
       encryptionKey(env),
       optional(env, "GOOGLE_OAUTH_CLIENT_ID"),
       optional(env, "GOOGLE_OAUTH_CLIENT_SECRET"),
@@ -93,6 +96,24 @@ object ApiConfig:
     cats.data.Validated.validNel(
       env.get(name).map(_.trim).filter(_.nonEmpty)
     )
+
+  /** APP_ORIGIN is the browser-facing frontend origin used for workspace invite
+    * links and OAuth callback redirects. Optional; defaults to the local dev
+    * origin. Accepts http(s) only, single trailing slash stripped.
+    */
+  private def appOrigin(env: Map[String, String]): ValidatedNelString =
+    env.get("APP_ORIGIN").map(_.trim).filter(_.nonEmpty) match
+      case None      => cats.data.Validated.validNel(Default.appOrigin)
+      case Some(raw) =>
+        val value = if raw.endsWith("/") then raw.dropRight(1) else raw
+        val schemeOk =
+          value.startsWith("http://") || value.startsWith("https://")
+        if schemeOk && value.length > 8 && !value.contains(" ")
+        then cats.data.Validated.validNel(value)
+        else
+          cats.data.Validated.invalidNel(
+            "APP_ORIGIN must be an http(s) origin without a path, e.g. https://staging.example.com"
+          )
 
   /** EMAIL_ENCRYPTION_KEY must be base64 and decode to exactly 32 bytes
     * (AES-256); validated at startup so a broken key never reaches runtime.
