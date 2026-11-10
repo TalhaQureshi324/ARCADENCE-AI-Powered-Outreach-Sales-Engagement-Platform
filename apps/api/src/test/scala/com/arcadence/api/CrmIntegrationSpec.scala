@@ -180,12 +180,7 @@ final class CrmIntegrationSpec extends CatsEffectSuite:
           )
         )
       )
-      _ <- IO {
-        println(
-          s"CRM-DEBUG create=${created._1} body=${created._2.noSpaces.take(300)}"
-        );
-        assertEquals(created._1, Status.Created); ()
-      }
+      _ <- IO { assertEquals(created._1, Status.Created); () }
       // duplicate open deal for same enrollment -> conflict
       dup <- request(
         Method.POST,
@@ -269,7 +264,6 @@ final class CrmIntegrationSpec extends CatsEffectSuite:
         s"/api/v1/workspaces/$ws/crm/deals/$dealId/status",
         Some(Json.obj("status" -> Json.fromString("won")))
       )
-      _ <- IO(println("WON-DEBUG " + won._1 + " " + won._2.noSpaces.take(200)))
       _ <- IO {
         assertEquals(
           won._2.hcursor.get[String]("status").toOption.getOrElse(""),
@@ -284,5 +278,173 @@ final class CrmIntegrationSpec extends CatsEffectSuite:
         .unique
         .transact(xa)
       _ <- IO { assert(events >= 0); () }
+    yield ()
+  }
+
+  test(
+    "cross-tenant: foreign deal/stage/contact/enrollment ids never leak foreign data"
+  ) {
+    val wsB = UUID.randomUUID()
+    val orgB = UUID.randomUUID()
+    val userB = UUID.randomUUID()
+    val foreignEmail = s"crmb-$wsB@t.test"
+    for
+      _ <-
+        (sql"insert into public.organization (id, name) values ($orgB, ${"CRMB Org " + wsB.toString.take(8)})".update.run *>
+          sql"insert into public.workspace (id, organization_id, name, slug) values ($wsB, $orgB, ${"CRMB WS " + wsB.toString.take(8)}, ${"crmb-" + wsB.toString.take(12)})".update.run *>
+          sql"""
+            insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
+            values ('00000000-0000-0000-0000-000000000000', $userB, 'authenticated', 'authenticated', $foreignEmail, '', now(), now(), now())
+          """.update.run *>
+          sql"insert into public.profile (id, display_name) values ($userB, 'crmb') on conflict (id) do nothing".update.run *>
+          sql"insert into public.workspace_member (workspace_id, user_id, role) values ($wsB, $userB, 'owner')".update.run).void
+          .transact(xa)
+      contactB <-
+        sql"insert into public.contact (workspace_id, email, state) values ($wsB, $foreignEmail, 'active') returning id"
+          .query[UUID]
+          .unique
+          .transact(xa)
+      campB <-
+        sql"""insert into public.campaign (id, workspace_id, created_by, name, status)
+              values (gen_random_uuid(), $wsB, null, 'CRMB campaign', 'active') returning id"""
+          .query[UUID]
+          .unique
+          .transact(xa)
+      enrB <-
+        sql"""insert into public.campaign_enrollment (workspace_id, campaign_id, contact_id, status, next_action_at)
+              values ($wsB, $campB, $contactB, 'replied', now()) returning id"""
+          .query[UUID]
+          .unique
+          .transact(xa)
+      pipeB <-
+        sql"insert into public.pipeline (workspace_id, name) values ($wsB, 'CRMB Pipe') returning id"
+          .query[UUID]
+          .unique
+          .transact(xa)
+      stageB <-
+        sql"insert into public.pipeline_stage (pipeline_id, name, position) values ($pipeB, 'New', 1) returning id"
+          .query[UUID]
+          .unique
+          .transact(xa)
+      dealB <-
+        sql"""insert into public.deal (workspace_id, pipeline_id, stage_id, title, value_cents, currency, owner_id, source)
+              values ($wsB, $pipeB, $stageB, 'Foreign deal', 100, 'USD', $userB, 'manual') returning id"""
+          .query[UUID]
+          .unique
+          .transact(xa)
+
+      localStage <-
+        sql"""select s.id from public.pipeline_stage s join public.pipeline p on p.id = s.pipeline_id
+              where p.workspace_id = $ws order by s.position limit 1"""
+          .query[UUID]
+          .unique
+          .transact(xa)
+      wonDeal <-
+        sql"select id from public.deal where workspace_id = $ws and status = 'won' limit 1"
+          .query[UUID]
+          .unique
+          .transact(xa)
+
+      // Foreign deal + local stage: the stage-validity check is now
+      // workspace-scoped -> 422, and the foreign deal keeps its own stage.
+      moveForeign <- request(
+        Method.POST,
+        s"/api/v1/workspaces/$ws/crm/deals/$dealB/move",
+        Some(Json.obj("stageId" -> Json.fromString(localStage.toString)))
+      )
+      _ <- IO { assertEquals(moveForeign._1, Status.UnprocessableEntity); () }
+      foreignStage <-
+        sql"select stage_id from public.deal where id = $dealB"
+          .query[UUID]
+          .unique
+          .transact(xa)
+      _ <- IO { assertEquals(foreignStage, stageB); () }
+
+      // A closed (won) local deal can no longer be "moved" with a phantom 200:
+      // 0-row update -> 404.
+      moveClosed <- request(
+        Method.POST,
+        s"/api/v1/workspaces/$ws/crm/deals/$wonDeal/move",
+        Some(Json.obj("stageId" -> Json.fromString(localStage.toString)))
+      )
+      _ <- IO { assertEquals(moveClosed._1, Status.NotFound); () }
+
+      // Foreign deal + status change -> 404, status unchanged.
+      statusForeign <- request(
+        Method.POST,
+        s"/api/v1/workspaces/$ws/crm/deals/$dealB/status",
+        Some(Json.obj("status" -> Json.fromString("won")))
+      )
+      _ <- IO { assertEquals(statusForeign._1, Status.NotFound); () }
+      foreignStatus <-
+        sql"select status::text from public.deal where id = $dealB"
+          .query[String]
+          .unique
+          .transact(xa)
+      _ <- IO { assertEquals(foreignStatus, "open"); () }
+
+      // Foreign enrollment id through from-reply -> 404; the foreign contact
+      // email must not appear anywhere in the response.
+      fr <- request(
+        Method.POST,
+        s"/api/v1/workspaces/$ws/crm/deals/from-reply/$enrB"
+      )
+      _ <- IO {
+        assertEquals(fr._1, Status.NotFound)
+        assert(!fr._2.noSpaces.contains(foreignEmail)); ()
+      }
+
+      // Deal create with a foreign pipeline/stage -> validation failure.
+      cdForeignStage <- request(
+        Method.POST,
+        s"/api/v1/workspaces/$ws/crm/deals",
+        Some(
+          Json.obj(
+            "pipelineId" -> Json.fromString(pipeB.toString),
+            "stageId" -> Json.fromString(stageB.toString),
+            "title" -> Json.fromString("cross"),
+            "valueCents" -> Json.fromLong(0),
+            "currency" -> Json.fromString("USD")
+          )
+        )
+      )
+      _ <- IO {
+        assertEquals(cdForeignStage._1, Status.UnprocessableEntity); ()
+      }
+
+      // Deal create referencing a foreign contact -> validation failure.
+      localPipe <-
+        sql"select id from public.pipeline where workspace_id = $ws order by created_at limit 1"
+          .query[UUID]
+          .unique
+          .transact(xa)
+      localStage2 <-
+        sql"select id from public.pipeline_stage where pipeline_id = $localPipe order by position limit 1"
+          .query[UUID]
+          .unique
+          .transact(xa)
+      cdForeignContact <- request(
+        Method.POST,
+        s"/api/v1/workspaces/$ws/crm/deals",
+        Some(
+          Json.obj(
+            "pipelineId" -> Json.fromString(localPipe.toString),
+            "stageId" -> Json.fromString(localStage2.toString),
+            "title" -> Json.fromString("cross"),
+            "valueCents" -> Json.fromLong(0),
+            "currency" -> Json.fromString("USD"),
+            "contactId" -> Json.fromString(contactB.toString)
+          )
+        )
+      )
+      _ <- IO {
+        assertEquals(cdForeignContact._1, Status.UnprocessableEntity)
+        assert(
+          cdForeignContact._2.noSpaces.contains(
+            "Contact is not in this workspace"
+          )
+        );
+        ()
+      }
     yield ()
   }

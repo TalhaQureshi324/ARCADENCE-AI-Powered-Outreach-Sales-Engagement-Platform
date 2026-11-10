@@ -245,12 +245,17 @@ final class WorkspaceRepos(transactor: Transactor[IO]):
   /** Accepts an open, unexpired invitation and creates the membership in one
     * transaction; joining twice refreshes the role instead of failing.
     */
-  def acceptInvitation(token: UUID, userId: UUID): IO[Option[Membership]] =
+  def acceptInvitation(
+      token: UUID,
+      userId: UUID,
+      email: String
+  ): IO[Option[Membership]] =
     val queries = for
       invitation <- sql"""
         update public.invitation
         set accepted_at = now()
         where token = $token and accepted_at is null and expires_at > now()
+          and lower(email) = lower($email)
         returning workspace_id, role
       """.query[(UUID, String)].option
       membership <- invitation match

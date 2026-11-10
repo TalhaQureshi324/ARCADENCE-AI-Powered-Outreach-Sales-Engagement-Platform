@@ -4,7 +4,7 @@
 
 | Environment | Frontend | API + Worker | Database |
 | --- | --- | --- | --- |
-| Development | localhost:3000 | localhost:8080 + worker | local Supabase (port 54322) |
+| Development | localhost:3000 | localhost:8080 + worker | local Supabase (port 5433) |
 | Staging | Vercel preview | VPS container (Docker) | Supabase staging project |
 | Production | Vercel | VPS container (Docker Compose) | Supabase production project |
 

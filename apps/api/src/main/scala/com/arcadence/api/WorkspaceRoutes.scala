@@ -611,7 +611,7 @@ final class WorkspaceRoutes(
       case Left(envelope) => IO.pure(Left(envelope))
       case Right(user)    =>
         (for
-          membership <- repos.acceptInvitation(token, user.id)
+          membership <- repos.acceptInvitation(token, user.id, user.email)
           dto <- membership match
             case Some(m) =>
               repos.findById(m.workspaceId).map(_.map(w => toDto(w, m.role)))

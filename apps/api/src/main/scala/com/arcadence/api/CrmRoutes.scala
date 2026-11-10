@@ -296,7 +296,9 @@ final class CrmRoutes(
   ): IO[Either[Envelope, CrmDtos.DealDto]] =
     (for
       valid <-
-        sql"select count(*) > 0 from public.pipeline_stage where id = ${req.stageId} and pipeline_id = ${req.pipelineId}"
+        sql"""select count(*) > 0 from public.pipeline_stage s
+              join public.pipeline p on p.id = s.pipeline_id
+              where s.id = ${req.stageId} and s.pipeline_id = ${req.pipelineId} and p.workspace_id = $ws"""
           .query[Boolean]
           .unique
       _ <-
@@ -308,7 +310,7 @@ final class CrmRoutes(
       dedupeOk <- req.sourceEnrollmentId match
         case Some(enr) =>
           sql"""select count(*) = 0 from public.deal
-                where source_enrollment_id = $enr and status = 'open'"""
+                where source_enrollment_id = $enr and workspace_id = $ws and status = 'open'"""
             .query[Boolean]
             .unique
         case None => FC.pure(true)
@@ -322,10 +324,19 @@ final class CrmRoutes(
           returning id, pipeline_id, stage_id
         """.query[(UUID, UUID, UUID)].unique
       _ <- req.contactId.traverse(cid =>
-        sql"insert into public.deal_contact (deal_id, contact_id) values (${d._1}, $cid) on conflict do nothing".update.run.void
+        sql"select count(*) > 0 from public.contact where id = $cid and workspace_id = $ws"
+          .query[Boolean]
+          .unique
+          .flatMap(ok =>
+            if ok then FC.unit
+            else
+              FC.raiseError(
+                new InvalidSignal("Contact is not in this workspace.")
+              )
+          )
       )
       _ <- audit(ws, d._1, actor, "status_change", "deal created")
-      full <- (dealSelect ++ fr"where d.id = ${d._1}")
+      full <- (dealSelect ++ fr"where d.id = ${d._1} and d.workspace_id = $ws")
         .query[CrmDtos.DealDto](using dealRead)
         .unique
     yield Right(full): Either[Envelope, CrmDtos.DealDto])
@@ -338,13 +349,8 @@ final class CrmRoutes(
               "An open deal already exists for this enrollment."
             )
           )
-        case _: InvalidSignal =>
-          Left(
-            Envelope(
-              "validation_failed",
-              "Stage does not belong to the pipeline."
-            )
-          )
+        case e: InvalidSignal =>
+          Left(Envelope("validation_failed", e.getMessage))
         case other => throw other
       }
 
@@ -358,7 +364,7 @@ final class CrmRoutes(
       ok <-
         sql"""select count(*) > 0 from public.pipeline_stage s
               join public.deal d on d.pipeline_id = s.pipeline_id
-              where s.id = ${req.stageId} and d.id = $dealId"""
+              where s.id = ${req.stageId} and d.id = $dealId and d.workspace_id = $ws"""
           .query[Boolean]
           .unique
       _ <-
@@ -367,9 +373,14 @@ final class CrmRoutes(
             new InvalidSignal("Target stage is in a different pipeline.")
           )
         else FC.unit
-      _ <-
+      moved <-
         sql"""update public.deal set stage_id = ${req.stageId}
               where workspace_id = $ws and id = $dealId and status = 'open'""".update.run
+      _ <-
+        // 0 rows = deal missing or foreign to this workspace — never fall
+        // through to an unscoped select that would leak another tenant's deal.
+        if moved == 0 then FC.raiseError(new NotFoundSignal("Deal not found."))
+        else FC.unit
       _ <- audit(
         ws,
         dealId,
@@ -377,12 +388,14 @@ final class CrmRoutes(
         "stage_change",
         s"moved to stage ${req.stageId}"
       )
-      full <- (dealSelect ++ fr"where d.id = $dealId")
+      full <- (dealSelect ++ fr"where d.id = $dealId and d.workspace_id = $ws")
         .query[CrmDtos.DealDto](using dealRead)
         .unique
     yield Right(full): Either[Envelope, CrmDtos.DealDto])
       .transact(xa)
       .handleError {
+        case _: NotFoundSignal =>
+          Left(Envelope("not_found", "Deal not found."))
         case _: InvalidSignal =>
           Left(
             Envelope(
@@ -406,15 +419,27 @@ final class CrmRoutes(
       )
     else
       (for
-        _ <-
+        updated <-
           sql"""update public.deal set status = ${status}::deal_status,
                   finished_at = (case when ${status}::deal_status in ('won','lost') then now() else finished_at end)
                 where workspace_id = $ws and id = $dealId""".update.run
+        _ <-
+          // Foreign/missing deal must 404, not return another tenant's deal.
+          if updated == 0 then
+            FC.raiseError(new NotFoundSignal("Deal not found."))
+          else FC.unit
         _ <- audit(ws, dealId, actor, "status_change", s"status set to $status")
-        full <- (dealSelect ++ fr"where d.id = $dealId")
-          .query[CrmDtos.DealDto](using dealRead)
-          .unique
-      yield Right(full): Either[Envelope, CrmDtos.DealDto]).transact(xa)
+        full <-
+          (dealSelect ++ fr"where d.id = $dealId and d.workspace_id = $ws")
+            .query[CrmDtos.DealDto](using dealRead)
+            .unique
+      yield Right(full): Either[Envelope, CrmDtos.DealDto])
+        .transact(xa)
+        .handleError {
+          case _: NotFoundSignal =>
+            Left(Envelope("not_found", "Deal not found."))
+          case other => throw other
+        }
 
   private def timelineLogic(
       ws: UUID,
@@ -439,7 +464,7 @@ final class CrmRoutes(
       row <-
         sql"""select e.campaign_id, e.contact_id, c.email from public.campaign_enrollment e
               join public.contact c on c.id = e.contact_id
-              where e.id = $enrollmentId"""
+              where e.id = $enrollmentId and e.workspace_id = $ws"""
           .query[(UUID, Option[UUID], String)]
           .option
       _ <- if row.isEmpty then FC.raiseError(new NotFoundSignal) else FC.unit

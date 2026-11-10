@@ -27,7 +27,7 @@ Copy each app's `.env.example` to `.env.local` in the same directory — dev scr
 | Variable | Scope | Secret? | Notes |
 | --- | --- | --- | --- |
 | `API_PORT`, `LOG_LEVEL`, `WORKER_TICK_INTERVAL_MS` | backend | no | Live today |
-| `DATABASE_URL` | backend | **yes** | Postgres for Doobie. Local stack default: `postgresql://postgres:postgres@127.0.0.1:54322/postgres` |
+| `DATABASE_URL` | backend | **yes** | Postgres for Doobie. Local stack default: `postgresql://postgres:postgres@127.0.0.1:5433/postgres` |
 | `TEST_DATABASE_URL` | backend tests | **yes** | Activates `DbConnectivitySpec` (skipped when unset) |
 | `TEST_DB_EXPECT_SCHEMA=false` | backend tests | no | Connectivity-only runs against a DB without migrations yet |
 | `NEXT_PUBLIC_API_URL` | frontend | no | Scala API base URL |
@@ -41,7 +41,7 @@ scripts/check-toolchain.sh     # everything present? docker engine running?
 
 supabase start                 # local Supabase stack (first run pulls ~10 images)
 scripts/db-reset.sh            # drop + recreate local DB, apply all migrations
-supabase status                # local URLs & keys (db on :54322, api :54321, studio :54323)
+supabase status                # local URLs & keys (db on :5433, api :44321, studio :44323)
 
 scripts/dev-api.sh             # API on :8080 (env from apps/api/.env.local)
 scripts/dev-worker.sh          # worker heartbeat loop
@@ -49,11 +49,11 @@ scripts/dev-web.sh             # web on :3000
 
 # Tests
 scripts/test-all.sh            # sbt test + npm test
-TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres sbt core/test
+TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5433/postgres sbt core/test
                                # DB connectivity + RLS verification (needs local stack)
 cd apps/web && npm run test:e2e
                                # Playwright auth lifecycle (needs local stack; starts the dev
-                               # server itself; confirmation emails are read via Mailpit :54324)
+                               # server itself; confirmation emails are read via Mailpit :44324)
 
 # Formatting
 scripts/fmt-all.sh             # scalafmtAll + prettier
@@ -82,10 +82,10 @@ No repository secrets are required yet. When CI later pushes migrations to stagi
 2. `cd apps/web && npm install` (once) — then back to root.
 3. `supabase start` → wait for "Started supabase local development setup."
 4. `scripts/db-reset.sh` — expect migration file names to print, ending "Local database reset complete."
-5. `TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres sbt core/test` — all green including RLS checks.
+5. `TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5433/postgres sbt core/test` — all green including RLS checks.
 6. `scripts/dev-api.sh` → `curl localhost:8080/health` → `{"service":"arcadence-api",...,"status":"up"}`.
 7. `scripts/dev-web.sh` → http://localhost:3000 shows "API unreachable" state until step 6, then the health page goes green.
-8. **Auth lifecycle:** http://localhost:3000/signup → register → open **Mailpit** (http://localhost:54324, the local mail catcher — Supabase replaced Inbucket with Mailpit) → click the confirmation link → onboarding → dashboard. Or run `cd apps/web && npm run test:e2e` for the automated suite.
+8. **Auth lifecycle:** http://localhost:3000/signup → register → open **Mailpit** (http://localhost:44324, the local mail catcher — Supabase replaced Inbucket with Mailpit) → click the confirmation link → onboarding → dashboard. Or run `cd apps/web && npm run test:e2e` for the automated suite.
 9. Optional: `docker compose -f infrastructure/docker-compose.yml up -d` after building images; repeat step 6 on port **18080** (compose mapping; 8080 is taken by a Windows service on some machines).
 
 ## 6. Troubleshooting
@@ -101,7 +101,9 @@ No repository secrets are required yet. When CI later pushes migrations to stagi
 | `Cannot use automatic login flow inside non-TTY environments` | `supabase login` needs an interactive shell — run it in your own terminal once; the token is stored locally. |
 | Auth e2e tests fail: "No email addressed to … arrived in Mailpit" | The local stack is running with stale auth config — run `supabase stop && supabase start` so GoTrue recreates with `enable_confirmations` from `config.toml` (Docker Desktop restarts can silently revive old containers). |
 | RLS policies match zero rows despite correct data | PostgREST 13 removed `request.jwt.claim.*` GUCs; the helpers coalesce the new sources (migration `20261012090000`). Ensure it is applied. |
-| Port 8080/3000/54322 already in use | Another process (often a previous sbt run, or `AgentService` on 8080) holds it — stop it or change `API_PORT`/dev port. Compose maps the API to 18080 for this reason. |
+| Port 8080/3000/5433 already in use | Another process (often a previous sbt run, or `AgentService` on 8080) holds it — stop it or change `API_PORT`/dev port. Compose maps the API to 18080 for this reason. |
+
+> **Windows note (Phase 15.1):** the local DB port moved from 54322 to **5433**. Windows' winnat dynamic port exclusions (Hyper-V/WSL ranges, e.g. 54229-54328) shifted after a Docker Desktop restart and made 54322 unbindable (`ports are not available`). Ports below 49152 are never dynamically excluded, so 5433 is stable. If you must return to 54322, run `net stop winnat && net start winnat` from an elevated shell to re-roll the exclusions.
 | Git warns "LF will be replaced by CRLF" | Normal on Windows (`core.autocrlf`); files are stored with LF in the repository. |
 
 ## 7. Version-control rules (from `AGENTS.md` §4 — short form)
