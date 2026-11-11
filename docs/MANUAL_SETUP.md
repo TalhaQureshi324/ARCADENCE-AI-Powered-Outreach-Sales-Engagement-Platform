@@ -2,7 +2,7 @@
 
 > Tasks that require **your** external accounts, approvals, or clicks — things agents cannot do for you. Each item names the phase that needs it so you can prioritize. Agents never ask for credentials in chat or commit them anywhere.
 
-**Last updated:** 2026-11-10 (15.3 — staging migrations closed, safety switches shipped)
+**Last updated:** 2026-11-11 (15.6 — Hostinger migration bundle + plan ready)
 
 ---
 
@@ -27,7 +27,7 @@
 | 8 | Sending domain(s) with SPF/DKIM/DMARC DNS access | Phase 2/5 | later | Deliverability baseline per current bulk-sender requirements |
 | 8a | SMTP/IMAP per-provider account guidance (no console work by the agent) | Phase 2.4 | **informational** | Gmail: enable 2FA + create an **App Password** (myaccount.google.com → Security) and use `smtp.gmail.com:465 (ssl)` / `imap.gmail.com:993 (ssl)`. Microsoft 365: mailbox must permit SMTP/IMAP (tenant setting; use an app password when basic auth is enabled for the mailbox). Self-hosted/own-domain servers: use a valid TLS certificate or pin a trust anchor via the standard `mail.*` JVM properties — plaintext is never accepted (ADR-0023). NEVER disable two-factor protection on the mailbox to make a connection work |
 | 9 | Vercel project for `apps/web`: import the repo, set **Root Directory = `apps/web`**, add the 4 `NEXT_PUBLIC_*` vars, enable Vercel Authentication, then wire Supabase Auth URLs to the Vercel origin. Full click-by-click runbook: **`docs/VERCEL_DEPLOYMENT.md` §2** | Phase 15.4 | **action needed** — config prepared + locally verified on the production build; only your Vercel account is missing | Free Hobby plan sufficient. All 4 vars are PUBLIC-classified; never add a service-role key |
-| 10 | Docker-capable VPS for the Scala API + worker (recommended: the planned Hostinger VPS, 1–2 vCPU / 4–8 GiB — staging then IS the future production topology). Owner creates the host, provides access per the working agreement (never in chat), and points a DNS record (e.g. `api.<domain>`) at it. TLS is handled by Caddy in the compose stack | Phase 15.3 | **action needed before 15.3 deployment** | No credentials to the agent until you explicitly authorize deployment; smoke tests can be prepared first |
+| 10 | Hostinger VPS (≥2 vCPU / 8 GB, Ubuntu 24.04 + Docker): the full production bundle is ready — `docs/HOSTINGER_MIGRATION.md` is the step-by-step plan (preconditions §1, DNS §2, go-live checklist §12). Owner provisions the host + DNS and authorizes deployment; agent prepares everything else | Phase 15.6 | **ready — awaiting owner provisioning + authorization** | Production secrets are NEW values (never copied from staging); worker ships with sending paused |
 | 11 | Stripe account (test mode first) | Billing phase | later | |
 | 12 | AI provider account + API key policy | AI phase | **decided (local)** | Provider: Zhipu GLM (open.bigmodel.cn), OpenAI-compatible. Key lives in git-ignored apps/api/.env.local; template in apps/api/.env.example. Active model glm-4.5-flash (thinking disabled for structured outputs); glm-5.3-flash is configured-ready but needs account balance/resource pack top-up (API returns error 1113 until funded) |
 | 13 | Signed data-provider agreements (e.g. Apollo, ZoomInfo, Snov) with per-seat/API terms | Lead Finder live providers | later | Until signed, only the labeled sandbox provider is wired — the product never fabricates live leads. API keys go to server-side env config per provider adapter |

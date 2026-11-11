@@ -10,6 +10,11 @@ Deployment and operations artifacts: Docker images, Compose files, TLS proxy, st
 | `docker-compose.staging.yml` | **Staging topology (Phase 15.3)**: Caddy TLS proxy + api + worker; healthchecks, memory limits, log rotation, graceful-stop periods; worker sending-safety defaults (`SENDING_ENABLED=false`) |
 | `Caddyfile` | TLS termination + HSTS for the public API hostname |
 | `staging.env.example` | Staging environment template — copy to `.env`, fill in, never commit |
+| `docker-compose.hostinger.yml` | **Production topology (Phase 15.6)**: Caddy (app + api hosts) + web + api + worker; sending paused by default |
+| `Caddyfile.hostinger` | TLS for the two production origins |
+| `hostinger.env.example` | Production env template — fresh secrets, never copied from staging |
+| `apps/web/Dockerfile` | Self-host Next.js container (built + smoke-tested 15.6; used when the frontend migrates off Vercel) |
+| `docs/HOSTINGER_MIGRATION.md` | **The migration plan** — DNS/TLS/OAuth/redirects/secrets/worker-handoff/rollback/downtime + backup/restore |
 
 ## Building the images
 
