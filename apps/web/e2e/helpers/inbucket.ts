@@ -62,3 +62,31 @@ export const STRONG_PASSWORD = "Passw0rd-e2e";
 export async function expectVisibleText(page: import("@playwright/test").Page, text: string) {
   await expect(page.getByText(text)).toBeVisible();
 }
+
+/** The Founding 10,000 offer modal (Phase 14.2B) appears for fresh unclaimed
+ * users ~1.2s after a workspace exists and blocks clicks behind its overlay.
+ * Deterministic handling: write the 7-day snooze immediately (stops any
+ * mounted modal's next check), persist it for future navigations, then
+ * dismiss a modal that is already on screen (retried — it mounts late under
+ * API latency).
+ */
+export async function dismissFoundingOffer(page: import("@playwright/test").Page) {
+  const snooze = () =>
+    window.localStorage.setItem(
+      "arc-founding-snoozed",
+      String(Date.now() + 7 * 24 * 3600 * 1000)
+    );
+  await page.evaluate(snooze).catch(() => {});
+  await page.addInitScript(snooze);
+  const maybeLater = page.getByRole("button", { name: "Maybe later" });
+  for (let round = 0; round < 10; round++) {
+    const visible = await maybeLater.isVisible().catch(() => false);
+    if (!visible) {
+      await page.waitForTimeout(1000);
+      continue;
+    }
+    await maybeLater.click();
+    await maybeLater.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
+    return;
+  }
+}

@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-import { STRONG_PASSWORD, latestEmailLink, testEmail } from "./helpers/inbucket";
+import {
+  STRONG_PASSWORD,
+  latestEmailLink,
+  testEmail,
+  dismissFoundingOffer,
+} from "./helpers/inbucket";
 
 const VERIFY_LINK = /https?:\/\/127\.0\.0\.1:44321\/auth\/v1\/verify\?[^\s"'<>]+/;
 
@@ -25,6 +30,7 @@ test.describe("ai studio module", () => {
     await page.getByLabel("Workspace name").fill("Studio WS");
     await page.getByRole("button", { name: "Create workspace" }).click();
     await expect(page.getByText("Studio WS").first()).toBeVisible();
+    await dismissFoundingOffer(page);
 
     await page.getByRole("link", { name: "AI Studio" }).click();
     await expect(page).toHaveURL(/\/app\/aistudio/);

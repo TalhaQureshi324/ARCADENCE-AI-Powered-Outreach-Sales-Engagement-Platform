@@ -933,3 +933,48 @@
 ### Blocked (owner)
 
 Deployment itself requires the owner's Vercel account (MANUAL_SETUP #9) — runbook ready; URL recorded in `docs/VERCEL_DEPLOYMENT.md` §6 after first deploy.
+
+
+---
+
+## Phase 15.5 — Browser-based live integration tests (2026-11-11)
+
+**Branch** feature/phase-155-browser-tests -> develop.
+
+### Environment
+
+Staging-equivalent LOCAL stack (real local Supabase + real Scala API + production frontend build via `next start`). Deployed Vercel frontend + staging VPS remain owner-gated (MANUAL_SETUP #9/#10). Dedicated @arcadence.test accounts only; no external prospect outreach occurred.
+
+### Product defect FIXED
+
+**CSV import: any unmapped column broke Start import (422).** The UI sends `""` targets for unmapped headers ("— ignore —"); `ImportService.start` validated them as unknown custom fields. Fix: blank targets dropped before validation. Regression test added; verified end-to-end in the browser.
+
+### Test-side repairs (stale/racy specs, product verified correct)
+
+- Founding-offer modal races across 6 specs → shared deterministic `dismissFoundingOffer` (immediate snooze write + addInitScript persistence + retry-click).
+- Founding claim assertion updated to the current confirmation view (membership summary + expiry).
+- Campaign status locators: Badge-span matching + deterministic detail re-open (the list page's hidden `<option>` stole the text locator).
+- 12 spec files re-pointed to the 15.3-remapped local ports.
+
+### New coverage (gap areas)
+
+`import.spec` (upload→map→start→Completed→contacts→duplicate-skip), `analytics.spec` (honest empty state then exact-number verification of seeded campaign_daily_stats), founding expiry test (≈claim+12 months, truthful past-expiry display).
+
+### Results
+
+| Suite | Result |
+| --- | --- |
+| Full Playwright suite (single final run, production build) | **23/23 PASSED** (4.4 min) |
+| ImportIntegrationSpec (+blank-target regression) | **8/8** |
+| DB failure-recovery drill | ready → not_ready(database:failed) → ready; public routes stay up; no API restart needed |
+| Mobile 390×844 + keyboard nav + focus styles | PASS (15.4 checks re-confirmed) |
+
+### 26-area matrix
+
+Full PASS/FAIL/BLOCKED matrix with per-area evidence: `docs/audit/15.5-browser-live-tests.md` — 17 PASS, 8 BLOCKED (OAuth verification, inert production send pipeline [audit C1/C3], no CRM/workflow UI pages), 0 FAIL.
+
+### Known observations (tracked, not fixed here)
+
+- Founding offer modal a11y (no focus trap) + localStorage-only dismissal — from 15.1.
+- Campaigns SPA occasionally settles on the list after in-page actions (cosmetic).
+- Send-pipeline wiring remediation (audit wave 1) still pending owner go-ahead — areas 13/14 stay BLOCKED until it lands.
