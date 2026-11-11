@@ -72,10 +72,7 @@ export async function expectVisibleText(page: import("@playwright/test").Page, t
  */
 export async function dismissFoundingOffer(page: import("@playwright/test").Page) {
   const snooze = () =>
-    window.localStorage.setItem(
-      "arc-founding-snoozed",
-      String(Date.now() + 7 * 24 * 3600 * 1000)
-    );
+    window.localStorage.setItem("arc-founding-snoozed", String(Date.now() + 7 * 24 * 3600 * 1000));
   await page.evaluate(snooze).catch(() => {});
   await page.addInitScript(snooze);
   const maybeLater = page.getByRole("button", { name: "Maybe later" });
