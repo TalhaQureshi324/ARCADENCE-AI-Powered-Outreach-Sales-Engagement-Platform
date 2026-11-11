@@ -36,7 +36,10 @@ final class SendHandler(
     registry: Option[ProviderRegistry],
     emailAccounts: EmailAccountRepos,
     guard: AccountGuard,
-    events: Events
+    events: Events,
+    // Staging safety (15.3): when defined, only these recipients may be
+    // emailed. Unset everywhere except explicitly configured environments.
+    recipientAllowlist: Option[Set[String]] = None
 ) extends com.arcadence.core.jobs.JobQueue.Handler:
 
   def handles(actionType: String): Boolean = actionType == "send_email"
@@ -234,6 +237,18 @@ final class SendHandler(
   // -- guards -------------------------------------------------------------------
 
   private def preSendGuards(ctx: Ctx): IO[Either[(String, String), Unit]] =
+    recipientAllowlist match
+      case Some(allowed) if !allowed.contains(ctx.contactEmail.toLowerCase) =>
+        // Hard gate before any provider contact: reject without retry.
+        IO.pure(
+          Left(
+            "rejected" -> "staging safety: recipient not in TEST_RECIPIENT_ALLOWLIST"
+          )
+        )
+      case _ =>
+        stateGuards(ctx)
+
+  private def stateGuards(ctx: Ctx): IO[Either[(String, String), Unit]] =
     if ctx.campaignStatus != "active" then
       IO.pure(Left("skipped" -> s"campaign is ${ctx.campaignStatus}"))
     else if ctx.enrollmentStatus != "active" then

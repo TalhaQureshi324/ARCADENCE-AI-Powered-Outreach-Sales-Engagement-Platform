@@ -1,0 +1,109 @@
+# Arcadence — STAGING deployment compose (Phase 15.3)
+#
+# Topology per docs/STAGING_DEPLOYMENT.md: Caddy TLS proxy + Scala API + Scala
+# worker on a single Docker host, database = Supabase staging project (managed).
+#
+# Usage (owner, on the VPS):
+#   1. cp staging.env.example .env   # fill in real values; NEVER commit .env
+#   2. Obtain images: docker pull from your registry, or
+#      `docker save arcadence/arcadence-api:<tag> | ssh host 'docker load'`
+#   3. docker compose -f docker-compose.staging.yml up -d
+#   4. Smoke: `curl https://$API_HOST/ready` must return 200; worker logs must
+#      show the heartbeat line every WORKER_TICK_INTERVAL_MS.
+#
+# Deploy only with the product owner's explicit authorization (AGENTS.md).
+
+name: arcadence-staging
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: arcadence-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      # Public API hostname, e.g. api.staging.example.com (no scheme)
+      API_HOST: ${API_HOST:?set API_HOST in .env}
+    mem_limit: 256m
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  api:
+    image: ${API_IMAGE:-arcadence/arcadence-api}:${API_IMAGE_TAG:?set API_IMAGE_TAG in .env}
+    container_name: arcadence-api
+    restart: unless-stopped
+    depends_on:
+      - caddy
+    # TLS terminates on Caddy; the API listens internally only.
+    expose:
+      - "8080"
+    env_file:
+      - .env
+    environment:
+      # JVM sizing inside the container memory limit (below).
+      JAVA_OPTS: -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC
+      # APP_ORIGIN must be the browser-facing Vercel origin (see docs/ENVIRONMENT.md).
+      APP_ORIGIN: ${APP_ORIGIN:?set APP_ORIGIN in .env}
+    mem_limit: 1g
+    stop_grace_period: 30s
+    healthcheck:
+      # JRE image ships bash but not curl — TCP probe of /health via bash.
+      test:
+        [
+          "CMD-SHELL",
+          "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q ' 200 ' <&3"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging: *logging
+
+  worker:
+    image: ${WORKER_IMAGE:-arcadence/arcadence-worker}:${API_IMAGE_TAG:?set API_IMAGE_TAG in .env}
+    container_name: arcadence-worker
+    restart: unless-stopped
+    depends_on:
+      - api
+    env_file:
+      - .env
+    environment:
+      JAVA_OPTS: -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC
+      # --- 15.3 staging sending safety -------------------------------------
+      # Queue PAUSED by default on staging: pending jobs stay queued (not
+      # failed). Flip to "true" only with the owner's explicit go-ahead.
+      SENDING_ENABLED: ${SENDING_ENABLED:-false}
+      # When set, only these recipients may be emailed (comma-separated).
+      TEST_RECIPIENT_ALLOWLIST: ${TEST_RECIPIENT_ALLOWLIST:-}
+      # Controlled concurrency for one small instance:
+      WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-10}
+      WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-2}
+      WORKER_LEASE_SECONDS: ${WORKER_LEASE_SECONDS:-300}
+    mem_limit: 768m
+    # Lease recovery requeues interrupted claims; keep grace above one poll.
+    stop_grace_period: 45s
+    healthcheck:
+      # PID 1 is the worker JVM — alive if its cmdline mentions the worker.
+      test:
+        [
+          "CMD-SHELL",
+          "grep -aq arcadence-worker /proc/1/cmdline"
+        ]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:

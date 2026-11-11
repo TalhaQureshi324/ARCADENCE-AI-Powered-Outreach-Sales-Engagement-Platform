@@ -19,8 +19,8 @@ import sttp.tapir.server.http4s.Http4sServerInterpreter
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.UUID
-import scala.util.Random
 
 object ApiKeysDtos:
   import io.circe.{Decoder, Encoder}
@@ -139,11 +139,17 @@ final class ApiKeysRoutes(
       .map("%02x".format(_))
       .mkString
 
+  // Cryptographically strong generator: API keys and webhook signing secrets
+  // are bearer credentials — scala.util.Random (48-bit LCG) is predictable.
+  private val secureRandom = new SecureRandom()
+
   private def newSecret: (String, String, String) =
     val alphabet =
       "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     val body =
-      (1 to 40).map(i => alphabet(Random.nextInt(alphabet.length))).mkString
+      (1 to 40)
+        .map(_ => alphabet(secureRandom.nextInt(alphabet.length)))
+        .mkString
     val prefix = "ak_" + body.take(8)
     val secret = s"$prefix.$body"
     (prefix, secret, sha256(secret))
@@ -371,7 +377,7 @@ final class ApiKeysRoutes(
       )
     else
       val secret = "whsec_" + (1 to 40)
-        .map(_ => "abcdef0123456789" (Random.nextInt(16)))
+        .map(_ => "abcdef0123456789" (secureRandom.nextInt(16)))
         .mkString
       sql"""insert into public.webhook_subscriptions (workspace_id, url, events, secret, created_by)
             values ($ws, ${req.url.trim}, string_to_array(${req.events.distinct

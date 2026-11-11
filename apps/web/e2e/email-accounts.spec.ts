@@ -1,8 +1,13 @@
 import { expect, test } from "@playwright/test";
 
-import { STRONG_PASSWORD, latestEmailLink, testEmail } from "./helpers/inbucket";
+import {
+  STRONG_PASSWORD,
+  latestEmailLink,
+  testEmail,
+  dismissFoundingOffer,
+} from "./helpers/inbucket";
 
-const VERIFY_LINK = /https?:\/\/127\.0\.0\.1:54321\/auth\/v1\/verify\?[^\s"'<>]+/;
+const VERIFY_LINK = /https?:\/\/127\.0\.0\.1:44321\/auth\/v1\/verify\?[^\s"'<>]+/;
 
 /** Requires the Scala API to be running locally (port 8080) WITHOUT Google
  * OAuth credentials (the not-configured path is the honest local default).
@@ -31,6 +36,7 @@ test.describe("email accounts page", () => {
     await page.getByLabel("Workspace name").fill("Accounts WS");
     await page.getByRole("button", { name: "Create workspace" }).click();
     await expect(page.getByText("Accounts WS").first()).toBeVisible();
+    await dismissFoundingOffer(page);
 
     // Navigate via the sidebar entry.
     await page.getByRole("link", { name: "Email Accounts" }).click();

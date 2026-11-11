@@ -85,9 +85,9 @@ final class SupabaseJwtAuthenticator(
     }.attempt
       .map { outcome =>
         outcome.left.foreach { e =>
-          System.err.println(
-            s"jwt verify failed: ${e.getClass.getName}: ${e.getMessage}"
-          )
+          // Class name only: JWTDecodeException messages embed fragments of
+          // the (attacker-supplied) token — never echo them to logs.
+          System.err.println(s"jwt verify failed: ${e.getClass.getName}")
         }
         outcome match {
           case Right(result)                                           => result

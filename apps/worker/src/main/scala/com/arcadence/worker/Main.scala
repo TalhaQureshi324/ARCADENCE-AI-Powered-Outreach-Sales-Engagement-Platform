@@ -49,13 +49,16 @@ object Main extends IOApp:
               val cfg = SendWorker.Config.fromEnv(sys.env)
               given org.typelevel.log4cats.Logger[IO] = logger
               val xa = summon[doobie.Transactor[IO]]
+              // Staging safety: when TEST_RECIPIENT_ALLOWLIST is set, only
+              // those recipients may be emailed (15.3). Unset = unrestricted.
               val handlers: List[SendWorker.Handler] = List(
                 new com.arcadence.api.SendHandler(
                   xa = xa,
                   registry = workerRegistry,
                   emailAccounts = new com.arcadence.api.EmailAccountRepos(xa),
                   guard = new com.arcadence.api.AccountGuard(xa),
-                  events = new com.arcadence.api.Events(xa)
+                  events = new com.arcadence.api.Events(xa),
+                  recipientAllowlist = SendWorker.Config.parseAllowlist(sys.env)
                 )
               )
               SendWorker

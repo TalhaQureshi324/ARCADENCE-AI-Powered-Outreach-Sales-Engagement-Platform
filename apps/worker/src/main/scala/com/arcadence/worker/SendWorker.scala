@@ -32,11 +32,16 @@ object SendWorker:
       workerId: String,
       pollInterval: FiniteDuration,
       batchSize: Int,
-      leaseTimeout: FiniteDuration
+      leaseTimeout: FiniteDuration,
+      // Staging safety (15.3): false pauses claiming entirely — pending jobs
+      // stay queued (not failed) and lease recovery keeps running.
+      sendingEnabled: Boolean = true,
+      warnings: List[String] = Nil
   )
 
   object Config:
     def fromEnv(env: Map[String, String]): Config =
+      val (sendingEnabled, sendWarning) = parseSwitch(env, "SENDING_ENABLED")
       Config(
         workerId = env.getOrElse(
           "WORKER_ID",
@@ -55,8 +60,39 @@ object SendWorker:
           .get("WORKER_LEASE_SECONDS")
           .flatMap(v => scala.util.Try(v.toLong).toOption)
           .getOrElse(300L)
-          .seconds
+          .seconds,
+        sendingEnabled = sendingEnabled,
+        warnings = sendWarning.toList
       )
+
+    /** true/1/yes enable; false/0/no disable; anything else falls back to the
+      * default (enabled) with a recorded warning the worker logs at startup.
+      */
+    private def parseSwitch(
+        env: Map[String, String],
+        name: String
+    ): (Boolean, Option[String]) =
+      env.get(name).map(_.trim).filter(_.nonEmpty) match
+        case None      => (true, None)
+        case Some(raw) =>
+          raw.toLowerCase match
+            case "true" | "1" | "yes" => (true, None)
+            case "false" | "0" | "no" => (false, None)
+            case _                    =>
+              (
+                true,
+                Some(
+                  s"$name=$raw is not a valid boolean — using default (enabled)"
+                )
+              )
+
+    /** Comma-separated recipient allowlist, lowercased; None = unrestricted. */
+    def parseAllowlist(env: Map[String, String]): Option[Set[String]] =
+      env
+        .get("TEST_RECIPIENT_ALLOWLIST")
+        .map(_.split(","))
+        .map(_.map(_.trim.toLowerCase).filter(_.nonEmpty).toSet)
+        .filter(_.nonEmpty)
 
   def stream(repo: JobQueue.Repo, handlers: List[Handler], cfg: Config)(implicit
       log: Logger[IO]
@@ -122,11 +158,14 @@ object SendWorker:
               )
             )
 
-    Stream.eval(
+    val startupLog =
       log.info(
-        s"SendWorker ${cfg.workerId} starting (batch ${cfg.batchSize}, lease ${cfg.leaseTimeout})"
-      )
-    ) *>
+        s"SendWorker ${cfg.workerId} starting (batch ${cfg.batchSize}, lease ${cfg.leaseTimeout}, sending ${
+            if cfg.sendingEnabled then "ENABLED" else "DISABLED — queue paused"
+          })"
+      ) *> cfg.warnings.traverse_(w => log.warn(w))
+
+    Stream.eval(startupLog) *>
       (Stream.eval(
         repo
           .requeueExpiredLeases(cfg.leaseTimeout)
@@ -134,16 +173,18 @@ object SendWorker:
             IO.whenA(n > 0)(log.info(s"requeued $n lease-expired job(s)"))
           )
       ) ++ Stream.awakeEvery[IO](cfg.pollInterval)).evalMap { _ =>
-        repo
-          .claimBatch(cfg.workerId, cfg.batchSize)
-          .flatMap { jobs =>
-            if jobs.isEmpty then IO.unit
-            else
-              log.info(s"claimed ${jobs.size} job(s)") *> jobs.parTraverse_(
-                dispatch
-              )
-          }
-          .handleErrorWith(e =>
-            log.error(e)("tick failed — will retry next tick")
-          )
+        IO.whenA(cfg.sendingEnabled)(
+          repo
+            .claimBatch(cfg.workerId, cfg.batchSize)
+            .flatMap { jobs =>
+              if jobs.isEmpty then IO.unit
+              else
+                log.info(s"claimed ${jobs.size} job(s)") *> jobs.parTraverse_(
+                  dispatch
+                )
+            }
+            .handleErrorWith(e =>
+              log.error(e)("tick failed — will retry next tick")
+            )
+        )
       }

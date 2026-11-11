@@ -1,0 +1,31 @@
+# Arcadence production (Hostinger VPS) — TLS reverse proxy for TWO origins:
+#   {$APP_HOST} -> Next.js web container (browser-facing app)
+#   {$API_HOST} -> Scala API container
+# Both hosts come from the compose .env. Caddy obtains and renews
+# Let's Encrypt certificates automatically once DNS points at this host.
+
+{$APP_HOST} {
+	encode gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	reverse_proxy web:3000
+}
+
+{$API_HOST} {
+	encode gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+	}
+
+	reverse_proxy api:8080
+}

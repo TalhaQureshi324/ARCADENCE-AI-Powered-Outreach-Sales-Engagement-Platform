@@ -206,7 +206,7 @@ object ProviderRegistry:
     val registry = new ProviderRegistry(
       encryptor = encryptor,
       stateSigner = new OAuthStateSigner(deriveStateSecret(keyBytes)),
-      appOrigin = "http://localhost:3000",
+      appOrigin = config.appOrigin,
       redirectUri = config.googleOAuthRedirectUri.getOrElse(
         s"http://localhost:${config.port}/api/v1/email-connections/oauth/google/callback"
       )

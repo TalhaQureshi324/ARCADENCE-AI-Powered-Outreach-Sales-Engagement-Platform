@@ -478,6 +478,50 @@ final class ImportIntegrationSpec extends CatsEffectSuite:
     yield assertEquals(count, 1)
   }
 
+  test("start accepts blank mapping targets — unmapped columns are ignored") {
+    val csv =
+      s"email,first_name,notes\r\nblank-target-$runId@x.test,Ada,just notes"
+    for
+      uploaded <- request(
+        Method.POST,
+        s"/api/v1/workspaces/$wsA/imports/upload",
+        Some("token-A"),
+        raw = Some(csv.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+        query = Map("fileName" -> "blank-target.csv")
+      )
+      jobId = uploaded._2.hcursor
+        .downField("job")
+        .get[UUID]("id")
+        .toOption
+        .getOrElse(null)
+      _ <- IO(assert(jobId != null, "no job id from upload"))
+      // Regression (15.5): the UI sends "" for unmapped headers — that must
+      // mean "ignore", not "unknown custom field" (was a 422 before the fix).
+      started <- request(
+        Method.POST,
+        s"/api/v1/workspaces/$wsA/imports/$jobId/start",
+        Some("token-A"),
+        Some(
+          Json.obj(
+            "mapping" -> Json.obj(
+              "0" -> Json.fromString("email"),
+              "1" -> Json.fromString("first_name"),
+              "2" -> Json.fromString("")
+            ),
+            "duplicateStrategy" -> Json.fromString("skip")
+          )
+        )
+      )
+      _ <- IO {
+        assertEquals(
+          started._1,
+          Status.Ok,
+          s"blank-target start failed: ${started._2.noSpaces.take(200)}"
+        )
+      }
+    yield ()
+  }
+
   test("tenant isolation: outsider sees no imports of WS-A") {
     request(Method.GET, s"/api/v1/workspaces/$wsA/imports", Some("token-C"))
       .map((status, _) => assertEquals(status, Status.NotFound))

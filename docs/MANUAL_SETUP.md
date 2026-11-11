@@ -2,7 +2,7 @@
 
 > Tasks that require **your** external accounts, approvals, or clicks — things agents cannot do for you. Each item names the phase that needs it so you can prioritize. Agents never ask for credentials in chat or commit them anywhere.
 
-**Last updated:** 2026-10-09
+**Last updated:** 2026-11-11 (15.6 — Hostinger migration bundle + plan ready)
 
 ---
 
@@ -26,11 +26,15 @@
 | 7 | Microsoft Entra ID app registration (delegated Mail.Send / Mail.Read / User.Read / offline_access + openid/email) | Phase 2 | **needed for real Graph sends** | Entra → App registrations → new app; redirect URI `http://localhost:8080/api/v1/email-connections/oauth/microsoft/callback` (dev; the Scala API completes the exchange). Set `MSFT_OAUTH_CLIENT_ID`/`MSFT_OAUTH_CLIENT_SECRET` in `apps/api/.env.local`; `MSFT_OAUTH_TENANT` if scoping to one tenant (default `common`). Tenant admins may block third-party apps — consent failures surface as permission errors; record tenant restrictions at registration |
 | 8 | Sending domain(s) with SPF/DKIM/DMARC DNS access | Phase 2/5 | later | Deliverability baseline per current bulk-sender requirements |
 | 8a | SMTP/IMAP per-provider account guidance (no console work by the agent) | Phase 2.4 | **informational** | Gmail: enable 2FA + create an **App Password** (myaccount.google.com → Security) and use `smtp.gmail.com:465 (ssl)` / `imap.gmail.com:993 (ssl)`. Microsoft 365: mailbox must permit SMTP/IMAP (tenant setting; use an app password when basic auth is enabled for the mailbox). Self-hosted/own-domain servers: use a valid TLS certificate or pin a trust anchor via the standard `mail.*` JVM properties — plaintext is never accepted (ADR-0023). NEVER disable two-factor protection on the mailbox to make a connection work |
-| 9 | Vercel account (or chosen Next.js host) + project link to the repo | Deployment phase | later | |
-| 10 | VPS / container host + container registry choice | Deployment phase | later | |
+| 9 | Vercel project for `apps/web`: import the repo, set **Root Directory = `apps/web`**, add the 4 `NEXT_PUBLIC_*` vars, enable Vercel Authentication, then wire Supabase Auth URLs to the Vercel origin. Full click-by-click runbook: **`docs/VERCEL_DEPLOYMENT.md` §2** | Phase 15.4 | **action needed** — config prepared + locally verified on the production build; only your Vercel account is missing | Free Hobby plan sufficient. All 4 vars are PUBLIC-classified; never add a service-role key |
+| 10 | Hostinger VPS (≥2 vCPU / 8 GB, Ubuntu 24.04 + Docker): the full production bundle is ready — `docs/HOSTINGER_MIGRATION.md` is the step-by-step plan (preconditions §1, DNS §2, go-live checklist §12). Owner provisions the host + DNS and authorizes deployment; agent prepares everything else | Phase 15.6 | **ready — awaiting owner provisioning + authorization** | Production secrets are NEW values (never copied from staging); worker ships with sending paused |
 | 11 | Stripe account (test mode first) | Billing phase | later | |
 | 12 | AI provider account + API key policy | AI phase | **decided (local)** | Provider: Zhipu GLM (open.bigmodel.cn), OpenAI-compatible. Key lives in git-ignored apps/api/.env.local; template in apps/api/.env.example. Active model glm-4.5-flash (thinking disabled for structured outputs); glm-5.3-flash is configured-ready but needs account balance/resource pack top-up (API returns error 1113 until funded) |
 | 13 | Signed data-provider agreements (e.g. Apollo, ZoomInfo, Snov) with per-seat/API terms | Lead Finder live providers | later | Until signed, only the labeled sandbox provider is wired — the product never fabricates live leads. API keys go to server-side env config per provider adapter |
+| 14 | Configure Supabase staging Auth URLs: Site URL + redirect allowlist = the Vercel frontend origin (and later the custom domain) | Phase 15.4 | **action needed for 15.5 browser tests** | Dashboard → Authentication → URL Configuration |
+| 15 | Add the staging OAuth callback URIs to the Google / Microsoft app registrations (see `docs/STAGING_DEPLOYMENT.md` §8) and set the redirect env vars on the VPS | Phase 15.5 | later | Needed only for live mailbox-connection tests; everything else stays BLOCKED-free |
+| 16 | Supabase staging backups: enable scheduled backups / confirm PITR on the staging project | Phase 15.3 | **action needed** | Staging holds real test data from 15.5 onward. Note (15.3): the 4 missing migrations were applied to staging 2026-11-10 — RLS hardening + founding/billing/domain schema are now live there |
+| 17 | Confirm GLM account balance if live AI model evaluation is wanted during staging (currently honest 503 or glm-4.5-flash free tier) | Phase 15.5 | optional | See item 12 |
 
 ## Working agreement
 

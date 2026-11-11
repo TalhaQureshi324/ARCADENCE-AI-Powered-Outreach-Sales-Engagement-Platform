@@ -332,13 +332,24 @@ final class BillingRoutes(
           .toMap
         val ts = parts.getOrElse("t", "")
         val sig = parts.getOrElse("v1", "")
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(new SecretKeySpec(secret.getBytes("UTF-8"), "HmacSHA256"))
-        val expected = mac
-          .doFinal(s"$ts.$payload".getBytes("UTF-8"))
-          .map("%02x".format(_))
-          .mkString
-        sig == expected
+        // Replay window: reject signatures older than 5 minutes (Stripe's
+        // recommended tolerance) — a captured signed payload must expire.
+        val fresh = ts.toLongOption.exists(t =>
+          math.abs(System.currentTimeMillis() / 1000L - t) <= 300L
+        )
+        if !fresh then false
+        else
+          val mac = Mac.getInstance("HmacSHA256")
+          mac.init(new SecretKeySpec(secret.getBytes("UTF-8"), "HmacSHA256"))
+          val expected = mac
+            .doFinal(s"$ts.$payload".getBytes("UTF-8"))
+            .map("%02x".format(_))
+            .mkString
+          // Constant-time comparison — never leak the MAC via early exit.
+          java.security.MessageDigest.isEqual(
+            sig.getBytes("UTF-8"),
+            expected.getBytes("UTF-8")
+          )
 
   private def errJson(status: SttpStatus, env: Envelope): Json =
     Json.obj(

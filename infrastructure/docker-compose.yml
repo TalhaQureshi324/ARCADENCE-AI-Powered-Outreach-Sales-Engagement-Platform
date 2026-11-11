@@ -12,7 +12,7 @@ services:
     # Inside the compose network, localhost is not the host machine —
     # point the database at the local Supabase stack via host.docker.internal.
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
+      DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:5433/postgres
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
@@ -23,7 +23,7 @@ services:
     env_file:
       - ../apps/worker/.env.local
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
+      DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:5433/postgres
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped

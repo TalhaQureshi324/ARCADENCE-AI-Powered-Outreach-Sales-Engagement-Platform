@@ -38,10 +38,19 @@ final class RateLimiter(maxRequests: Int, windowMillis: Long):
         else false
       }
       if windows.size > 10_000 then
-        // Opportunistic cleanup so idle keys don't accumulate forever.
-        windows.asScala.foreachEntry((k, d) =>
-          if d.isEmpty then windows.remove(k)
-        )
+        // Opportunistic cleanup: drain aged-out entries so keys never seen
+        // again become empty and removable — the map cannot grow without
+        // bound when callers rotate unique Authorization values.
+        windows.asScala.foreachEntry { (k, d) =>
+          val drainedEmpty = d.synchronized {
+            while
+              val oldest = Option(d.peekFirst())
+              oldest.exists(nowMillis - _ >= windowMillis)
+            do d.pollFirst()
+            d.isEmpty
+          }
+          if drainedEmpty then windows.remove(k)
+        }
       allowed
 
 object RateLimit:

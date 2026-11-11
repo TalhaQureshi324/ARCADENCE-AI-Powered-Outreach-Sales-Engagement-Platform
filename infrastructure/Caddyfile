@@ -1,0 +1,16 @@
+# Arcadence staging — TLS reverse proxy for the Scala API (Phase 15.3).
+# Caddy obtains and renews Let's Encrypt certificates automatically.
+# {$API_HOST} comes from the compose .env (e.g. api.staging.example.com).
+
+{$API_HOST} {
+	encode gzip
+
+	# HSTS — the API serves TLS only (docs/STAGING_DEPLOYMENT.md §6).
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header X-Content-Type-Options "nosniff"
+	header X-Frame-Options "DENY"
+	header Referrer-Policy "same-origin"
+
+	# No request bodies reach logs; access logs off for staging privacy.
+	reverse_proxy api:8080
+}

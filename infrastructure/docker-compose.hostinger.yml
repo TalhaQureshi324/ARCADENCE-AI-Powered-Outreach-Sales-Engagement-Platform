@@ -1,0 +1,117 @@
+# Arcadence — HOSTINGER VPS deployment compose (Phase 15.6 readiness).
+#
+# Full self-hosted topology for the production migration described in
+# docs/HOSTINGER_MIGRATION.md: Caddy (TLS for app + api) + Next.js web +
+# Scala API + Scala worker. Database stays on Supabase (managed) — this
+# bundle intentionally contains NO database service.
+#
+# Nothing is deployed by this file's presence. Deployment happens only with
+# the product owner's explicit authorization (AGENTS.md §5).
+#
+# Usage (owner, on the VPS):
+#   1. cp hostinger.env.example .env    # fill in; chmod 600; NEVER commit
+#   2. Load/pull images tagged with the git SHA (see infrastructure/README.md)
+#   3. docker compose -f docker-compose.hostinger.yml up -d
+#   4. Caddy obtains TLS certificates automatically once DNS points here.
+
+name: arcadence
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: arcadence-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.hostinger:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      APP_HOST: ${APP_HOST:?set APP_HOST in .env}   # e.g. app.example.com
+      API_HOST: ${API_HOST:?set API_HOST in .env}   # e.g. api.example.com
+    mem_limit: 256m
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    image: ${WEB_IMAGE:-arcadence/arcadence-web}:${WEB_IMAGE_TAG:?set WEB_IMAGE_TAG in .env}
+    container_name: arcadence-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    expose:
+      - "3000"
+    # NEXT_PUBLIC_* are BUILD-args (inlined into the bundle) — they are baked
+    # into the image tagged WEB_IMAGE_TAG, not runtime env. Rebuild on change.
+    mem_limit: 768m
+    stop_grace_period: 20s
+    logging: *logging
+
+  api:
+    image: ${API_IMAGE:-arcadence/arcadence-api}:${API_IMAGE_TAG:?set API_IMAGE_TAG in .env}
+    container_name: arcadence-api
+    restart: unless-stopped
+    depends_on:
+      - caddy
+    expose:
+      - "8080"
+    env_file:
+      - .env
+    environment:
+      JAVA_OPTS: -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC
+      APP_ORIGIN: ${APP_ORIGIN:?set APP_ORIGIN in .env}
+    mem_limit: 1g
+    stop_grace_period: 30s
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q ' 200 ' <&3"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging: *logging
+
+  worker:
+    image: ${WORKER_IMAGE:-arcadence/arcadence-worker}:${API_IMAGE_TAG:?set API_IMAGE_TAG in .env}
+    container_name: arcadence-worker
+    restart: unless-stopped
+    depends_on:
+      - api
+    env_file:
+      - .env
+    environment:
+      JAVA_OPTS: -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC
+      # --- sending safety ------------------------------------------------------
+      # Production ships with the queue PAUSED. Flip to true only after the
+      # owner verifies mailboxes, suppression lists and quotas (one worker
+      # instance EVER holds the sending role — see migration plan §9).
+      SENDING_ENABLED: ${SENDING_ENABLED:-false}
+      TEST_RECIPIENT_ALLOWLIST: ${TEST_RECIPIENT_ALLOWLIST:-}
+      WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-5}
+      WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-10}
+      WORKER_LEASE_SECONDS: ${WORKER_LEASE_SECONDS:-300}
+    mem_limit: 768m
+    stop_grace_period: 45s
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "grep -aq arcadence-worker /proc/1/cmdline"
+        ]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:

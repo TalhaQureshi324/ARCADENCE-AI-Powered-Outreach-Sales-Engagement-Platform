@@ -872,3 +872,136 @@
 
 - develop -> main promotion + tag phase-8.
 - Acceptance: users can diagnose authentication problems (copyable fixes), see health deterioration with explicit reasons, know when sends were auto-paused and why, and run permission-gated placement tests that report honestly.
+
+
+---
+
+## Phase 15.3 — Staging Supabase & Scala backend preparation (2026-11-10)
+
+**Branch** feature/phase-153-staging-prep -> develop.
+
+### Implemented / tested
+
+| Item | Detail |
+| --- | --- |
+| Staging identity | Linked ref `kryxwfjaafcedtqruges` = `arcadence-staging` verified against MANUAL_SETUP |
+| Migration gap | Staging lacked the last 4 migrations (billing, domains_security, **rls_hardening**, founding_access) — applied forward-only (`supabase db push --remote`, purely additive; no reset/no data change). All 43 now recorded |
+| RLS on staging | Phase 14.1 hardening had never reached staging; post-push anon probes confirm deny-by-default live (hardened tables now return empty sets to anon; `founding_program` public counter readable by design) |
+| Worker safety (code) | `SENDING_ENABLED` switch (claim gate — disabled = queue paused, pending jobs untouched, lease recovery continues; invalid values warn at startup), `TEST_RECIPIENT_ALLOWLIST` enforced in SendHandler before any provider contact (rejects without retry); wired in worker Main |
+| Images | `arcadence/arcadence-api` + `arcadence/arcadence-worker` via sbt-native-packager; **non-root uid 1001:0** verified; SHA-tagged (`1f6608f`) |
+| Staging config | `infrastructure/docker-compose.staging.yml` (Caddy TLS + api + worker; healthchecks, mem limits 1g/768m/256m, log rotation, stop grace periods, `JAVA_OPTS` RAM percentage), `infrastructure/Caddyfile` (TLS + HSTS), `infrastructure/staging.env.example` (no secrets), infrastructure/README rewritten (build/tag/distribute + queue-health SQL) |
+| Container smoke (local) | API container: `/health` 200, `/ready` 200 with `database: ok` against the local stack. Worker container: banner `sending DISABLED — queue paused`, heartbeats every 30s, **zero claim activity** with SENDING_ENABLED=false |
+
+| Tests | Result |
+| --- | --- |
+| SendWorkerConfigSpec (new, 6) | 6/6 |
+| SendDeliverySpec (5 + 1 new allowlist test) | 6/6 |
+| Full regression | **368/368 green** (core 99, worker 8, api 261), scalafmt clean |
+
+### Owner actions outstanding (staging deployment gate)
+
+- VPS provisioning + DNS (MANUAL_SETUP #10) and staging `DATABASE_URL` credentials.
+- Supabase staging backups toggle (MANUAL_SETUP #16).
+- Remote smoke (`/ready` over TLS, worker heartbeat on the host) — runs at deployment, only on owner authorization.
+
+
+---
+
+## Phase 15.4 — Next.js Vercel deployment preparation (2026-11-10)
+
+**Branch** feature/phase-154-vercel -> develop.
+
+### Implemented / tested
+
+| Item | Detail |
+| --- | --- |
+| Project config | `apps/web/vercel.json` (framework nextjs, `npm ci`, `npm run build`); monorepo verified self-contained (no root workspace tooling; Root Directory = `apps/web` is the only structural setting) |
+| Runbook | `docs/VERCEL_DEPLOYMENT.md`: owner click-by-click, 4 PUBLIC env vars, Vercel Authentication + protection-bypass guidance for 15.5, Supabase Auth URL wiring, `APP_ORIGIN` API wiring, post-deploy smoke checklist, URL record table |
+| Env template | `.env.example` gains `NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED` (was missing; source-verified) |
+| e2e ports | 12 spec files re-pointed from the pre-remap local ports (54321/54324) to 44321/44324 (15.3 stack remap) |
+| Founding-modal race | multi-org spec: the offer modal only evaluates once a workspace exists and blocks clicks behind it — spec now dismisses it deterministically after workspace creation (product snooze logic verified correct: 7-day localStorage flag, modal stays hidden on navigation) |
+| Production-build verification | `npm run build` green; `next start` + real local stack: Playwright **auth.spec 6/6** (signup→confirm→onboarding→dashboard, session refresh, logout, recovery, expired-link) and **multi-org.spec 1/1** (two-tenant isolation, invite accept, member gating on all tabs, removal + instant revocation) — full frontend→Scala-API round-trip on the exact artifact Vercel will serve |
+| Mobile check | 390×844: login/signup render without overflow (2 minor cosmetic paddings noted for 15.5) |
+| Security headers | verified present on the production server responses |
+
+| Tests | Result |
+| --- | --- |
+| Playwright auth.spec (production build) | 6/6 |
+| Playwright multi-org.spec (production build) | 1/1 (after founding-modal race fix) |
+| Frontend production build | exit 0 |
+
+### Blocked (owner)
+
+Deployment itself requires the owner's Vercel account (MANUAL_SETUP #9) — runbook ready; URL recorded in `docs/VERCEL_DEPLOYMENT.md` §6 after first deploy.
+
+
+---
+
+## Phase 15.5 — Browser-based live integration tests (2026-11-11)
+
+**Branch** feature/phase-155-browser-tests -> develop.
+
+### Environment
+
+Staging-equivalent LOCAL stack (real local Supabase + real Scala API + production frontend build via `next start`). Deployed Vercel frontend + staging VPS remain owner-gated (MANUAL_SETUP #9/#10). Dedicated @arcadence.test accounts only; no external prospect outreach occurred.
+
+### Product defect FIXED
+
+**CSV import: any unmapped column broke Start import (422).** The UI sends `""` targets for unmapped headers ("— ignore —"); `ImportService.start` validated them as unknown custom fields. Fix: blank targets dropped before validation. Regression test added; verified end-to-end in the browser.
+
+### Test-side repairs (stale/racy specs, product verified correct)
+
+- Founding-offer modal races across 6 specs → shared deterministic `dismissFoundingOffer` (immediate snooze write + addInitScript persistence + retry-click).
+- Founding claim assertion updated to the current confirmation view (membership summary + expiry).
+- Campaign status locators: Badge-span matching + deterministic detail re-open (the list page's hidden `<option>` stole the text locator).
+- 12 spec files re-pointed to the 15.3-remapped local ports.
+
+### New coverage (gap areas)
+
+`import.spec` (upload→map→start→Completed→contacts→duplicate-skip), `analytics.spec` (honest empty state then exact-number verification of seeded campaign_daily_stats), founding expiry test (≈claim+12 months, truthful past-expiry display).
+
+### Results
+
+| Suite | Result |
+| --- | --- |
+| Full Playwright suite (single final run, production build) | **23/23 PASSED** (4.4 min) |
+| ImportIntegrationSpec (+blank-target regression) | **8/8** |
+| DB failure-recovery drill | ready → not_ready(database:failed) → ready; public routes stay up; no API restart needed |
+| Mobile 390×844 + keyboard nav + focus styles | PASS (15.4 checks re-confirmed) |
+
+### 26-area matrix
+
+Full PASS/FAIL/BLOCKED matrix with per-area evidence: `docs/audit/15.5-browser-live-tests.md` — 17 PASS, 8 BLOCKED (OAuth verification, inert production send pipeline [audit C1/C3], no CRM/workflow UI pages), 0 FAIL.
+
+### Known observations (tracked, not fixed here)
+
+- Founding offer modal a11y (no focus trap) + localStorage-only dismissal — from 15.1.
+- Campaigns SPA occasionally settles on the list after in-page actions (cosmetic).
+- Send-pipeline wiring remediation (audit wave 1) still pending owner go-ahead — areas 13/14 stay BLOCKED until it lands.
+
+
+---
+
+## Phase 15.6 — Hostinger migration readiness (2026-11-11)
+
+**Branch** feature/phase-156-hostinger -> develop. **Documentation + configuration only — nothing deployed, nothing moved.**
+
+### Delivered
+
+| Item | Detail |
+| --- | --- |
+| Production compose | `infrastructure/docker-compose.hostinger.yml` — Caddy (two TLS origins) + web + api + worker; healthchecks, restart policies, mem limits, log rotation, sending paused by default. Validated with `docker compose config` |
+| TLS config | `infrastructure/Caddyfile.hostinger` — HSTS + security headers for `{$APP_HOST}` → web:3000 and `{$API_HOST}` → api:8080 |
+| Env template | `infrastructure/hostinger.env.example` — production values are NEW (never copied from staging); NEXT_PUBLIC_* documented as build-time for the self-hosted web |
+| Self-host web container | `apps/web/Dockerfile` (+ `.dockerignore`): node:22-alpine multi-stage, non-root, healthcheck; **built and smoke-tested** (login 200, container healthy, user `arcadence`) |
+| Migration plan | `docs/HOSTINGER_MIGRATION.md` — all charter items: DNS (TTL/dual-run), TLS, API routing, OAuth callbacks (§4), Supabase redirects (§5), cookies/CORS (§6), secret transfer (§7), data compatibility (§8), worker handoff + duplicate-send prevention (§9), rollback (§10), downtime minimization (§11), go-live checklist (§12), backup/restore (§13), provider isolation (§14) |
+| Standing decisions | Supabase stays the managed database; staging data never copied casually; deployment settings isolated under `infrastructure/` (core Scala reads env only) |
+
+### Verification executed
+
+- `docker compose -f docker-compose.hostinger.yml config` — valid against the example env.
+- `apps/web` Docker image build (node:22-alpine, ~500MB with .dockerignore trimming the 790MB context) + container smoke: `/login` 200, healthy, non-root.
+
+### Owner actions
+
+MANUAL_SETUP #10 updated — provisioning + authorization are the only remaining gates; everything else is committed and documented.

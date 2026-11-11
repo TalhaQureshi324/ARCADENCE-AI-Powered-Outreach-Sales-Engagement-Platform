@@ -2,7 +2,7 @@
 
 > Single source of truth for progress. Updated at the end of **every** subphase. Statuses: `planned` · `in-progress` · `implemented` · `tested` · `blocked`. See `AGENTS.md` §10 for definitions.
 
-**Last updated:** 2026-11-06 (13 — Phase 13 COMPLETE)
+**Last updated:** 2026-11-11 (15.6 — Hostinger migration bundle + plan ready; awaiting owner provisioning)
 
 ---
 
@@ -33,7 +33,9 @@ The phase breakdown below is provisional; the product owner supplies each phase'
 | 10 | Lead Finder, data enrichment and verification marketplace | **complete** (`phase-10`) |
 | 11 | AI copilot and sales agents — model gateway, writer/researcher, reply agent, orchestration, AI Studio | **complete** (`phase-11`) |
 | 12 | Public API, integrations and workflow automation — API keys, webhooks, connectors, visitor intel, workflows, multichannel | **complete** (`phase-12`) |
-| 13 | Hardening & launch — performance, security audit, production cutover | planned |
+| 13 | Hardening & launch — performance, security audit, production cutover | **complete** (Phase 13; monetization deferred — free launch via Founding 10,000) |
+| 14 | Project review & repository audit — security hardening, frontend functionality audit, Founding Access & free launch experience, e2e verification, resilience, release readiness | **complete** (`docs/audit/14.*`) |
+| 15 | Private-testing deployment — 15.1 audit ✅, 15.2 architecture ✅, 15.3 staging prep ✅ (migrations closed, safety switches, images), 15.4 Vercel deployment ✅ (runbook + verification; deploy awaits owner), 15.5 browser live tests ✅ (23/23 local; import defect fixed; 8 areas BLOCKED on owner OAuth/infra), 15.6 Hostinger migration readiness ✅ (bundle + plan committed; deployment awaits owner) |
 
 ## Subphase detail — Phase 0
 

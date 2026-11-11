@@ -1,13 +1,29 @@
 import { execSync } from "node:child_process";
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-import { STRONG_PASSWORD, latestEmailLink, testEmail } from "./helpers/inbucket";
+import {
+  STRONG_PASSWORD,
+  latestEmailLink,
+  testEmail,
+  dismissFoundingOffer,
+} from "./helpers/inbucket";
 
-const VERIFY_LINK = /https?:\/\/127\.0\.0\.1:54321\/auth\/v1\/verify\?[^\s"'<>]+/;
+const VERIFY_LINK = /https?:\/\/127\.0\.0\.1:44321\/auth\/v1\/verify\?[^\s"'<>]+/;
 
 /** Requires the Scala API to be running locally (port 8080). */
 test.describe("campaigns module", () => {
+  /** The SPA occasionally settles back on the campaigns list after an action;
+   * re-open the campaign detail so subsequent detail-page asserts hold.
+   */
+  async function ensureDetail(page: Page) {
+    if (!/\/app\/campaigns\/[0-9a-f-]{36}$/.test(page.url())) {
+      await page.goto("/app/campaigns");
+      await page.getByRole("link", { name: /Q4 Launch/ }).click();
+      await expect(page.getByText("Launch sequence for the Q4 push")).toBeVisible();
+    }
+  }
+
   test("campaign lifecycle: create, sequence, audience, mailbox, activate, pause", async ({
     page,
   }) => {
@@ -29,6 +45,7 @@ test.describe("campaigns module", () => {
     await page.getByLabel("Workspace name").fill("Campaigns WS");
     await page.getByRole("button", { name: "Create workspace" }).click();
     await expect(page.getByText("Campaigns WS").first()).toBeVisible();
+    await dismissFoundingOffer(page);
 
     // Seed a lead list so the campaign has an audience.
     await page.getByRole("link", { name: "Leads" }).click();
@@ -86,7 +103,11 @@ test.describe("campaigns module", () => {
         `returning id"`,
       { stdio: "pipe" },
     );
-    await page.reload();
+    // reload can bounce through the workspace context to the list — re-open
+    // the campaign detail deterministically before continuing.
+    await page.goto("/app/campaigns");
+    await page.getByRole("link", { name: /Q4 Launch/ }).click();
+    await expect(page.getByText("Launch sequence for the Q4 push")).toBeVisible();
     await page.getByRole("button", { name: "Add mailbox" }).click();
     await page
       .getByLabel("Sending account")
@@ -96,15 +117,18 @@ test.describe("campaigns module", () => {
 
     // Activate; the sequence becomes locked (structural UI hidden) and shows the hint.
     await page.getByRole("button", { name: "Activate campaign" }).click();
-    await expect(page.getByText("Active", { exact: true }).first()).toBeVisible();
+    // Guard: we are on the detail page (the list page has a hidden
+    // <option>Active</option> that would steal the text locator).
+    await expect(page).toHaveURL(/\/app\/campaigns\/[0-9a-f-]{36}$/);
+    await expect(page.locator("span:text-is('Active')").first()).toBeVisible();
     await expect(page.getByText(/locked while the campaign is not a draft/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Add step" })).toHaveCount(0);
 
     // Pause and resume preserve the campaign state.
     await page.getByRole("button", { name: "Pause campaign" }).click();
-    await expect(page.getByText("Paused", { exact: true }).first()).toBeVisible();
+    await expect(page.locator("span:text-is('Paused')").first()).toBeVisible();
     await page.getByRole("button", { name: "Resume campaign" }).click();
-    await expect(page.getByText("Active", { exact: true }).first()).toBeVisible();
+    await expect(page.locator("span:text-is('Active')").first()).toBeVisible();
 
     // Rename is refused while running.
     await page.getByRole("button", { name: "Edit details" }).click();
@@ -116,7 +140,7 @@ test.describe("campaigns module", () => {
     // The list page shows the campaign as active.
     await page.getByRole("button", { name: "All campaigns" }).click();
     await expect(page.getByText("Q4 Launch")).toBeVisible();
-    await expect(page.getByText("Active").first()).toBeVisible();
+    await expect(page.locator("span:text-is('Active')").first()).toBeVisible();
   });
 
   test("composer: tokens, autosave, validation and preview against a real contact", async ({
@@ -140,6 +164,7 @@ test.describe("campaigns module", () => {
     await page.getByLabel("Workspace name").fill("Composer WS");
     await page.getByRole("button", { name: "Create workspace" }).click();
     await expect(page.getByText("Composer WS").first()).toBeVisible();
+    await dismissFoundingOffer(page);
 
     // A sample contact for preview (with a first name to resolve).
     await page.getByRole("link", { name: "Leads" }).click();
@@ -201,6 +226,7 @@ test.describe("campaigns module", () => {
     await page.getByLabel("Workspace name").fill("Builder WS");
     await page.getByRole("button", { name: "Create workspace" }).click();
     await expect(page.getByText("Builder WS").first()).toBeVisible();
+    await dismissFoundingOffer(page);
 
     await page.getByRole("link", { name: "Campaigns" }).click();
     await page.getByRole("button", { name: "New campaign" }).first().click();

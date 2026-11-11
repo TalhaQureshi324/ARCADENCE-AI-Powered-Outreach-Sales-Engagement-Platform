@@ -99,7 +99,9 @@ final class ImportService(
       parsedKeys match
         case Left(error)  => IO.pure(Left(error))
         case Right(pairs) =>
-          val clean = pairs.toMap
+          // Blank targets mean "ignore this column" (the UI sends "" for
+          // unmapped headers) — drop them before validating field names.
+          val clean = pairs.filter(_._2.nonEmpty).toMap
           val unknown =
             clean.values.filterNot(v => AllowedFields.contains(v)).toSet
           if unknown.isEmpty then
