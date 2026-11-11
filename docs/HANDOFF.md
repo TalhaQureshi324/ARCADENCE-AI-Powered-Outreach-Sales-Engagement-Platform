@@ -978,3 +978,30 @@ Full PASS/FAIL/BLOCKED matrix with per-area evidence: `docs/audit/15.5-browser-l
 - Founding offer modal a11y (no focus trap) + localStorage-only dismissal — from 15.1.
 - Campaigns SPA occasionally settles on the list after in-page actions (cosmetic).
 - Send-pipeline wiring remediation (audit wave 1) still pending owner go-ahead — areas 13/14 stay BLOCKED until it lands.
+
+
+---
+
+## Phase 15.6 — Hostinger migration readiness (2026-11-11)
+
+**Branch** feature/phase-156-hostinger -> develop. **Documentation + configuration only — nothing deployed, nothing moved.**
+
+### Delivered
+
+| Item | Detail |
+| --- | --- |
+| Production compose | `infrastructure/docker-compose.hostinger.yml` — Caddy (two TLS origins) + web + api + worker; healthchecks, restart policies, mem limits, log rotation, sending paused by default. Validated with `docker compose config` |
+| TLS config | `infrastructure/Caddyfile.hostinger` — HSTS + security headers for `{$APP_HOST}` → web:3000 and `{$API_HOST}` → api:8080 |
+| Env template | `infrastructure/hostinger.env.example` — production values are NEW (never copied from staging); NEXT_PUBLIC_* documented as build-time for the self-hosted web |
+| Self-host web container | `apps/web/Dockerfile` (+ `.dockerignore`): node:22-alpine multi-stage, non-root, healthcheck; **built and smoke-tested** (login 200, container healthy, user `arcadence`) |
+| Migration plan | `docs/HOSTINGER_MIGRATION.md` — all charter items: DNS (TTL/dual-run), TLS, API routing, OAuth callbacks (§4), Supabase redirects (§5), cookies/CORS (§6), secret transfer (§7), data compatibility (§8), worker handoff + duplicate-send prevention (§9), rollback (§10), downtime minimization (§11), go-live checklist (§12), backup/restore (§13), provider isolation (§14) |
+| Standing decisions | Supabase stays the managed database; staging data never copied casually; deployment settings isolated under `infrastructure/` (core Scala reads env only) |
+
+### Verification executed
+
+- `docker compose -f docker-compose.hostinger.yml config` — valid against the example env.
+- `apps/web` Docker image build (node:22-alpine, ~500MB with .dockerignore trimming the 790MB context) + container smoke: `/login` 200, healthy, non-root.
+
+### Owner actions
+
+MANUAL_SETUP #10 updated — provisioning + authorization are the only remaining gates; everything else is committed and documented.
